@@ -1,3 +1,15 @@
 __pycache__/
 *.pyc
 .DS_Store
+shot_*.png
+
+# Working / source art kept local only (game reads embedded js/assets_data.js)
+assets/laura_assets/
+assets/other_assets/
+assets/sprites_bench/
+assets/sprites_cut/
+assets/sprites_sheets/
+
+# Junk
+*Zone.Identifier
+_hud_avant_apres.png

@@ -1,11 +1,22 @@
-# Laura Quest 🌾☀️
+# Laura l'exploratrice 🌾☀️🐈
 
-Petit jeu web façon Mario/run-and-gun, **100 % côté client, sans serveur**, fait pour
-l'anniversaire de Laura (docteure en agroclimato). On incarne **un pot de riz à roulettes**
-qui suit le soleil jusqu'à la soutenance, évite cailloux, camions, assureurs et rapports de
-l'ADEME, et affronte ses **directeurs de thèse** en boss. Style _Dora l'exploratrice_.
+Jeu web façon Mario/run-and-gun, **100 % côté client, sans serveur**, fait pour
+l'anniversaire de Laura (docteure en agroclimato). On incarne **Laura**, qui prépare son
+**PhD sur l'agrivoltaïsme** (panneaux solaires au-dessus des rizières). Elle ramasse des
+**données** et des **pages de thèse**, lance des **graines / pieds de riz** et son **chat
+angora**, et gagne **un chapitre** en battant le boss de chaque niveau. Après **5 niveaux**
+elle affronte le **jury de thèse** et décroche son **PhD**. Style _Dora l'exploratrice_ /
+_Animal Crossing_.
 
-> Première démo jouable. Tout est rangé et paramétrable pour la « passe sérieuse » d'après.
+- **5 boss différents** (1 gameplay par boss) : RStudio, le propriétaire terrien, Cendrine
+  (l'administration), l'agriculteur fou, Michael Dingkhun — puis le **jury** (mégaboss multi-phases).
+- **Carte du monde** (overworld) façon Dora, **3 sauvegardes** type borne d'arcade.
+- **Publication cachée** dans chaque niveau (en hauteur) pour le 100 %.
+- Personnages **animés** (grilles de sprites) — placeholders à remplacer par tes assets
+  (toutes les propriétés sont dans **[`SPRITES.md`](SPRITES.md)**).
+
+> Le _gameplay_ de plateforme est volontairement conservé tel quel ; tout le reste (histoire,
+> niveaux, boss, collectibles, sauvegardes) est paramétrable.
 
 ---
 
@@ -30,14 +41,24 @@ re-attrape le focus automatiquement, mais un clic dans la fenêtre lève tout do
 
 ## 🎮 Contrôles (configurables)
 
-| Action            | Touches                          |
-|-------------------|----------------------------------|
-| Bouger            | Flèches ← →  ou  Q/D (ou A/D)     |
-| Sauter (×2)       | Espace, ↑, Z ou W                 |
-| Tirer             | X ou Entrée (maintenir = rafale)  |
-| Sort « Pleurer »  | C  (inonde + repousse les ennemis)|
-| Sort « Râler »    | V  (bouclier + assomme)           |
-| Changer de munition | Maj  (graines → cookies → gâteaux) |
+| Action            | Touches                                       |
+|-------------------|-----------------------------------------------|
+| Bouger            | Flèches ← →  ou  Q/D (ou A/D)                  |
+| Sauter (×2)       | Espace, Z ou W                                |
+| Viser / s'accroupir | ↑ ↓ (en l'air = viser le tir ; **au sol, ↓ = s'accroupir**) |
+| Lancer (arme)     | X ou Entrée — droit = **rafale** ; cloche (cookie/gâteau) = **charge** (plus loin) ; **consomme de l'énergie** |
+| Sort « Pleurer »  | C  (inonde + repousse les ennemis)            |
+| Sort « Râler »    | V  (bouclier + assomme)                        |
+| Lancer le **chat**| B  (**maintenir ~2 s**, court au sol, nettoie une zone) |
+| Changer d'arme    | Maj  (4 armes)                                |
+
+Sur l'écran-titre : **Espace** → choix de la **sauvegarde** (A/B/C) → **carte du monde**
+(flèches pour choisir un chapitre débloqué, Espace pour entrer). On gagne un chapitre en
+battant le boss puis en touchant la sortie `*`.
+
+> L'**énergie** (jauge « soleil ») sert aussi de **munitions** : chaque tir en consomme
+> (les pieds de riz plus que les graines). On en perd un peu en continu, et des rayons de
+> soleil apparaissent pendant les combats de boss pour se recharger.
 
 ---
 
@@ -45,48 +66,56 @@ re-attrape le focus automatiquement, mais un clic dans la fenêtre lève tout do
 
 ### 1. Changer un asset (le plus simple)
 Remplace n'importe quel fichier dans `assets/sprites/` ou `assets/sounds/` par le tien,
-**en gardant le même nom**. Tailles indicatives : héros ~64×76, ennemis ~48–108 px,
-boss ~124×140, tuiles 48×48, soleil 128×128.
+**en gardant le même nom**. La liste complète des sprites — taille, nombre de frames,
+ancre, sens du regard, rôle — est dans **[`SPRITES.md`](SPRITES.md)**.
 
 ⚠️ Comme les assets sont **embarqués** (`js/assets_data.js`), après avoir remplacé un
-fichier il faut **régénérer** cet embarqué pour que le changement soit pris :
+fichier il faut **ré-embarquer** pour que le changement soit pris en compte :
 ```bash
 python3 gen_assets_data.py
 ```
 
-Liste des sprites : `hero_idle/run/jump/hurt`, `ammo_graine/cookie/gateau`,
-`enemy_caillou/camion/assureur/ademe`, `boss_directeur1/2`, `pickup_sunray/cafe`,
-`sun_goal`, `tile_soil/panel`, `heart`, `fx_tear/grumble`, `bg_field/cloud`.
-Voir `montage.png` pour la planche-contact de tout le casting.
+> 🎞️ **Grilles d'animation** : les sprites animés sont des **feuilles** (bande horizontale
+> de N frames). Le découpage est décrit dans `CONFIG.anims` (`sliceX` = nb de frames +
+> `anims`). Si tu remplaces un sprite animé par un autre nombre de frames, **ajuste le
+> `sliceX`** correspondant dans `js/config.js`.
 
 ### 2. Régler le gameplay & le scénario → `js/config.js`
 Tout y est commenté : vitesse, saut, dégâts, points de vie, cooldown des sorts,
-jauge soleil, stats des ennemis/boss, munitions, contrôles, et **les textes**
+**énergie = munitions** (`sun` + `ammoTypes[].cost`), stats des ennemis/boss, le **chat**
+(`cat`, dont `chargeTime` = durée de maintien de B), contrôles, et **les textes**
 (`story.*` : titre, intro, messages de victoire/défaite…).
+
+Deux réglages pratiques :
+- `art` — **haute définition** : `scale` (les PNG sont dessinés à `scale`× la taille
+  affichée ; le jeu divise par `scale`) et `pixelDensity` (finesse du rendu).
+- `cheats` — touches de test **(1‑6 = aller au niveau, 0 = finir, G = mode dieu,
+  H = tout refaire le plein)**. ⚠️ **Mets `cheats: false` pour la version cadeau.**
 
 ### 3. Dessiner le niveau → `js/level.js`
 Le niveau est une grille **ASCII** (1 caractère = 1 case). Légende :
 
 ```
-' ' vide      '=' sol        '-' plateforme (panneau solaire)   '@' départ héros
-'o' rayon de soleil   'c' café (soin)   '^' caillou   'T' camion
-'A' assureur   'R' rapport ADEME   'B' boss   '*' soleil = sortie
+' ' vide   '=' sol   '-' plateforme (panneau solaire)   '@' départ de Laura
+'o' rayon de soleil   'c' café (soin)   'k' croquette (recharge le chat)
+'d' data   'p' page de thèse   'P' PUBLICATION cachée (1/niveau -> 100 %)
+'^' caillou   'T' camion   'A' assureur   'R' rapport ADEME
+'V' corbeau (vole)   'J' criquet (saute)   'B' boss   '*' sortie = chapitre
 ```
 
 Déplace les caractères pour replacer ennemis/objets, allonger le niveau, etc.
-Le boss du `'B'` est choisi par le champ `boss:` du niveau. On gagne en touchant le
-soleil `'*'` **après avoir battu le boss**.
+La caméra ne défile **qu'en X** : tout tient sur 11 rangées de haut (les publis `P` se
+planquent en haut, au bout d'un escalier de panneaux `-`). Le boss du `'B'` est choisi par
+le champ `boss:` du niveau. On écrit le chapitre en touchant la sortie `'*'` **après avoir
+battu le boss**. L'ordre des niveaux est `CONFIG.levels` (`niveau1..5` + `jury`), et la carte
+du monde est décrite par `CONFIG.world.nodes`. L'IA des 6 boss est dans `js/bosses.js`.
 
-### 4. Re-générer les assets « source » (optionnel)
-Les sprites sont dessinés en vectoriel via `artkit.py` (palette + helpers communs)
-et un script par sprite `gen_<nom>.py`. Pour retoucher un sprite :
-
-```bash
-# édite gen_hero_idle.py puis :
-python3 gen_hero_idle.py        # réécrit assets/sprites/hero_idle.png
-python3 gen_sounds.py           # réécrit les bruitages
-python3 gen_montage.py          # régénère montage.png (planche-contact)
-```
+### 🗂️ Sauvegardes (3 slots) & carte
+- 3 slots type arcade (`js/save.js`, `localStorage`). Chaque slot retient chapitres, publis,
+  % de données, meilleur score et progression de la carte.
+- ⚠️ **En `file://` sous Chrome**, `localStorage` peut être bloqué : les slots marchent alors
+  pour la session mais **ne persistent pas**. Pour garder les sauvegardes : sers le dossier
+  via `python3 -m http.server` ou déploie-le (itch.io / GitHub Pages).
 
 ---
 
@@ -96,14 +125,15 @@ python3 gen_montage.py          # régénère montage.png (planche-contact)
 index.html            point d'entrée
 engine/kaplay.js      moteur de jeu KAPLAY (embarqué en local, MIT)
 js/assets_data.js     🧩  assets en base64 (généré) → marche sans serveur
-js/config.js          ⚙️  tous les réglages + textes
-js/level.js           🗺️  le(s) niveau(x) en ASCII
+js/config.js          ⚙️  tous les réglages + textes (+ bloc `art` HD, flag `cheats`)
+js/level.js           🗺️  les niveaux en ASCII
+js/bosses.js          🤖  l'IA des 6 boss
+js/save.js            💾  les 3 sauvegardes (localStorage)
 js/game.js            🎮  le moteur du jeu
-assets/sprites/*.png  les 23 sprites (sources des assets embarqués)
+assets/sprites/*.png  les 35 sprites (propriétés : SPRITES.md)
 assets/sounds/*.wav   les 8 bruitages
-artkit.py, gen_*.py   sources des assets (cairo / numpy) — pour re-générer
-gen_assets_data.py    re-génère js/assets_data.js après un changement d'asset
-test_keys.py          test clavier headless (dev) ; montage.png = planche-contact
+gen_assets_data.py    ré-embarque js/assets_data.js après un changement d'asset
+SPRITES.md            propriétés de chaque sprite (taille, frames, ancre, rôle…)
 ```
 
 ## ⚠️ Bon à savoir
@@ -111,10 +141,6 @@ test_keys.py          test clavier headless (dev) ; montage.png = planche-contac
   textes à l'écran sont sans accents. Pour de vrais accents : déposer une police TTF dans
   `assets/`, faire `loadFont("ui", "assets/maPolice.ttf")` et ajouter `font: "ui"` aux
   appels `text(...)` dans `js/game.js`.
-- Vérifié en headless (Chrome, build `file://` sans serveur) : chargement des assets
-  embarqués, écran titre + niveau, et **vraies touches** clavier — déplacement (lettres),
-  saut (espace) et tir (x) répondent ; sorts/collisions/score/caméra OK. Pense quand même
-  à playtester la run complète jusqu'au boss + soleil dans ton navigateur.
 
 ## Crédits
 Moteur : [KAPLAY](https://kaplay.com) (MIT). Jeu & assets : faits maison pour Laura. 💛

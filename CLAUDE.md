@@ -1,0 +1,97 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+"Laura l'exploratrice" — a 100% client-side run-and-gun platformer (KAPLAY engine), built as a birthday gift. Laura does a PhD on agrivoltaics: 5 levels each with a unique boss, then a multi-phase jury megaboss. There is **no build system, no backend, no package manager, no test suite** — it is plain `<script>` tags and static assets.
+
+## Running & validating
+
+- **Run locally**: open `index.html` directly (works in `file://`). Assets are embedded as base64 in `js/assets_data.js`, so no server is needed.
+- **Run with persistence**: `python3 -m http.server 8000` then open `http://localhost:8000`. Needed because Chrome blocks `localStorage` in `file://`, so saves don't persist there (they fall back to session-only memory).
+- **Dev shortcuts** (URL hash): `index.html#game` jumps straight into level 1; `index.html#gameauto` runs an autopilot test mode.
+- **In-game cheat keys** (only when `CONFIG.cheats: true`): `1`-`6` jump to a level, `0` finishes the level, `G` god mode, `H` refill everything.
+
+### Re-embedding assets (required after any asset change)
+Sprites/sounds live in `assets/sprites/*.png` and `assets/sounds/*.wav`, but the game reads them from the embedded `window.ASSETS` in `js/assets_data.js`. After replacing/adding any asset you **must** regenerate:
+```bash
+python3 gen_assets_data.py
+```
+Files prefixed with `_` in `assets/sprites/` are skipped by the generator.
+
+### Ajouter / changer des assets (hyper bref)
+1. Dépose le PNG dans `assets/sprites/` (nom = nom de sprite, ex. `bg_hills.png`, `enemy_criquet2.png`, `tile_soil2.png`). PNG authoring à `CONFIG.art.scale`× (cf. `SPRITES.md`).
+2. **Animé ?** déclare-le dans `CONFIG.anims[nom]` (`sliceX` = nb de frames). Sinon rien à faire (image simple).
+3. **Réembarque** : `python3 gen_assets_data.py`.
+4. **Utilise-le** :
+   - *fond* → ajoute une couche dans `CONFIG.theme.layers` (ou `LEVELS[x].theme.layers`) : `{ sprite:'bg_hills', band:true, parallax:0.45, anchor:'bot', y:'ground', tileW:<largeur affichée>, z:-21 }`.
+   - *obstacle* → `theme.tiles['=']: ['tile_soil','tile_soil2']` (liste = variantes au hasard).
+   - *monstre* → `theme.enemies.criquet: ['enemy_criquet','enemy_criquet2']`.
+   - *nouveau type d'ennemi* → ajoute-le à `CONFIG.enemies` + un caractère dans le switch de `buildLevel` (`js/game.js`) + la légende de `js/level.js`.
+
+Tout sprite cité mais absent est ignoré (retour au défaut) — rien ne casse si tu oublies le PNG.
+
+**Placeholders** : `python3 tools/gen_placeholders.py` (puis `gen_assets_data.py`) génère des assets bouche-trou — couches de parallax tileables (`bg_mountains`, `bg_hills`), fonds plein-écran (`bg_title` écran-titre, `bg_map` carte), le panneau en perspective (`tile_panel` = le "cap" + `panel_leg` = les pieds) et des variantes de monstres/tuiles (`enemy_*2`, `tile_*2`, décalage de teinte). Remplace-les par tes vrais PNG (mêmes noms/tailles) quand tu les as.
+
+**Panneaux solaires (plateformes `-`/`x`) en perspective** : la *collision* reste une tuile invisible 48×48 (on marche sur le haut). Le *visuel* (`addPanel`/`addPanelDeco` dans `game.js`) = un `tile_panel` (cap penché vers le soleil haut-gauche, son bord avant aligné sur le haut de tuile) + `panel_leg` étiré en Y jusqu'au sol de la colonne → hauteur des pieds variable selon l'altitude. Penché pour rester colinéaire à l'ombre (cf. `SHADE_SLOPE`). `bg_title`/`bg_map` sont des PNG plein-écran (1920×1056 = 960×528 ×2) posés en `z(-10)` dans les scènes `title`/`overworld`.
+
+### Visual validation (no automated tests)
+Verify rendering with headless Chrome + SwiftShader (software WebGL). A blank/dark screenshot means a JS error broke KAPLAY init:
+```bash
+google-chrome --headless=new --no-sandbox --use-gl=swiftshader --enable-unsafe-swiftshader \
+  --window-size=1000,640 --virtual-time-budget=8000 --screenshot=/tmp/shot.png \
+  "file:///home/delete/laura_quest/index.html#game"
+```
+There is no `node` available; you cannot `node --check` the JS.
+
+## Architecture
+
+### Globals-as-modules (no imports/bundler)
+KAPLAY itself is **vendored** as a minified bundle in `engine/kaplay.js` (no CDN, no npm) and is the first script `index.html` loads; updating the engine means replacing that file. `index.html` then loads the game scripts in a fixed dependency order (`assets_data.js → config.js → level.js → save.js → bosses.js → game.js`); they communicate **only through `window` globals**. There are no ES modules or `require`. The contract:
+
+| Global | Defined in | Consumed by |
+|---|---|---|
+| `window.ASSETS` | `js/assets_data.js` (generated) | `game.js` asset loader |
+| `window.CONFIG` (`C`) | `js/config.js` | everything |
+| `window.LEVELS` | `js/level.js` | `game.js` |
+| `window.LQ_SAVE` | `js/save.js` | `game.js` |
+| `window.BOSS_AI` | `js/bosses.js` | `game.js` (`AI[def.behavior]`) |
+| `window.LQ` | `js/game.js` | debug handle (`LQ.player`, `LQ.level`, `LQ.save`) |
+
+`js/game.js` is one big IIFE that calls `kaplay({...})` and defines all KAPLAY scenes. **If you add a new JS file, wire it into `index.html` in the right order** (before `game.js`, after its own dependencies).
+
+### Config-driven design — edit `js/config.js`, not `game.js`
+Almost all behavior is data in `CONFIG`: physics (`player.jumpForce`, etc.), damage/HP, spell cooldowns, the cat ally (`cat.chargeTime` = hold duration), energy-as-ammo (`sun` + `ammoTypes[].cost`), enemy/boss stats, sprite sheets (`anims`), key bindings (`controls`), level order (`levels`), world map (`world.nodes`), and **all on-screen text** (`story.*`). Changing gameplay or wording usually means editing config, not engine code.
+
+### Scene flow
+`title → slots → overworld → game → chapter → overworld … → jury → win`; losing returns to `overworld` (or `title` if no save). Menu scenes confirm via the `onConfirm` helper (space + enter + jump keys); `overworld` navigates levels with left/right.
+
+### Levels = ASCII grids (`js/level.js`)
+Each char is one `CONFIG.tileSize` tile; the legend is documented at the top of the file. Camera scrolls **X only** — every level is 11 rows tall. The hidden publication (`P`, one per level, gives 100%) sits at the top of a stair of solar-panel platforms (`-`), requiring the double jump. The `'B'` tile spawns the boss named by the level's `boss:` field; touching `'*'` after killing the boss writes the chapter.
+
+### Décor par niveau : parallax + skins (`theme`)
+Le fond est un **parallax** multi-couches et tout le décor est **customisable par niveau**. Les défauts sont dans `CONFIG.theme` (`js/config.js`) ; chaque niveau peut surcharger via une clé `theme:` à côté de `boss:` (`js/level.js`). Résolution dans `buildLevel` : `tiles`/`enemies` fusionnent clé par clé, `sky`/`tint`/`layers` se remplacent en bloc.
+- **`layers`** (du fond vers l'avant) : `parallax` 0 = immobile (ciel) → 1 = colle au sol. `band:true` = bandeau répété sans couture (sol, collines) ; `scatter:true` = sprites dispersés qui dérivent et se recyclent (nuages). Couches rendues en repère écran (`fixed`), défilées par `getCam().x * parallax` (cf. `addBandLayer`/`addScatterLayer`).
+- **`sky`** `[r,g,b]` = ciel ; **`tint`**/`color` `[r,g,b]` = teinte d'ambiance (multiplie les sprites).
+- **`tiles`** (par caractère de map) et **`enemies`** (par nom d'ennemi) : la valeur est une **liste de sprites** → une variante au hasard par exemplaire. Un sprite absent est ignoré → retour au défaut (`pickSkin`). C'est en plus du système global de variantes numérotées (`enemy_criquet2`…).
+
+Dev : `index.html#game/niveau4` (ou `#gamejury`) saute directement à un niveau pour tester son thème ; `index.html#map` ouvre directement la carte du monde.
+
+### Boss AI (`js/bosses.js`)
+`game.js` calls `BOSS_AI[def.behavior](b, p, api)` every frame. `b` is the boss entity (`b.def`, `b.hp`, `b.maxHp`, `b.t`, `b.homeX`, `b.pos`); `p` is the player; `api` exposes `{ TS, bullet, add, shake, poof }`. An AI sets `b.animWant = 'idle' | 'attack' | 'hurt'` and `game.js` plays the matching animation. One behavior function per boss.
+
+**Two sheets per boss** (`bossAnim` in `game.js`): each boss has a **movement** sheet `def.sprite` (`boss_X_move` — `idle`/`hurt`) and a separate **attack** sheet `def.attackSprite` (`boss_X_atk` — `attack`). When `animWant === 'attack'` the entity swaps to `b.sprAtk`; everything else stays on `b.spr`. A missing `_atk` PNG falls back to the move sheet (no crash). Placeholders: `python3 tools/gen_boss_sheets.py` → `gen_assets_data.py`.
+
+### Saves (`js/save.js`)
+Three arcade-style slots in `localStorage` (key `lauraquest_slot_<i>`), with a session-memory fallback when storage is unavailable. Each slot tracks chapters done, publications, data %, best score, and map cursor. `N_LEVELS = 5` (the jury is not a "chapter").
+
+### Sprites & animation
+Animated sprites are **horizontal spritesheets**; `CONFIG.anims[name].sliceX` is the frame count and `anims` the named clips. After replacing an animated sprite with a different frame count, **update its `sliceX`** in config or frames will be sliced wrong. PNGs are authored at `CONFIG.art.scale`× display size and the engine divides by `scale` (HD trick). Full per-sprite spec (size, frames, anchor, facing, role) is in `SPRITES.md`.
+
+## Gotchas
+
+- **No accents in on-screen text** — KAPLAY's default bitmap font renders them poorly. To enable real accents, load a TTF (`loadFont("ui", "assets/font.ttf")`) and add `font: "ui"` to `text(...)` calls.
+- **HUD key labels are hardcoded strings in `game.js`** (the `keycap(...)` / `spellPill(...)` calls and `CONFIG.story.hint`). If you rebind a key in `CONFIG.controls`, update those display strings to match — they are not derived from the bindings.
+- **Set `CONFIG.cheats: false`** for the shipped gift version (otherwise number/G/H keys are intercepted and the cheat hint shows).
+- Keyboard not responding → the canvas needs focus; the game re-grabs it, but a click in the window resolves it.

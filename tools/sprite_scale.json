@@ -1,0 +1,85 @@
+{
+  "margin": 0.3,
+  "default_align": "bottom-center",
+  "canvas": null,
+  "series": {
+    "bicycle": {
+      "scale": 1.0562,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "duck": {
+      "scale": 1.007,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "hurt": {
+      "scale": 1.1613,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "idle1": {
+      "scale": 1.0141,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "idle2": {
+      "scale": 1.0,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "jump": {
+      "scale": 1.125,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "roller": {
+      "scale": 1.007,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "run": {
+      "scale": 1.0485,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "throw_cat": {
+      "scale": 1.0165,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "throw_rice": {
+      "scale": 1.2378,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "throw_seed": {
+      "scale": 1.2632,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "throw_cake": {
+      "scale": 1.046,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    },
+    "throw_cookie": {
+      "scale": 1.1613,
+      "x_offset": 0,
+      "y_offset": 0,
+      "align": null
+    }
+  }
+}
