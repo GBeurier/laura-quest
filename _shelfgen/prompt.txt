@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate THREE separate platform-tile graphics (one image_gen call each) for a cute 16-bit cartoon platformer. They REPLACE the angled "solar panel platform" in indoor levels with a SHELF the hero stands on top of.
+
+PIXEL-ART STYLE (all three): retro 16-bit SNES look. Crisp visible square pixels, bold dark outline, limited warm vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly look.
+
+SHARED GEOMETRY — match an ANGLED SOLAR-PANEL PLATFORM (critical):
+- The shelf's TOP SURFACE is a BIG bold PARALLELOGRAM seen in a shallow 3/4 perspective, EXACTLY like a tilted solar panel: the BACK edge is a horizontal line in the UPPER part of the image; the FRONT edge is a parallel horizontal line LOWER DOWN and shifted slightly to the RIGHT, so the whole board appears to recede UP-and-to-the-LEFT toward a light in the upper-left. A short thick FRONT FACE (the board's edge) shows just under the front edge.
+- Make it BIG and CHUNKY: the board FILLS almost the ENTIRE width and most of the height of the image (little empty margin). Objects stand UPRIGHT on top of the board and rise above the back edge.
+- The hero will stand on the FRONT edge, so keep that front edge clean and roughly centered vertically.
+
+BACKGROUND (all three): fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO floor line, NO gradient, NO grid, NO text, NO watermark. NEVER use magenta/pink on the artwork. Output a roughly SQUARE-ish to slightly-wide image (about 4:3), NOT a thin banner.
+
+IMAGE 1 -> a big chunky wooden BOOKSHELF platform in that angled solar-panel perspective: a warm brown wooden board with a dense row of tall colorful BOOKS standing upright on top (varied saturated spine colors, gold details, one or two leaning). Cozy library. Fill the frame. cp the generated PNG to /home/delete/laura_quest/_shelfgen/raw/tile_shelf_books.png
+
+IMAGE 2 -> a big chunky wooden KNICK-KNACK shelf platform in the same angled perspective: the same warm wooden board with cute homey BIBELOTS standing on top (a leafy potted plant, a framed photo, a round flower vase, a little trinket), fairly tall, filling the frame. cp the generated PNG to /home/delete/laura_quest/_shelfgen/raw/tile_shelf_biblo.png
+
+IMAGE 3 -> a SHELF SUPPORT LEG: a simple vertical wooden bracket / post (warm brown wood, a lighter highlight stripe on the left, a darker stripe on the right), a plain straight vertical strip that can be stretched downward to the floor. TALL and NARROW (about 1:2 portrait). cp the generated PNG to /home/delete/laura_quest/_shelfgen/raw/shelf_leg.png
+
+Generate the images ONE AT A TIME (one image_gen call, then cp, then the next). Do NOT run chroma-key removal, do NOT delete any files. When all three are done, print one line per image: '<name>: <path> (<W>x<H>)'.

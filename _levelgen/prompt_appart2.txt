@@ -1,0 +1,22 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. You will generate TWO images in THIS ONE session (one image_gen call each): (1) a full-height interior BACKGROUND, then (2) a matching FLOOR tile. They MUST share the EXACT same palette and the same wood so they read as one continuous scene.
+
+STYLE (BOTH images — CRITICAL, match this game's EXISTING backgrounds, which are rich detailed 16-bit interiors like a cozy greenhouse / lab): retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE, storybook warmth (a touch of Animal Crossing). Crisp visible square pixels, BOLD dark-brown outlines, limited warm vibrant palette, flat cel shading, chunky readable shapes, a touch of humour. Pack it with DETAIL like a real adventure-game room. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photographic realism, NO empty minimalist zen look.
+
+IMAGE 1 -> the BACKGROUND. ONE wide LANDSCAPE illustration (about 16:10), full-bleed interior of a MESSY STUDENT SHARED FLAT (a French student "colloc EN BORDEL"), seen FLAT FROM THE SIDE like a SCUMM room, going floor-to-CEILING. This is FUN, CLUTTERED, lived-in STUDENT CHAOS — cozy mess with humour, NOT a calm tidy nature-y room.
+VERTICAL LAYOUT (this single image covers the WHOLE screen height behind the player):
+- TOP ~16% = CEILING: a plain warm ceiling with one or two hanging lamps. Keep the very top corners CALM and low-contrast (the game overlays a HUD up there).
+- MIDDLE ~58% = the messy room on a warm wall: an OVERSTUFFED leaning BOOKSHELF crammed with books and binders, several POSTERS and postcards taped up slightly crooked, a cluttered STUDY DESK with an open laptop, leaning stacks of paper, a desk lamp and a few coffee mugs, a corkboard covered in sticky notes, a guitar leaning in the corner, a hoodie thrown over a chair, a string of fairy lights, a couple of potted plants, a pinned-up world map, an empty pizza box on a shelf. Warm, funny, lived-in student clutter.
+- BOTTOM ~26% = a warm WOODEN FLOOR (honey-brown parquet planks) meeting the wall with a small baseboard, plus a few small things lying on the floor (a little stack of books, a mug, a sock). Keep this strip readable.
+TILEABLE: the LEFT and RIGHT vertical edges must be PLAIN warm wall with the SAME ceiling height and SAME floor height, so the image REPEATS horizontally without an obvious seam; keep the big features toward the CENTRE.
+PALETTE: warm and cozy, slightly muted walls, HONEY-BROWN wood floor, colourful pops from the books / posters / plants.
+cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/bg_appart.png
+
+IMAGE 2 -> the FLOOR TILE for the SAME room. The seamless WOODEN FLOOR ground-tile the hero walks ON TOP of. Use the EXACT SAME honey-brown parquet wood as IMAGE 1's floor so the tile and the background match perfectly.
+GEOMETRY (critical):
+- TOP ~22% = the walkable SURFACE: the honey parquet seen in a very shallow top-down tilt, planks running LEFT-to-RIGHT, with a CLEAN STRAIGHT HORIZONTAL TOP EDGE (this is the exact line the hero stands on — no bumps, no objects sticking up).
+- BOTTOM ~78% = the solid FRONT FACE / depth of the wood floor: vertical warm-wood plank grain, slightly darker than the surface, with a bold dark outline along the VERY BOTTOM edge.
+TILEABLE: repeats SEAMLESSLY left-to-right and is UNIFORM enough to repeat many times — FLAT EVEN lighting, no single light source, no vignette, no shadow gradient, no big unique feature, no text. The LEFT and RIGHT edges must line up.
+FORMAT: a roughly SQUARE image, full-bleed wood texture filling the WHOLE frame. NO magenta, NO separate background, NO transparency, NO drawn frame/border.
+cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/tile_sol_appart.png
+
+Generate IMAGE 1 FIRST (then cp it), then IMAGE 2 (then cp it). Do NOT run any chroma-key script, do NOT delete any files. When both are done, print one line per image: '<name>: <path> (<W>x<H>)'.

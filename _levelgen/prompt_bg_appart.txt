@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. Generate ONE single wide LANDSCAPE image.
+
+STYLE: retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE, storybook warmth (a bit of Animal Crossing / Dora the Explorer charm). Crisp visible square pixels, bold dark-brown outlines, limited muted-warm palette, flat cel shading, soft chunky readable shapes, a touch of humor. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photographic realism.
+
+FORMAT: ONE wide LANDSCAPE illustration (about 16:10), a full-bleed INTERIOR WALL that fills the ENTIRE frame edge to edge. This is a side-scroller GAME BACKGROUND of a room seen FLAT FROM THE SIDE (like a SCUMM adventure room), going all the way from the FLOOR up to the CEILING. No padding, no border, and NO magenta anywhere.
+
+VERTICAL LAYOUT (CRITICAL — this single image must cover the WHOLE screen height behind the player, ceiling included):
+- TOP ~22% = the CEILING: a calm, plain warm off-white / cream ceiling with just a couple of simple hanging pendant lamps (or one ceiling light). Keep this band UNCLUTTERED and LOW-CONTRAST — the game overlays a HUD on top here, so it must stay quiet and readable.
+- MIDDLE ~55% = the WALL of a cozy shared STUDENT FLAT (a French "colloc"): a warm muted lavender-grey painted wall with cute homey details spread across it — a framed WINDOW showing soft pale daylight, a couple of small posters / framed pictures, a round wall clock, a little wall shelf with a few books and a small potted plant, a short string of warm fairy lights. Lived-in, cozy, a touch of gentle humor.
+- BOTTOM ~23% = the lower wall meeting the floor: plain wall with a simple wooden baseboard / skirting board. This strip will be partly hidden behind the game floor, so keep it calm and simple.
+
+TILEABLE: the LEFT and RIGHT vertical edges must be PLAIN WALL of the same colour and the same ceiling/baseboard heights, so the image can REPEAT horizontally without an obvious seam. Keep all the special features (window, posters, clock, shelf) toward the CENTRE; leave plain wall at the two vertical edges.
+
+PALETTE: muted, warm, slightly desaturated — soft lavender-grey walls, warm honey wood, cream ceiling, gentle pale daylight in the window. Cozy "evening in the flat" mood.
+
+NO watermark, NO UI, NO speech bubbles, NO big lettering / words / titles / logos, NO magenta/pink fill.
+
+When done, cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/bg_appart.png (use cp, do NOT delete anything, do NOT run any chroma-key script). Then print one line: 'bg_appart: <path> (<W>x<H>)'.

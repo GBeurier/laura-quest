@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. Generate ONE single image.
+
+STYLE: retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE. Crisp visible square pixels, bold dark outline, limited warm vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly look, NO photographic realism.
+
+SUBJECT: a seamless WOODEN FLOOR ground-tile for a side-scroller platformer — the chunky cross-section of a warm wood-plank floor that the hero walks ON TOP of (it replaces the rice-paddy soil tile in this indoor apartment level).
+
+GEOMETRY (CRITICAL):
+- The TOP ~30% is the walkable SURFACE: warm honey-brown wooden floorboards / parquet seen in a very shallow top-down tilt, planks running LEFT-to-RIGHT, with a CLEAN STRAIGHT HORIZONTAL TOP EDGE (this is the exact line the hero stands on — no bumps, no grass, no objects sticking up).
+- The BOTTOM ~70% is the solid BODY / front face of the floor: a thick band of slightly darker warm wood (the platform's depth), with a simple vertical wood-grain / plank texture and a bold dark outline along the VERY BOTTOM edge.
+
+TILEABLE: the texture must repeat SEAMLESSLY left-to-right and be UNIFORM enough to repeat many times — use FLAT EVEN lighting (no single light source, no vignette, no shadow gradient), no big unique feature, no text. The LEFT and RIGHT edges must line up so copies sit side by side with no visible seam.
+
+FORMAT: a roughly SQUARE image, full-bleed wood texture filling the WHOLE frame edge to edge. NO magenta, NO separate background, NO transparency, NO text, NO drawn frame/border around the image.
+
+When done, cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/tile_sol_appart.png (use cp, do NOT delete anything, do NOT run any chroma-key script). Then print one line: 'tile_sol_appart: <path> (<W>x<H>)'.

@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate ONE sprite sheet (6 frames) for one small ENEMY character of a lighthearted cartoon platformer.
+
+PIXEL-ART STYLE: retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky READABLE shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D. Caricatured, expressive, a bit comedic (this is a birthday-gift game).
+
+LAYOUT (critical): EXACTLY 6 frames in a SINGLE horizontal row, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell, centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes. The character FACES RIGHT.
+
+BACKGROUND: fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. NEVER use magenta or pink anywhere on the character.
+
+CHARACTER (identical in every frame): an office WATER-COOLER monster: a big upturned blue WATER JUG on a white dispenser base, an angry face on the jug, bubbles rising inside. Comedic immovable monster.
+
+THE 6 FRAMES (all facing RIGHT): frames 1-3 = a subtle looping MOVE/IDLE cycle (bubbling and glugging, the jug jiggling); frame 4 = a HURT pose (the jug cracking, water leaking out, recoiling); frames 5-6 = an ATTACK (spurting a gush of water forward from the spout). Keep the silhouette readable at small size (this sprite is shown tiny in-game): bold shape, strong contrast.
+
+cp the generated PNG to /home/delete/laura_quest/_monstgen/raw/fontaine_sheet.png
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete any files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_monstgen/raw/fontaine_sheet.png (<W>x<H>)
+
+IMPORTANT OUTPUT SHAPE: the final image must be a WIDE, SHORT horizontal BANNER (aspect ratio about 6:1, e.g. ~2160x720), the 6 frames side by side in ONE row. Do NOT output a square image and do NOT use a 2x3 or vertical grid.

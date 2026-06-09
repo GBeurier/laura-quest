@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE one raster image. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally. The artwork MUST come from your AI image generator.
+
+Generate ONE horizontal PIXEL-ART SPRITE SHEET.
+
+PIXEL-ART STYLE: retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly rendering, NO 3D.
+
+LAYOUT (critical): EXACTLY 6 frames in a SINGLE horizontal row, left to right, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell; centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame is a clearly separated island; frames MUST NOT touch or overlap, and nothing crosses from one frame into another). Character identity, outfit and colors IDENTICAL in all 6 frames; only the POSE changes (one looping animation).
+
+CHARACTER (identical in every frame): a tall, big, OLD, BALD male professor; mean evil glare; short 3-day WHITE stubble beard; open WHITE lab coat over a shirt with a blue tie; round glasses; dark trousers; brown shoes. A comedic villain boss.
+
+ANIMATION (6 frames, character FACING LEFT): an IDLE / MENACE loop. Frames 1-5 = subtle breathing idle: weight shifts, shoulders rise/fall, lab coat sways, hands flex, head glares forward-left (a smooth loop). Frame 6 = HURT: head snapped back, eyes squeezed shut, body recoiling, a couple of small impact stars.
+
+BACKGROUND: fill the ENTIRE image (including gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
+
+After generating, cp the final PNG to /home/delete/laura_quest/_bossgen/raw/michael_move_sheet.png and print its path and WxH.

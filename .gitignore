@@ -9,8 +9,14 @@ assets/other_assets/
 assets/sprites_bench/
 assets/sprites_cut/
 assets/sprites_sheets/
-# Generation scratch dirs (Codex image_gen pipelines) ~285MB — local only, game reads embedded assets
-_*gen/
+# Generation pipelines (Codex image_gen) : on VERSIONNE le code (.py/.sh/.md/.txt/
+#  .tsv/.json), mais PAS les planches AI (~310MB) ni les traces -> local only
+#  (regenerables ; le jeu lit les assets embarques dans js/assets_data.js).
+_*gen/**/*.png
+_*gen/**/*.jpg
+_*gen/**/*.jpeg
+_*gen/**/*.log
+_*gen/**/*.out
 
 # Junk
 *Zone.Identifier

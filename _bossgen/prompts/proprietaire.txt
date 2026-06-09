@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster artwork. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate TWO sprite sheets for one boss character.
+
+PIXEL-ART STYLE (both sheets): retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D.
+
+LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, left to right, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell; centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses from one frame into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes (one looping animation). The character FACES LEFT.
+
+BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
+
+CHARACTER (identical in every frame of BOTH sheets):
+FRANCOIS, a greedy comedic URBAN APARTMENT LANDLORD (slumlord). A smug middle-aged man in a slightly-too-tight cheap blazer over a shirt (or a buttoned cardigan), a thin pencil mustache, slicked-back hair, a big jangling RING OF KEYS on his belt, clutching a rolled-up EVICTION / unpaid-rent notice. Smarmy money-grubbing grin, beady eyes, a little pot belly. NOT a farmer.
+
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (rubbing his fingers together for money, jangling his keys, smug greedy grin, glaring to the left); frame 6 a HURT pose (recoiling, keys and papers flying up, eyes turned to X, a couple of impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_move_sheet.png
+
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 stand, frames2-3 lean back brandishing the rolled-up notice and keys, frame4 hurl it forward to the LEFT, frame5 charge-lunge LEFT shoulder-first like a pushy bully, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_atk_sheet.png
+
+Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  MOVE: /home/delete/laura_quest/_bossgen/raw/proprietaire_move_sheet.png (<W>x<H>)
+  ATK:  /home/delete/laura_quest/_bossgen/raw/proprietaire_atk_sheet.png (<W>x<H>)

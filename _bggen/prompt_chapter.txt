@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. Generate ONE single wide LANDSCAPE image.
+
+STYLE: retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE, storybook warmth (a bit of Animal Crossing / Dora the Explorer charm). Crisp visible square pixels, bold dark-brown outlines, limited warm vibrant palette, flat cel shading, soft chunky readable shapes, a touch of humor. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photographic realism.
+
+FORMAT: ONE wide cinematic LANDSCAPE illustration, full-bleed scene that fills the ENTIRE frame edge to edge (this is a full-screen GAME BACKGROUND, NOT an icon: no padding, no border, and NO magenta anywhere). Keep all key objects inside the central horizontal band; the very top ~12% and very bottom ~12% must be plain and unimportant (wall/window at the top, desk edge at the bottom) because they will be cropped off.
+
+THEME: a cheerful French-academia / agrivoltaics-PhD farming world: thesis writing, research on rice grown under solar panels, the cozy satisfaction of finishing a chapter.
+
+SCENE: a cozy evening THESIS-WRITING DESK, warm storybook angle. On a wooden desk sits an open manuscript with a freshly hand-written page bearing a tiny equation, a fountain pen resting across it, and a neat GROWING stack of finished thesis pages tied with a ribbon. A warm desk lamp glows golden over the scene; nearby sit a steaming cup of coffee, a little green rice seedling in a terracotta pot, and a tiny toy blue solar-panel ornament. A fluffy white angora cat is curled up asleep next to the papers. Through a small window behind the desk: a calm starry night sky over a distant row of solar panels and dark rice fields. Mood: warm, cozy, quietly proud, "one more chapter done", golden lamplight against cool blue night.
+
+TEXT-SAFE: do NOT render any large words, title, letters or logo. Keep the UPPER THIRD calm and uncluttered (plain warm wall and the night-sky window) so the game can overlay a big title there. Tiny illegible scribbles on the manuscript page are fine, nothing readable.
+
+NO watermark, NO UI, NO frame, NO speech bubbles, NO big lettering, NO magenta/pink background fill.
+
+When done, cp the generated PNG to /home/delete/laura_quest/_bggen/raw/bg_chapter.png  (use cp, do NOT delete anything, do NOT run any chroma-key script). Then print one line: 'bg_chapter: <path> (<W>x<H>)'.

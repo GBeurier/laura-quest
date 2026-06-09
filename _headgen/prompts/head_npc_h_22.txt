@@ -1,0 +1,25 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+The ATTACHED image is a PHOTO of a real person. Your job: turn THAT specific person into ONE cute cartoon video-game HEAD sprite, drawn so the person stays clearly RECOGNIZABLE.
+
+LOOK CAREFULLY AT THE PHOTO and faithfully reproduce this person's distinctive features:
+- hair: style, length, parting, AND color (match it);
+- facial hair (beard / moustache / stubble / clean-shaven) exactly as in the photo;
+- glasses (shape) if any, and keep them;
+- skin tone, face shape (round / long / square), eyebrow shape, eye color;
+- approximate age and the same gender; any obvious trait (freckles, big smile, etc.).
+Keep it flattering, warm and friendly (this is a birthday-gift game), a gentle smile is fine. Caricature/simplify, but the goal is "oh, that's clearly THEM".
+
+PIXEL-ART STYLE: retro 16-bit SNES look, matching a cute cartoon platformer. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D, NO photo-realism. Big round friendly "South Park"-style head with BIG expressive cartoon eyes.
+
+HEAD ONLY, SEEN STRAIGHT FROM THE FRONT (facing the viewer), symmetric and centered:
+- Draw the HEAD + hair + a SHORT bare NECK STUMP at the very bottom. NO shoulders, NO torso, NO body, NO clothes. The chin/neck sits near the bottom of the cell, the top of the hair near the top, generous empty margin around.
+
+LAYOUT: EXACTLY 2 frames in a SINGLE horizontal row, a uniform grid of 2 equal cells, the head at the SAME scale, SAME position, SAME colors in both cells. A WIDE empty magenta gap between them (two separate islands, never touching). The ONLY difference between the two cells: frame 1 = eyes WIDE OPEN (normal, friendly); frame 2 = eyes CLOSED in a relaxed blink (a simple curved lash line, eyelids down). Everything else (hair, outline, head shape, skin, glasses frame, mouth, position) MUST be pixel-identical between the two frames.
+
+BACKGROUND: fill the ENTIRE image (including the gap) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid, NO text, NO numbers, NO watermark, NO border box. NEVER use magenta/pink on the head, hair or skin.
+
+cp the generated PNG to /home/delete/laura_quest/_headgen/raw/head_npc_h_22_sheet.png
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_headgen/raw/head_npc_h_22_sheet.png (<W>x<H>)

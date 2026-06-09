@@ -1,0 +1,23 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. You will generate FOUR images in THIS ONE session (one image_gen call each): THREE side-by-side BACKGROUND PANELS that butt together into ONE long university CORRIDOR / admin hallway wall, then ONE matching FLOOR tile. They MUST all share the EXACT same palette, the same wall/structure colour, the same ceiling and floor heights, and the same floor material, so they read as ONE continuous scene.
+
+STYLE (ALL FOUR — CRITICAL, match this game's EXISTING backgrounds, which are rich, detailed, busy 16-bit interiors): retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE, storybook warmth. Crisp visible square pixels, BOLD dark-brown outlines, limited vibrant palette, flat cel shading, chunky readable shapes, a touch of humour. PACK each panel with DETAIL like a real adventure-game room. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photographic realism, NO empty minimalist look.
+
+SHARED VERTICAL LAYOUT (IDENTICAL in all 3 panels so they line up — a room seen FLAT FROM THE SIDE like a SCUMM room, floor-to-CEILING, each panel about 3:2 landscape):
+- TOP ~16% = CEILING: a warm beige corridor ceiling with rectangular ceiling LIGHT PANELS. Keep the very top corners CALM and low-contrast (a HUD is drawn over the top).
+- MIDDLE ~58% = an institutional university corridor: warm BEIGE wall with brown wooden wainscoting.
+- BOTTOM ~26% = a beige speckled VINYL / tiled corridor floor meeting a brown wooden skirting.
+SHARED PALETTE & LIGHT: warm BEIGE walls, brown wood doors and wainscoting, navy banners, green plants, beige tiled floor. Even soft light, identical bold outline weight. The three panels MUST look like the SAME room continued left-to-right.
+
+SEAMLESS JOIN (CRITICAL): the panels butt together LEFT-to-RIGHT (panel 1 | panel 2 | panel 3). At EVERY panel's far-left ~8% and far-right ~8%, show ONLY PLAIN beige wall + wainscoting + the same ceiling and floor (NO object crossing or touching a side edge), so neighbouring panels join with no visible seam. ALSO keep panel 1's far-LEFT edge and panel 3's far-RIGHT edge as the SAME plain wall, so the whole strip can repeat.
+
+PANEL 1 (left) -> a DOORS corner: two brown wooden office/classroom doors with little number plates, a cork notice board covered in pinned papers, a potted plant between them. cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/couloir_p1.png
+
+PANEL 2 (middle) -> a DISPLAY corner: a glass trophy/notice cabinet, a tall navy university banner with a simple crest (no readable text), a posted timetable sheet, a wooden bench against the wall. cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/couloir_p2.png
+
+PANEL 3 (right) -> a RECEPTION corner: a small reception/info desk with a sign and a plant, a wall clock, a framed campus map (illegible), another brown door, a leafy plant in a big pot. cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/couloir_p3.png
+
+IMAGE 4 -> the FLOOR TILE for this SAME room. The seamless beige SPECKLED VINYL corridor FLOOR ground-tile the hero walks ON TOP of. Use the EXACT SAME beige SPECKLED VINYL corridor FLOOR as the panels' floor so the tile and the background match perfectly.
+GEOMETRY: TOP ~22% = the walkable SURFACE (warm beige speckled vinyl tiles in a shallow top-down tilt with faint tile seams, with a CLEAN STRAIGHT HORIZONTAL TOP EDGE, nothing sticking up). BOTTOM ~78% = the solid FRONT FACE / depth of the floor (brown wooden skirting over a darker floor front face, slightly darker, bold dark outline along the VERY BOTTOM).
+TILEABLE: repeats SEAMLESSLY left-right, UNIFORM, FLAT EVEN lighting, no vignette, no single light source, no unique feature, no text. A roughly SQUARE image, full-bleed, NO magenta, NO transparency, NO drawn border. cp the generated PNG to /home/delete/laura_quest/_levelgen/raw/tile_sol_couloir.png
+
+Generate PANEL 1, then PANEL 2, then PANEL 3, then the FLOOR (cp after each). Do NOT run any chroma-key script, do NOT delete any files. When all four are done, print one line per image: '<name>: <path> (<W>x<H>)'.

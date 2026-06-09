@@ -1,0 +1,16 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate ONE sprite sheet (6 frames) for one small ENEMY character of a lighthearted cartoon platformer.
+
+PIXEL-ART STYLE: retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky READABLE shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D. Caricatured, expressive, a bit comedic (this is a birthday-gift game).
+
+LAYOUT (critical): EXACTLY 6 frames in a SINGLE horizontal row, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell, centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes. The character FACES LEFT.
+
+BACKGROUND: fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. NEVER use magenta or pink anywhere on the character.
+
+CHARACTER (identical in every frame): a cartoon COCKROACH, glossy dark-brown carapace, six skittering legs, long twitchy antennae, low to the ground, big shifty eyes. Gross-but-comedic.
+
+THE 6 FRAMES (all facing LEFT): frames 1-3 = a subtle looping MOVE/IDLE cycle (skittering low in place, legs blurring, antennae twitching); frame 4 = a HURT pose (flipped onto its back, six legs flailing in the air); frames 5-6 = an ATTACK (lunging forward low, mandibles open to bite, antennae back). Keep the silhouette readable at small size (this sprite is shown tiny in-game): bold shape, strong contrast.
+
+cp the generated PNG to /home/delete/laura_quest/_monstgen/raw/cafard_sheet.png
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete any files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_monstgen/raw/cafard_sheet.png (<W>x<H>)

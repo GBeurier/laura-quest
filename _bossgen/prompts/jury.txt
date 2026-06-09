@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster artwork. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate TWO sprite sheets for one boss character.
+
+PIXEL-ART STYLE (both sheets): retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D.
+
+LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, left to right, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell; centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses from one frame into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes (one looping animation). The character FACES LEFT.
+
+BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
+
+CHARACTER (identical in every frame of BOTH sheets):
+THE THESIS JURY (final boss): a PANEL of THREE clearly DIFFERENT professors seated side by side behind a long wooden examination bench (a PhD thesis defense / viva), the WHOLE panel shown in EVERY frame. LEFT seat: a stern OLDER male professor, white/grey beard, glasses, dark academic gown. CENTER seat: the jury PRESIDENT, distinguished, balding with grey hair, a bow tie, holding a wooden GAVEL and a thick thesis. RIGHT seat: a younger SKEPTICAL female professor, dark hair in a bun, a sharp dark blazer. On the bench: small name plaques, paper stacks, water glasses, a small desk lamp. Deep red/burgundy academic colors, dim dramatic evening mood. Keep the THREE people and the bench IDENTICAL in every frame; only small gestures change.
+
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (the three seated examiners shuffling papers, leaning in, exchanging skeptical looks; attention toward the left); frame 6 a HURT pose (all three jolting back in their chairs, papers flying up). cp the result to /home/delete/laura_quest/_bossgen/raw/jury_move_sheet.png
+
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 seated, frames2-3 the president raises the gavel high as all three lean in, frame4 the president SLAMS the gavel and all three fling papers to the LEFT, frame5 papers flying left, frame6 settle. cp the result to /home/delete/laura_quest/_bossgen/raw/jury_atk_sheet.png
+
+Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  MOVE: /home/delete/laura_quest/_bossgen/raw/jury_move_sheet.png (<W>x<H>)
+  ATK:  /home/delete/laura_quest/_bossgen/raw/jury_atk_sheet.png (<W>x<H>)

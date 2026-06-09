@@ -1,0 +1,20 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster artwork. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw anything procedurally (no PIL, no canvas, no SVG). The artwork must come from your AI image generator.
+
+GOAL: 2 sprite images of a comedic video-game BOSS named "Michael", in the SAME art style as the attached reference image (hero_idle.png): hand-painted 2D cartoon platformer art, smooth cel-shading, clean dark-brown outlines, vibrant saturated colors, friendly-but-villainous cartoon proportions. NOT blocky 8-bit. Use the attached image for STYLE ONLY, not subject.
+
+CHARACTER "Michael": a tall, big, OLD, BALD male professor/researcher; mean, stern, evil glare; short 3-day WHITE stubble beard (unshaven, grizzled); wearing an open WHITE lab coat over a shirt with a blue tie; round glasses. Imposing villain, slightly comedic caricature of a scary thesis supervisor.
+
+BOTH images must be:
+- FULL BODY, head-to-toe fully visible, centered, with generous empty padding around him; PORTRAIT framing.
+- Character oriented FACING LEFT (body/gaze toward the left edge of the image).
+- On a PERFECTLY FLAT solid #ff00ff magenta chroma-key background: one single uniform color, NO shadow / contact shadow / gradient / floor / texture / reflection / vignette, NO text, NO watermark, NO border. Crisp clean silhouette edges with padding. Do NOT use magenta/pink anywhere on the character himself.
+
+Image 1 = IDLE: standing tall and menacing, glaring to the left, arms slightly out.
+Image 2 = ATTACK: lunging and leaning to the LEFT, one arm thrust forward to the left, hurling a rolled-up statistical chart/graph; aggressive, dynamic.
+
+After generating, COPY (cp) the two final PNGs from $CODEX_HOME/generated_images/... into the workspace:
+  cp <image1>  /home/delete/laura_quest/_bossgen/raw/michael_idle.png
+  cp <image2>  /home/delete/laura_quest/_bossgen/raw/michael_atk.png
+Do NOT run chroma-key removal. Do NOT delete files. Then print exactly:
+  IDLE: /home/delete/laura_quest/_bossgen/raw/michael_idle.png (<W>x<H>)
+  ATK:  /home/delete/laura_quest/_bossgen/raw/michael_atk.png (<W>x<H>)

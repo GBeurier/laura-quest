@@ -1,0 +1,26 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate ONE single-frame sprite = a KNOCKED-OUT (dead) version of a HEADLESS character BODY for a cute cartoon platformer.
+
+REFERENCE IMAGE: a reference PNG of this exact character STANDING is provided (/home/delete/laura_quest/_bodygen/dead_ref/body_pote_f_ref.png). Keep the SAME outfit, SAME colors, SAME body type. Only change the POSE (standing -> collapsed on the ground).
+
+PIXEL-ART STYLE: retro 16-bit SNES look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D. Cute, comedic, NOT gory.
+
+CRITICAL — HEADLESS, SEEN FROM THE FRONT:
+- The body is seen STRAIGHT FROM THE FRONT (facing the viewer), roughly symmetric. NOT a side view, NOT lying flat in profile.
+- There is NO HEAD and NO FACE. The body ends at the top in a short bare NECK STUMP (just the neck/shoulders) where a head will be attached later. Do NOT draw any head, hair, ears, or face.
+
+POSE — COLLAPSED / KNOCKED OUT, BUT NECK UPRIGHT (critical):
+- The character has SLUMPED to the GROUND: sitting / sprawled on its bottom, LEGS splayed forward and limp, ARMS limp at the sides or resting on the floor. A defeated, knocked-out body that has dropped to the floor.
+- BUT the SHOULDERS and the NECK STUMP stay UPRIGHT and VERTICAL, centered at the TOP of the sprite, pointing straight UP (so an upright head can be placed on it). The torso sags a little but the neck must NOT tilt sideways and must NOT lie down flat.
+- Lower / wider than the standing pose (the body is on the ground), the LOWEST point = the bottom (buttocks / legs) resting on the floor baseline.
+- Limp, heavy, "passed out" feel. Eyes-closed mood. No blood, no wound — just collapsed.
+
+LAYOUT: ONE single sprite, ONE body, centered. NO grid, NO multiple frames.
+
+BACKGROUND: fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO floor line, NO gradient, NO grid, NO text, NO watermark. NEVER use magenta/pink on the body.
+
+OUTFIT (same as the reference, identical colors): a casual ROOMMATE / student woman's body: a colorful cropped sweatshirt or cardigan over a tee, jeans or a casual skirt with leggings, sneakers. Relaxed casual streetwear.
+
+cp the generated PNG to /home/delete/laura_quest/_bodygen/raw/body_pote_f_dead_sheet.png
+
+Generate the sprite (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_bodygen/raw/body_pote_f_dead_sheet.png (<W>x<H>)

@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas/matplotlib). The artwork MUST come from your AI image generator. Generate ONE single wide LANDSCAPE image.
+
+STYLE: retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure-game vibe, cozy and CUTE, storybook warmth (a bit of Animal Crossing / Dora the Explorer charm). Crisp visible square pixels, bold dark-brown outlines, limited warm vibrant palette, flat cel shading, soft chunky readable shapes, a touch of humor. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photographic realism.
+
+FORMAT: ONE wide cinematic LANDSCAPE illustration, full-bleed scene that fills the ENTIRE frame edge to edge (this is a full-screen GAME BACKGROUND, NOT an icon: no padding, no border, and NO magenta anywhere). Keep all key characters and objects inside the central horizontal band; the very top ~12% and very bottom ~12% must be plain and unimportant (open sky at the top, grass/ground at the bottom) because they will be cropped off.
+
+THEME: a cheerful French-academia / agrivoltaics-PhD farming world: warm sun, blue solar panels over lush green rice paddies, the joy of finishing a doctorate.
+
+SCENE: a joyful PhD GRADUATION celebration at golden hour. In the lower-center stands Laura, a happy young woman scientist (brown hair, our cute platformer heroine) wearing a black doctoral graduation cap (mortarboard with a golden tassel) and an open academic gown, beaming with both arms raised high, triumphantly holding up a thick bound thesis book. A fluffy white angora cat sits beside her wearing a tiny matching graduation cap. Golden confetti, little stars and sparkles rain down through the air; two laurel branches arc up from the lower corners. Behind them: a warm golden-hour sky with a big friendly smiling sun, and a long row of blue solar panels shading bright green rice paddies that stretch to the horizon. Mood: festive, warm, golden, proud, heart-warming.
+
+TEXT-SAFE: do NOT render any large words, title, letters or logo. Keep the UPPER THIRD calm and uncluttered (soft warm sky, just a few small sparkles) so the game can overlay a big title there. Tiny incidental scribbles on the thesis cover are fine, nothing legible.
+
+NO watermark, NO UI, NO frame, NO speech bubbles, NO big lettering, NO magenta/pink background fill.
+
+When done, cp the generated PNG to /home/delete/laura_quest/_bggen/raw/bg_win.png  (use cp, do NOT delete anything, do NOT run any chroma-key script). Then print one line: 'bg_win: <path> (<W>x<H>)'.
