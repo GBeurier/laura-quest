@@ -48,8 +48,8 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 | `hero_hurt` | Laura touchée | 2 | 64×76 | 128×152 | hurt (10) | bot | → |
 | `hero_throw` | Laura lance | 2 | 64×76 | 128×152 | throw (16) | bot | → |
 | `cat_run` | Chat angora | 6 | 56×40 | 112×80 | run (18) | bot | → |
-| `enemy_corbeau` | Corbeau (vole) | 2 | 52×44 | 104×88 | fly (8) | bot | → |
-| `enemy_criquet` | Criquet (bondit) | 2 | 44×40 | 88×80 | hop (6) | bot | → |
+| `enemy_corbeau` | Corbeau (vole) | 6 | 52×44 | 104×88 | fly (8) | bot | → |
+| `enemy_<monstre>` | **Tous les autres monstres** (cf. §3bis) | 6 | ~80×90 | feuille 6×176×192 | walk 0–2 / hurt 3 / attack 4–5 | bot | →/← |
 | `boss_*_move` (6) | Boss — **déplacement** | 6 | 124×140 | 248×280 (feuille 1488×280) | idle 0–4 (loop) / hurt 5 | bot | ← |
 | `boss_*_atk` (6) | Boss — **attaque** | 6 | 124×140 | 248×280 (feuille 1488×280) | attack 0–5 (loop) | bot | ← |
 
@@ -67,6 +67,37 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 > chercheurs** rendu plus grand (`CONFIG.bosses.jury.scale`). Réembarquer : `gen_assets_data.py`.
 > (L'ancien générateur de placeholders `tools/gen_boss_sheets.py` est obsolète : il produisait 4 frames.)
 
+### 3bis. Monstres — **une feuille 6 frames** par monstre (walk / hurt / attack)
+
+Tous les monstres (sauf `enemy_corbeau`, qui n'a qu'un cycle `fly`) partagent **un seul
+format** : une feuille horizontale de **6 frames** découpée par `CONFIG.anims.enemy_<nom>` :
+`walk` 0–2 (boucle), `hurt` 3 (touché), `attack` 4–5 (boucle). `game.js` pilote l'état via
+`e.animWant` (cf. `enemyAnim`, miroir léger des boss) ; si un clip manque, on retombe sur la
+boucle (+ flash d'opacité). Ancre **bot**.
+
+**Regard (doit matcher `flipX` de `game.js`, non modifié) :** véhicules (`patrol`) et SOL
+(`chase`) dessinés tournés **à gauche** ; VOLANTS (`fly`), TIR (`shooter`), `jump`, IMMOBILES
+(`static`) tournés **à droite**. La taille à l'écran est réglée par `scale` dans
+`CONFIG.enemies` (petits insectes ~0.45, humanoïdes/engins ~1).
+
+| `enemy_<nom>` | archétype (`move`) | char map | regard |
+|---|---|---|---|
+| `caillou`* (obstacle) | static | `^` | → |
+| `camion` (tracteur) | patrol | `T` | ← |
+| `assureur` (huissier) | chase | `A` | ← |
+| `ademe` | shooter | `R` | → |
+| `criquet` | jump | `J` | → |
+| `moustique` / `abeille` | fly | `M` / `E` | → |
+| `cafard` | chase (rampe) | `K` | ← |
+| `transpalette` / `livreur` / `coursier` | patrol | `W` / `G` / `C` | ← |
+| `imprimante` / `chips` / `tuyau` | shooter | `I` / `H` / `U` | → |
+| `sac` / `fontaine` / `dossiers` | static | `S` / `F` / `D` | → |
+
+> *`caillou` est posé par `addRock` (obstacle solide) : il ne joue que `walk`.
+> Génération : `python3 _monstgen/make_prompts.py` → `codex exec < _monstgen/prompts/<nom>.txt`
+> (pixel-art, 6 frames sur magenta) → `python3 _monstgen/regrid.py _monstgen/raw/<nom>_sheet.png <nom>`
+> (chroma-key + découpe → `assets/sprites/enemy_<nom>.png`) → `python3 gen_assets_data.py`.
+
 ### Placeholders animés — objets, munitions, ennemis « fixes », FX, décor
 
 > Ce sont désormais des **feuilles** : pickups / `sun_goal` / munitions = **4 frames**
@@ -80,16 +111,14 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 | `ammo_riz` | Pied de riz (tir droit, +fort) | 26×26 | 52×52 | center |
 | `ammo_cookie` | Cookie (tir **en cloche**) ⚠️ vieux placeholder basse-déf, à redessiner en 60×60 | 30×30 | 60×60 | center |
 | `ammo_gateau` | Gâteau (tir **en cloche**, +fort) | 30×30 | 60×60 | center |
-| `enemy_caillou` | Caillou (statique) | 54×48 | 108×96 | bot |
-| `enemy_camion` | Camion (va-et-vient) | 108×66 | 216×132 | bot |
-| `enemy_assureur` | Assureur (poursuit) | 54×70 | 108×140 | bot |
-| `enemy_ademe` | Rapport ADEME (tire) | 50×58 | 100×116 | bot |
 | `pickup_sunray` | Rayon de soleil (= énergie/munitions) | 32×32 | 64×64 | center |
 | `pickup_cafe` | Café (soin) | 32×32 | 64×64 | center |
 | `pickup_data` | Donnée | 32×32 | 64×64 | center |
 | `pickup_page` | Page de thèse | 32×32 | 64×64 | center |
 | `pickup_publi` | Publication (100 %) | 32×32 | 64×64 | center |
 | `pickup_croquette` | Croquette (recharge chat) | 28×28 | 56×56 | center |
+| `pickup_pilule` | Pilule (skin `d`/`p` Appart & Arène) | 32×32 | 64×64 | center |
+| `pickup_champignon` | Champignon (skin `p` Arène) | 32×32 | 64×64 | center |
 | `sun_goal` | Soleil = sortie du niveau | 128×128 | 256×256 | center |
 | `tile_soil` | Terre (sol) | 48×48 | 96×96 | topleft |
 | `tile_panel` | Panneau solaire (plateforme) | 48×48 | 96×96 | topleft |
@@ -102,6 +131,14 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 > `tile_soil` / `tile_panel` doivent rester **carrés (48 logique)** pour la grille.
 > Le **panneau cassable** (`x` dans la map) réutilise `tile_panel` teinté rouge — pas de
 > nouveau sprite à dessiner ; il explose après un saut dessus (cf. `js/level.js`).
+>
+> **Plateformes par décor (cap + pied) :** la plateforme `-`/`x` = un *cap* (haut où l'on
+> marche) + un *pied* étiré au sol (`addPanelDeco`). Le cap est reskinné par `theme.tiles['-']`
+> et le pied par `theme.panelLeg`. Rizière & Serre = panneaux solaires (`tile_panel` +
+> `panel_leg`). Appart = **étagère à bibelots** (`tile_shelf_biblo` + `shelf_leg`), Labo &
+> Université = **étagère à livres** (`tile_shelf_books` + `shelf_leg`). Le *cap* a la même
+> géométrie/format que `tile_panel` (144×88 @×2, perspective penchée), le *pied* comme
+> `panel_leg` (96×48, étiré en Y). `bg_appart` = bandeau intérieur (placeholder à remplacer).
 
 ### Équipements (placeholders fournis — à redessiner)
 
@@ -146,6 +183,71 @@ enemy_criquet.png    enemy_criquet2.png    enemy_criquet3.png
 **héritent du découpage du sprite de base** (même `sliceX`/anims), donc dessine-les
 avec le même nombre de frames. (Convention : le numéro **collé** au nom, sans espace
 ni underscore.) Pense à `python3 gen_assets_data.py` après ajout.
+
+---
+
+## 5bis. Passant (figurant `N`) — corps « biome » + tête interchangeable
+
+Le **passant** est un petit monstre (fait les cent pas, 1 dégât, 2 PV) qu'on pose
+dans une map avec le caractère **`N`**. Il est **composé** à l'exécution :
+
+```
+CORPS (habits du biome, par sexe)  +  TÊTE (South Park, de face, au hasard)
+```
+
+La tête est un **enfant** du corps (`attachHead`, `js/game.js`) : elle dodeline
+(petit bob + balancement), **suit le corps**, est **détruite/masquée avec lui**, et
+**ne se retourne pas** quand le corps change de sens → elle reste **toujours de face**.
+À chaque `N`, le moteur tire **un sexe**, **un corps** de ce sexe, puis **une tête**
+au hasard dans le pool du biome (cf. `theme.passant`, `js/config.js` / `js/level.js`).
+
+### Assets à dessiner
+
+| Fichier | Rôle | frames | logique | PNG @×2 | anim | ancre | regard |
+|---|---|---|---|---|---|---|---|
+| `body_<biome>_<sexe>` | CORPS **sans tête** (marche) | 4 | 56×75 | 112×150 (feuille **448×150**) | `walk` (7) | **bot** (pieds) | face |
+| `head_<biome>_<sexe>_<n>` | TÊTE de face (grosse, « South Park ») | 1 | 56×56 | **112×112** | — (bouge par code) | **bot** (= **menton**) | face |
+
+> Dessine le **corps de face** (symétrique) : le passant patrouille et le moteur
+> le `flipX` selon le sens, mais comme la tête (de face) ne se retourne jamais, un
+> corps de face garde l'ensemble cohérent (le miroir gauche/droite devient invisible).
+
+- **`<biome>`** ∈ `champ` · `pote` · `horti` · `labo` · `bureau` — un jeu d'habits par
+  décor (champs / colocs casual / horticulteur / blouse de labo / bureau-admin).
+  **`<sexe>`** ∈ `h` · `f`. **`<n>`** = 1, 2, 3… (autant de têtes que tu veux dans le pool).
+  L'**arène finale** (`jury`) invoque des randoms de **tous** les biomes (corps + tête
+  tirés au hasard parmi tous, cf. `PASSANT_ALL` dans `js/level.js`).
+- **Corps** : dessine-le **sans tête**, le **cou/épaules vers le haut de la frame**
+  (≈ y 50/150 en px @×2). Les 4 frames = un cycle de marche. L'anim `walk` est
+  **déjà déclarée** pour les 8 corps (boucle `js/config.js`) — garde **4 frames**.
+- **Tête** : **de face**, ronde et **grosse** (style South Park), **menton en bas
+  du canvas** (ancre `bot`) ; elle pousse vers le haut et se pose sur le cou.
+  Reste un **PNG simple** (le mouvement est codé). Tu *peux* l'animer (clignement)
+  en élargissant le PNG + en la déclarant dans `CONFIG.anims` (cf. §4).
+- **Placement tête** : `theme.passant.headLocal` = `[0, -104]` (px @×2, point du cou).
+  `headBob` (≈4 px) et `headRot` (≈3°) règlent le dodelinement. À ajuster si tes
+  vrais corps n'ont pas le cou exactement au même endroit.
+
+### Brancher les assets (par niveau)
+
+Dans `js/level.js`, chaque niveau a un `theme.passant` construit par le helper
+`PASSANT(biome, nbTêtesH, nbTêtesF)` :
+
+```js
+// niveau3 (serre) -> horticulteur, 3 têtes homme + 3 têtes femme
+passant: PASSANT('horti', 3, 3),
+```
+
+`femaleRatio` (proba de tirer `f`, défaut 0.5) se règle dans `CONFIG.theme.passant`.
+**Tout asset manquant est ignoré** : pas de tête dispo → le corps s'affiche seul ;
+pas de corps → repli sur `body_champ_<sexe>`. Pose des `N` dans la map, puis
+`python3 gen_assets_data.py`.
+
+### Mockups (bouche-trou actuels)
+
+`python3 tools/gen_passant_mockups.py` génère les 8 corps + 24 têtes (couleurs par
+biome, sexe marqué, têtes numérotées) pour tester le système. **Remplace-les** par
+tes vrais PNG (**mêmes noms, mêmes tailles**) puis ré-embarque.
 
 ---
 

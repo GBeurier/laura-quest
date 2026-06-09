@@ -11,6 +11,10 @@
   const C = window.CONFIG;
   const LEVELS = window.LEVELS;
   const SAVEAPI = window.LQ_SAVE;
+  // Tactile (web mobile) : js/mobile.js est charge AVANT game.js et a pose ce
+  //  flag. Sur mobile on passe en letterbox+stretch (le canvas remplit l'ecran
+  //  en gardant le ratio) ; sur desktop, canvas fixe et centre (inchange).
+  const TOUCH_ON = !!(window.LQ_TOUCH && window.LQ_TOUCH.active);
 
   // --- Init KAPLAY (mode global) --------------------------------------
   kaplay({
@@ -20,6 +24,8 @@
     global: true,
     crisp: true,            // nearest-neighbour: keep the pixel-art boss sheets crisp
     touchToMouse: true,
+    letterbox: TOUCH_ON,    // mobile : adapte le rendu a l'ecran en gardant le ratio
+    stretch: TOUCH_ON,
     pixelDensity: (C.art && C.art.pixelDensity) || 1,
   });
   setGravity(C.gravity);
@@ -68,9 +74,14 @@
     try { play(name, Object.assign({ volume: C.audio.volume }, opts || {})); } catch (e) {}
   };
   const keysDown = (arr) => arr.some((k) => isKeyDown(k));
+  // Tactile assiste (js/mobile.js) : les armes en cloche s'auto-visent et se
+  //  tirent en tapotant (pas de charge/visee manuelle au doigt).
+  const assistAim = () => !!(window.LQ_TOUCH && window.LQ_TOUCH.active && window.LQ_TOUCH.assist);
   const onKeys = (arr, cb) => arr.forEach((k) => onKeyPress(k, cb));
   // Validation des menus : ESPACE + ENTREE + touche de saut (espace ne saute plus en jeu)
   const onConfirm = (cb) => ['space', 'enter'].concat(C.controls.jump).forEach((k) => onKeyPress(k, cb));
+  // Retour a l'ecran precedent (ESC) pour les menus. En jeu, ESC ouvre plutot la confirmation de sortie.
+  const onBack = (cb) => onKeys(C.controls.quit, cb);
 
   // ---------------------------------------------------------------------
   //  CHARGEMENT DES ASSETS (les sprites de CONFIG.anims sont des feuilles)
@@ -124,6 +135,16 @@
     if (a) loadSprite(n, SPR_SRC(n), { sliceX: a.sliceX || 1, sliceY: a.sliceY || 1, anims: a.anims || {} });
     else loadSprite(n, SPR_SRC(n));
   });
+
+  // Sprite-grille SANS clip d'anim (ex. bg_cloud 4x3 = 12 nuages) = banque de
+  //  variantes statiques : renvoie un index de frame au hasard, sinon null
+  //  (sprite simple OU anime -> on n'impose pas de frame).
+  function randGridFrame(name) {
+    const a = C.anims && C.anims[baseName(name)];
+    if (!a || a.anims) return null;
+    const nf = (a.sliceX || 1) * (a.sliceY || 1);
+    return nf > 1 ? Math.floor(rand(0, nf)) : null;
+  }
 
   // joue l'anim par defaut d'un sprite s'il en a une -> rend N'IMPORTE QUEL
   // sprite animable (il suffit d'elargir le PNG + declarer sliceX/anims).
@@ -189,6 +210,7 @@
   //  et la fleche de visee s'affiche (cf. aimGuide dans la scene 'game').
   function aimingLob(p) {
     if (!p || p.equipped) return false;
+    if (assistAim()) return false;                 // mobile : visee auto, pas de charge manuelle
     const a = C.ammoTypes[p.ammoKey];
     return !!(a && a.traj === 'arc' && keysDown(C.controls.shoot));
   }
@@ -202,6 +224,42 @@
     const ang = ((p.aimAngle != null) ? p.aimAngle : C.shot.aimDefault) * Math.PI / 180;
     const spd = ammo.speed * mul;
     return { vx: Math.cos(ang) * spd * fx, vy: -Math.sin(ang) * spd };
+  }
+
+  // Cible tactile : ennemi/boss le plus proche de Laura (pondere l'horizontal,
+  //  les cloches portent surtout en X). Sert a l'auto-visee mobile.
+  function nearestTarget(p) {
+    let best = null, bd = Infinity;
+    ['enemy', 'boss'].forEach((tag) => get(tag).forEach((e) => {
+      if (!e.exists()) return;
+      const d = Math.abs(e.pos.x - p.pos.x) + Math.abs(e.pos.y - p.pos.y) * 0.4;
+      if (d < bd) { bd = d; best = e; }
+    }));
+    return best;
+  }
+
+  // Auto-visee d'une cloche (mobile assiste) : oriente Laura vers la cible et
+  //  resout la PUISSANCE pour l'atteindre a l'angle par defaut (meme balistique
+  //  que arcLaunch : v = ammo.speed*mul, mul in [arcMin..arcMax], g = arcGravity).
+  //  Renvoie toujours { facing, aimAngle, power } utilisable (defauts si pas de cible).
+  function autoAimArc(p) {
+    const ammo = C.ammoTypes[p.ammoKey];
+    const ang = C.shot.aimDefault;
+    const t = nearestTarget(p);
+    if (!t) return { facing: p.facing, aimAngle: ang, power: 0.7 };
+    const facing = (t.pos.x >= p.pos.x) ? 1 : -1;
+    const ox = p.pos.x + facing * 22, oy = p.pos.y - TS * 0.6;   // = origine du tir (cf. playerShoot)
+    const dx = Math.abs(t.pos.x - ox);
+    const dy = t.pos.y - oy;                                     // +y vers le bas
+    const r = ang * Math.PI / 180, c = Math.cos(r);
+    const denom = 2 * c * c * (dy + dx * Math.tan(r));           // > 0 => une solution existe
+    let power = 1;                                               // cible trop haute -> puissance max, bonne direction
+    if (denom > 0 && dx > 1) {
+      const spd = Math.sqrt(C.shot.arcGravity * dx * dx / denom);
+      const mul = spd / ammo.speed;
+      power = Math.max(0, Math.min(1, (mul - C.shot.arcMin) / (C.shot.arcMax - C.shot.arcMin)));
+    }
+    return { facing, aimAngle: ang, power };
   }
 
   function playerShoot(power) {
@@ -298,7 +356,7 @@
       ...comps,
       pos(x, y),
       anchor('center'),
-      area({ scale: 0.6 }),
+      area({ scale: 0.42 }),   // sprite shot_* agrandi (40->64) + halo -> hitbox ~ inchangee
       move(dir, speed),
       offscreen({ distance: 160, destroy: true }),
       'ehot',
@@ -369,8 +427,37 @@
   // ---------------------------------------------------------------------
   //  SOL & PLATEFORMES
   // ---------------------------------------------------------------------
+  // tile_soil a ~7px transparents en haut (bord feutre) -> la terre opaque
+  //  demarrerait SOUS la surface marchable et laisserait voir une bande de ciel.
+  //  On REMONTE donc le VISUEL du sol de SOIL_LIFT px pour que la terre couvre la
+  //  surface, tout en gardant la COLLISION pile a la surface (Laura marche au bon
+  //  endroit) : pos remonte de SOIL_LIFT (monde), et area.offset redescend le
+  //  collider d'autant. NB l'offset d'area est en repere LOCAL (multiplie par
+  //  l'echelle 1/ART de l'objet) -> on compense en *ART.
+  const SOIL_LIFT = 8;
   function addSolid(x, y, spr) {
-    playIfAnim(add([sprite(spr), artScale(), pos(x, y), anchor('topleft'), area(), body({ isStatic: true }), z(-1), 'solid']), spr);
+    playIfAnim(add([sprite(spr), artScale(), pos(x, y - SOIL_LIFT), anchor('topleft'),
+      area({ offset: vec2(0, SOIL_LIFT * ART) }), body({ isStatic: true }), z(-1), 'solid']), spr);
+  }
+
+  // --- CAILLOUX (obstacles) -------------------------------------------------
+  //  Un caillou n'est PLUS un ennemi : c'est un BLOC solide INDESTRUCTIBLE qui
+  //  ne fait AUCUN degat mais BLOQUE le passage. C'est un body isStatic tagge
+  //  'solid' (pas 'enemy') -> tout corps dynamique s'y cogne (monstres, camions
+  //  ET Laura, qui saute par-dessus) et les projectiles s'y arretent (couvert),
+  //  mais aucune collision ne retire de vie. anchor 'bot' = pose sur la surface
+  //  du sol. On en place un au DEPART (via '^' dans la map) + un a chaque BORD
+  //  du niveau (anti-chute, cf. buildLevel).
+  function addRock(cx, groundY, invisible) {
+    const spr = variant('enemy_caillou');
+    const comps = [
+      sprite(spr), artScale(), pos(cx, groundY), anchor('bot'),
+      area(), body({ isStatic: true }), z(-1), 'solid', 'rock',
+    ];
+    if (invisible) comps.push(opacity(0));   // mur de bord invisible (interieurs) : bloque la chute sans afficher de caillou
+    const r = add(comps);
+    if (!invisible) playIfAnim(r, spr);
+    return r;
   }
 
   // --- PANNEAUX SOLAIRES (plateformes) en perspective + pieds au sol -------
@@ -394,8 +481,11 @@
   function addPanelDeco(x, y, spr, tint) {
     const cx = x + TS / 2, c = Math.round(x / TS), objs = [];
     const legH = columnGroundY(c) - (y + CAP_LIP);
-    if (legH > 4 && hasSprite('panel_leg')) {                 // pieds etires jusqu'au sol
-      const comps = [sprite('panel_leg'), pos(cx, y + CAP_LIP), anchor('top'),
+    // PIED de la plateforme : panneau solaire par defaut, ou support d'etagere
+    //  pour les niveaux interieurs (LEVEL.theme.panelLeg, ex. 'shelf_leg').
+    const leg = (LEVEL && LEVEL.theme && LEVEL.theme.panelLeg) || 'panel_leg';
+    if (legH > 4 && hasSprite(leg)) {                         // pieds etires jusqu'au sol
+      const comps = [sprite(leg), pos(cx, y + CAP_LIP), anchor('top'),
         scale(vec2(1 / ART, (legH / LEG_NAT_H) / ART)), z(-1.2), 'paneldeco'];
       if (tint) comps.push(color(tint[0], tint[1], tint[2]));
       objs.push(add(comps));
@@ -447,8 +537,17 @@
     // Tout ce qui marche au sol a un corps (gravite) -> jamais en l'air :
     //  patrol (camion), chase, jump. fly/shooter/static restent sans corps.
     const needsBody = (def.move === 'patrol' || def.move === 'chase' || def.move === 'jump');
-    // skin du monstre : LEVEL.theme.enemies[kind] (par niveau) sinon variante globale
-    const sname = pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
+    // PASSANT (persona) : on tire un SEXE puis un CORPS de ce sexe (la TETE est
+    //  montee en enfant apres l'add, cf. attachHead). Sinon : skin standard
+    //  (LEVEL.theme.enemies[kind] par niveau, sinon variante globale).
+    const isPersona = !!def.persona;
+    const pcfg = (isPersona && LEVEL && LEVEL.theme && LEVEL.theme.passant) || {};
+    const psex = isPersona
+      ? (rand(0, 1) < (pcfg.femaleRatio != null ? pcfg.femaleRatio : 0.5) ? 'f' : 'h')
+      : null;
+    const sname = isPersona
+      ? pickSkin(pcfg.bodies && pcfg.bodies[psex], def.sprite + '_' + psex)
+      : pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
     const comps = [
       sprite(sname),
       artScale(def.scale),
@@ -466,6 +565,9 @@
       'enemy', kind,
       {
         kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: y, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
+        // ANIM facon boss (UNE feuille) : hurtT/atkT pilotent l'etat hurt/attack ;
+        //  _spr/_anim memorisent la frame courante (cf. enemyAnim / setAnim).
+        hurtT: 0, atkT: 0, animWant: 'walk', _spr: sname, _anim: null,
         // ANTI-EMPILEMENT : decalage perso (cote alterne + distance croissante,
         //  cycle de 8) -> chaque monstre patrouille autour d'un point DECALE du
         //  joueur au lieu de converger sur sa colonne. Mieux pour le jeu (ils
@@ -480,7 +582,44 @@
     const e = add(comps);
     if (def.anim) { try { e.play(def.anim); } catch (er) {} }
     else playIfAnim(e, sname);
+    if (isPersona) attachHead(e, pcfg, psex);   // tete South Park (enfant) au-dessus du corps
     return e;
+  }
+
+  // Monte une TETE "South Park" (de face, choisie au hasard dans le pool du
+  //  biome) en ENFANT du corps d'un passant. Enfant => suivie / cullee /
+  //  detruite avec le corps automatiquement, et NON mirroir quand le corps se
+  //  retourne (flipX = drapeau de DESSIN, pas une transfo) -> la tete reste
+  //  toujours de face. Elle dodeline (bob vertical + leger balancement au cou).
+  function pickHead(pool) {
+    const ok = (pool || []).filter(hasSprite);
+    if (!ok.length) return null;
+    return ok.length > 1 ? ok[Math.floor(rand(0, ok.length))] : ok[0];
+  }
+
+  function attachHead(e, pcfg, sex) {
+    const name = pickHead(pcfg.heads && pcfg.heads[sex]);
+    if (!name) return null;                        // pas de tete dispo -> corps seul (OK)
+    const off = pcfg.headLocal || [0, -104];       // point du COU (repere corps, px @ART)
+    const amp = (pcfg.headBob != null ? pcfg.headBob : 4) * ART;   // bob (px ecran -> px @ART)
+    const rotA = (pcfg.headRot != null ? pcfg.headRot : 3);
+    const h = e.add([
+      sprite(name),
+      pos(off[0], off[1]),
+      anchor('bot'),         // chin/cou pose au point `off` -> la tete pousse vers le haut
+      rotate(0),
+      z(1),                  // au-dessus du corps (meme parent)
+      'passanthead',
+      { t: (e.phase || 0), baseY: off[1] },
+    ]);
+    playIfAnim(h, name);
+    h.onUpdate(() => {
+      h.t += dt();
+      h.pos.y = h.baseY + Math.sin(h.t * 3) * amp;   // dodelinement vertical
+      h.angle = Math.sin(h.t * 2) * rotA;            // balancement (nod) autour du cou
+    });
+    e.head = h;
+    return h;
   }
 
   // Va-et-vient horizontal : avance dans e.dir et rebrousse aux bords de la
@@ -491,6 +630,21 @@
     e.move(e.dir * e.def.speed, 0);
     if (e.dir > 0 && e.pos.x > center + r) e.dir = -1;
     else if (e.dir < 0 && e.pos.x < center - r) e.dir = 1;
+  }
+
+  // Une feuille de monstre = clips walk/hurt/attack. enemyAnim joue le clip
+  //  voulu en RETOMBANT proprement : si l'etat demande (hurt/attack) n'existe
+  //  pas sur la feuille (corbeau 'fly', criquet 'hop', monstres encore en 2
+  //  frames), on garde la boucle (def.anim || 'walk') -> aucun crash, le flash
+  //  d'opacite reste alors le seul retour visuel de degat.
+  function animHasClip(spr, clip) {
+    const a = C.anims && C.anims[baseName(spr)];
+    return !!(a && a.anims && a.anims[clip]);
+  }
+  function enemyAnim(e, want) {
+    const loop = e.def.anim || 'walk';
+    const name = (want === 'walk' || !animHasClip(e._spr, want)) ? loop : want;
+    setAnim(e, e._spr, name);
   }
 
   function enemyBehavior(e) {
@@ -529,7 +683,7 @@
       case 'shooter': {
         e.t += dt();
         if (Math.abs(toP) < e.def.range && e.t >= e.def.shotEvery) {
-          e.t = 0;
+          e.t = 0; e.atkT = 0.35;   // fenetre d'anim 'attack' au moment du tir
           enemyBullet(e.pos.x, e.pos.y - TS * 0.6, p, e.def.shotSpeed, 'enemy');
         }
         e.flipX = e.facing < 0;
@@ -557,8 +711,19 @@
         e.flipX = e.facing < 0;
         break;
       }
-      default: break;               // static
+      default: e.flipX = e.facing < 0; break;   // static : regarde le joueur
     }
+
+    // --- ANIM (apres l'IA) : priorite hurt > attack > walk. Les monstres en
+    //  contact (mêlée/immobile) jouent 'attack' quand le joueur est colle ; les
+    //  shooters via atkT au tir. enemyAnim retombe sur la boucle si le clip manque.
+    if (e.hurtT > 0) e.hurtT -= dt();
+    if (e.atkT > 0) e.atkT -= dt();
+    let want = 'walk';
+    if (e.hurtT > 0) want = 'hurt';
+    else if (e.atkT > 0) want = 'attack';
+    else if (e.def.move !== 'shooter' && Math.abs(toP) < TS * 0.95) want = 'attack';
+    enemyAnim(e, want);
   }
 
   function hitEnemy(e, bullet) {
@@ -571,6 +736,7 @@
       addPoof(e.pos.x, e.pos.y - TS * 0.5);
       destroy(e);
     } else {
+      e.hurtT = 0.2;                 // declenche la frame 'hurt' (cf. enemyAnim)
       e.opacity = 0.5;
       wait(0.08, () => { if (e.exists()) e.opacity = 1; });
     }
@@ -588,6 +754,25 @@
     }
   }
 
+  // Marqueur de ZONE D'IMPACT au sol : anneau aplati (lu comme une ombre) qui
+  //  GROSSIT + clignote pendant le delai d'alerte d'une chute du ciel. Telegraphe
+  //  lisible "ca va tomber ICI, degage la colonne" -> esquive juste et claire.
+  function addImpactMarker(x, y, dur) {
+    const life = dur || 0.6;
+    const m = add([
+      circle(24), pos(x, y - 2), anchor('center'),
+      color(244, 92, 54), opacity(0.5), scale(vec2(1, 0.42)),  // aplati = ombre au sol
+      z(2), 'fx', { t: 0 },
+    ]);
+    m.onUpdate(() => {
+      m.t += dt();
+      const s = 0.7 + 0.6 * Math.min(1, m.t / life);            // grossit a l'approche
+      m.scale = vec2(s, s * 0.42);
+      m.opacity = 0.3 + 0.4 * Math.abs(Math.sin(m.t * 16));     // clignote = urgence
+      if (m.t >= life) destroy(m);
+    });
+  }
+
   // ---------------------------------------------------------------------
   //  BOSS (IA deportee dans js/bosses.js)
   // ---------------------------------------------------------------------
@@ -597,6 +782,7 @@
     add: (kind, x, y) => spawnEnemy(kind, x, y),
     shake: safeShake,
     poof: addPoof,
+    marker: addImpactMarker,
   };
 
   function spawnBoss(key, x, y) {
@@ -922,7 +1108,9 @@
       if (!sname || !hasSprite(sname)) continue;
       const bx = ((i + 0.5) / n) * span + rand(-span / (n * 2.5), span / (n * 2.5));
       const by = yMin + rand(0, Math.max(0, yMax - yMin));
-      const o = add([sprite(sname), scale(sc * rand(0.7, 1.15)), pos(-9999, by), anchor('center'), fixed(), z(z0), opacity(op), 'bg'].concat(layerTint(spec, th)));
+      const fr = randGridFrame(sname);   // grille de variantes (bg_cloud 4x3) -> une au hasard
+      const spr = fr != null ? sprite(sname, { frame: fr }) : sprite(sname);
+      const o = add([spr, scale(sc * rand(0.7, 1.15)), pos(-9999, by), anchor('center'), fixed(), z(z0), opacity(op), 'bg'].concat(layerTint(spec, th)));
       playIfAnim(o, sname);
       items.push({ o, bx });
     }
@@ -956,6 +1144,11 @@
       tiles:   Object.assign({}, dT.tiles, lT.tiles),
       enemies: Object.assign({}, dT.enemies, lT.enemies),
       pickups: Object.assign({}, dT.pickups, lT.pickups),
+      panelLeg: lT.panelLeg || dT.panelLeg,                  // pied des plateformes (panneau / etagere)
+      indoor: lT.indoor || dT.indoor,                        // interieur : bords invisibles (pas de caillou)
+      // passant : fusion PEU PROFONDE (un niveau qui fournit `passant` remplace
+      //  bodies/heads/headLocal ; les champs absents retombent sur le defaut).
+      passant: Object.assign({}, dT.passant, lT.passant),
     };
     // grid MUTABLE (tableaux de caracteres) : un panneau cassable qui explose
     //  remet sa case a ' ' -> inShade() et l'ombre projetee se mettent a jour.
@@ -979,6 +1172,7 @@
 
     buildBackground();
 
+    let exitCx = null;   // centre X de la sortie '*' -> sert a poser le caillou de bord DROIT au-dela
     rows.forEach((row, r) => {
       for (let c = 0; c < row.length; c++) {
         const ch = row[c];
@@ -998,14 +1192,28 @@
           case 'k': spawnPickup('croquette', cx, y + TS / 2); break;
           case 'L': spawnPickup('rollers', cx, y + TS / 2); break;
           case 'Y': spawnPickup('velo', cx, y + TS / 2); break;
-          case '^': spawnEnemy('caillou', cx, groundY); break;
+          case '^': addRock(cx, groundY); break;
           case 'T': spawnEnemy('camion', cx, groundY); break;
           case 'A': spawnEnemy('assureur', cx, groundY); break;
           case 'R': spawnEnemy('ademe', cx, groundY); break;
           case 'V': spawnEnemy('corbeau', cx, groundY - TS * 1.5); break;
           case 'J': spawnEnemy('criquet', cx, groundY); break;
+          // --- nouveaux monstres (design definitif) ---
+          case 'M': spawnEnemy('moustique', cx, groundY - TS * 1.6); break;   // VOLANT
+          case 'E': spawnEnemy('abeille', cx, groundY - TS * 1.6); break;     // VOLANT
+          case 'K': spawnEnemy('cafard', cx, groundY); break;                 // SOL (rampe)
+          case 'W': spawnEnemy('transpalette', cx, groundY); break;           // VEHICULE
+          case 'G': spawnEnemy('livreur', cx, groundY); break;                // VEHICULE
+          case 'C': spawnEnemy('coursier', cx, groundY); break;               // VEHICULE
+          case 'I': spawnEnemy('imprimante', cx, groundY); break;             // TIR
+          case 'H': spawnEnemy('chips', cx, groundY); break;                  // TIR
+          case 'U': spawnEnemy('tuyau', cx, groundY); break;                  // TIR
+          case 'S': spawnEnemy('sac', cx, groundY); break;                    // IMMOBILE
+          case 'F': spawnEnemy('fontaine', cx, groundY); break;               // IMMOBILE
+          case 'D': spawnEnemy('dossiers', cx, groundY); break;               // IMMOBILE
+          case 'N': spawnEnemy('passant', cx, groundY); break;   // figurant (corps biome + tete au hasard)
           case 'B': LEVEL.bossesAlive++; spawnBoss(def.boss, cx, groundY); break;
-          case '*': LEVEL.sun = spawnSun(cx, y + TS / 2); break;
+          case '*': exitCx = cx; LEVEL.sun = spawnSun(cx, y + TS / 2); break;
           default: break;
         }
       }
@@ -1013,6 +1221,18 @@
 
     // OMBRES PROJETEES sous les panneaux (cf. castColumnShade) : une par colonne.
     for (let c = 0; c < cols; c++) castColumnShade(c);
+
+    // CAILLOUX DE BORD : un bloc solide (sans degat) a CHAQUE extremite du
+    //  niveau -> ni Laura ni les monstres ne tombent hors de la map. Le bord
+    //  DROIT est pose AU-DELA de la sortie '*' et du clamp du boss (maxX) ->
+    //  il ne gene jamais l'acces a la sortie ni le combat de boss.
+    if (PLAYER) {
+      const ry = PLAYER.pos.y;                                       // surface jouable (pieds de Laura)
+      const wall = !!(theme && theme.indoor);                        // interieurs : bords invisibles (pas de caillou)
+      addRock(TS / 2, ry, wall);                                     // bord GAUCHE (colonne 0)
+      const exitRight = (exitCx != null) ? exitCx + TS / 2 : 0;
+      addRock(Math.max(LEVEL.maxX, exitRight) + TS / 2, ry, wall);   // bord DROIT
+    }
   }
 
   // (Re)construit l'ombre PENCHEE d'une colonne depuis l'etat COURANT de la
@@ -1031,18 +1251,20 @@
       if (ch === '-' || ch === 'x') { tr = r; break; }     // panneau le plus haut de la colonne
     }
     if (tr < 0) return;
-    const x0 = c * TS, yTop = (tr + 1) * TS;
+    // Haut de l'ombre = base VISIBLE du panneau (bord avant du cap = haut de la
+    //  tuile, tr*TS). Avant c'etait (tr+1)*TS = BAS de la tuile -> l'ombre
+    //  demarrait 1 tuile trop bas (decalee sous le panneau).
+    const x0 = c * TS, yTop = tr * TS;
     if (yBot - yTop <= 0) return;
-    const dx = (yBot - yTop) * SHADE_SLOPE;                 // decalage horizontal au sol
+    const dx = (yBot - yTop) * SHADE_SLOPE;                 // decalage horizontal au sol (penche)
     // PERF : ombre ancree a SA colonne (pos x0) + points RELATIFS -> offscreen()
-    //  peut la cacher hors-cadre (sinon toutes les ombres se redessinent chaque
-    //  frame). Cam fixe en Y -> culling en X seul. Marge = TS + dx : couvre le
-    //  penche vers la droite pour ne jamais couper une ombre encore visible.
+    //  la cache hors-cadre (sinon toutes les ombres se redessinent chaque frame).
+    //  Cam fixe en Y -> culling en X. Marge TS+dx : couvre le penche vers la droite.
     const sMargin = TS + dx;
     reg[c].push(add([pos(x0, 0), polygon([                  // parallelogramme penche
       vec2(0, yTop), vec2(TS, yTop), vec2(TS + dx, yBot), vec2(dx, yBot),
-    ]), color(44, 62, 108), opacity(0.16), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }]));
-    reg[c].push(add([rect(TS, 7), pos(x0, yTop), color(26, 36, 70), opacity(0.13), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }])); // contact
+    ]), color(40, 56, 100), opacity(0.24), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }]));
+    reg[c].push(add([rect(TS, 7), pos(x0, yTop), color(22, 30, 60), opacity(0.20), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }])); // contact
   }
 
   // Laura est-elle A L'OMBRE PROJETEE d'un panneau ? Le soleil est rasant :
@@ -1073,7 +1295,7 @@
   // ---------------------------------------------------------------------
   const HUD_FRAME_W = {
     heart: 56, pickup_data: 64, pickup_page: 64, pickup_publi: 64,
-    pickup_croquette: 56, ammo_graine: 52, ammo_riz: 52, ammo_cookie: 30,
+    pickup_croquette: 64, ammo_graine: 52, ammo_riz: 52, ammo_cookie: 30,
     ammo_gateau: 60, cat_run: 112, pickup_sunray: 64, pickup_cafe: 64,
   };
 
@@ -1319,7 +1541,11 @@
     if (!PLAYER) { add([text('Pas de @ dans la map !', { size: 24 }), pos(40, 40)]); return; }
 
     const hud = buildHUD();
-    const camY = Math.min(LEVEL.height, C.height) / 2 - CAM_DROP;
+    // Cam fixe en Y. Un niveau plus HAUT que l'ecran (rangees ajoutees EN HAUT,
+    //  cf. niveau5) garde EXACTEMENT le meme cadrage du sol : on descend la cam
+    //  du surplus de hauteur -> tout l'espace ajoute devient du HORS-CHAMP en haut
+    //  (publi cachee a sauter en aveugle). Niveau standard (11 rangees) => 256.
+    const camY = C.height / 2 - CAM_DROP + Math.max(0, LEVEL.height - C.height);
 
     // jauges de charge (suivent Laura, visibles seulement pendant la charge)
     const catBarBg = add([rect(48, 8, { radius: 4 }), pos(0, -999), anchor('center'), color(40, 40, 50), opacity(0), z(60)]);
@@ -1390,7 +1616,125 @@
       }
     });
 
-    onKeys(C.controls.jump, () => {
+    // --- ESC : confirmation avant d'abandonner le niveau (gele le jeu) -----
+    //  getTreeRoot().paused gele update + physique (le draw, lui, continue) ; les
+    //  actions clavier de jeu passent par onPlayKey/onPlayPress et sont ignorees
+    //  tant que la pause est active. ESC ouvre/ferme, ESPACE/ENTREE confirment.
+    let paused = false, quitBox = null;
+    const setPaused = (v) => { paused = v; getTreeRoot().paused = v; };
+    const onPlayKey = (arr, cb) => onKeys(arr, (...a) => { if (!paused) cb(...a); });
+    const onPlayPress = (k, cb) => onKeyPress(k, (...a) => { if (!paused) cb(...a); });
+    //  Ecran de pause facon "carnet de terrain ensoleille" : parchemin a cadre
+    //  dore pose sur une gerbe de rayons (theme agrivoltaique), ruban PAUSE, titre
+    //  en typo native a contour, deux options keycap. Anime a l'horloge REELLE
+    //  (performance.now) car time()/dt() sont geles pendant la pause.
+    const nowMs = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const openQuit = () => {
+      if (quitBox) return;
+      setPaused(true);
+      const t0 = nowMs();
+      quitBox = add([pos(0, 0), fixed(), z(900)]);
+      quitBox.onDraw(() => {
+        const W = C.width, H = C.height, cx = W / 2, cy = H / 2;
+        const T = Math.max(0, (nowMs() - t0) / 1000);
+        const e = Math.min(1, T / 0.26), ap = 1 - Math.pow(1 - e, 3);   // easeOutCubic -> apparition
+        const scl = 0.9 + 0.1 * ap, rise = (1 - ap) * 16;
+
+        // palette du jeu (or / creme / encre / terracotta / feuille)
+        const GOLD = rgb(255, 206, 71), GOLDHI = rgb(255, 233, 150), CREAM = rgb(252, 245, 224),
+          CREAMLO = rgb(241, 226, 192), INK = rgb(58, 36, 22), INKSOFT = rgb(124, 90, 54),
+          RED = rgb(226, 74, 60), REDDK = rgb(150, 40, 30), GREEN = rgb(112, 178, 64),
+          GREENDK = rgb(56, 110, 36), BROWN = rgb(92, 62, 36);
+        // texte a contour 8-directions (la typo des ecrans titre/carte)
+        const ink = (s, x, y, sz, fill, op) => {
+          for (let a = 0; a < 8; a++) drawText({ text: s, pos: vec2(x + Math.cos(a * Math.PI / 4) * 2, y + Math.sin(a * Math.PI / 4) * 2), anchor: 'center', size: sz, color: INK, opacity: op == null ? 1 : op });
+          drawText({ text: s, pos: vec2(x, y), anchor: 'center', size: sz, color: fill, opacity: op == null ? 1 : op });
+        };
+
+        const bw = 520, bh = 290, top = cy - bh / 2, L = cx - bw / 2;
+        const sunY = top;                                            // foyer du soleil (derriere le ruban)
+
+        // 1) voile chaud
+        drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.54 * ap });
+
+        // 2) atmosphere : halo radial + gerbe de rayons tournant lentement
+        for (let i = 8; i >= 1; i--)
+          drawCircle({ pos: vec2(cx, sunY + 28), radius: i * 44 * (1 + Math.sin(T * 1.4) * 0.03), color: rgb(255, 196, 96), opacity: 0.05 * ap });
+        const rot = T * 0.22;
+        for (let i = 0; i < 12; i++) {
+          const a = rot + i * Math.PI / 6, dx = Math.cos(a), dy = Math.sin(a), px = -dy, py = dx, r0 = 24, r1 = 262, wd = 9;
+          drawTriangle({
+            p1: vec2(cx + dx * r1, sunY + dy * r1),
+            p2: vec2(cx + dx * r0 + px * wd, sunY + dy * r0 + py * wd),
+            p3: vec2(cx + dx * r0 - px * wd, sunY + dy * r0 - py * wd),
+            color: rgb(255, 214, 108), opacity: 0.09 * ap,
+          });
+        }
+
+        // 3) la carte parchemin (groupe anime : montee + zoom d'apparition)
+        pushTransform(); pushTranslate(cx, cy + rise); pushScale(scl, scl); pushTranslate(-cx, -cy);
+
+        drawRect({ pos: vec2(L + 5, top + 9), width: bw, height: bh, radius: 20, color: rgb(18, 11, 6), opacity: 0.34 });    // ombre portee
+        drawRect({ pos: vec2(L, top), width: bw, height: bh, radius: 18, color: CREAMLO });                                  // fond parchemin
+        drawRect({ pos: vec2(L, top), width: bw, height: bh * 0.55, radius: 18, color: CREAM });                             // degrade haut
+        drawRect({ pos: vec2(L + 8, top + 7), width: bw - 16, height: 3, radius: 2, color: rgb(255, 255, 255), opacity: 0.55 }); // brillance
+        drawRect({ pos: vec2(L, top), width: bw, height: bh, radius: 18, fill: false, outline: { width: 4.5, color: GOLD } });   // cadre dore
+        drawRect({ pos: vec2(L + 6, top + 6), width: bw - 12, height: bh - 12, radius: 13, fill: false, outline: { width: 1.5, color: INKSOFT }, opacity: 0.5 }); // liseré interne
+        [[L + 18, top + 18], [L + bw - 18, top + 18], [L + 18, top + bh - 18], [L + bw - 18, top + bh - 18]].forEach((c) => {     // rivets dores
+          drawCircle({ pos: vec2(c[0], c[1]), radius: 5, color: GOLD });
+          drawCircle({ pos: vec2(c[0], c[1]), radius: 5, fill: false, outline: { width: 1.5, color: INK } });
+        });
+
+        // 4) ruban "PAUSE" a cheval sur le bord haut + soleil au sommet
+        const rbw = 186, rbh = 44, rt = top - rbh / 2;
+        drawRect({ pos: vec2(cx - rbw / 2 + 3, rt + 4), width: rbw, height: rbh, radius: rbh / 2, color: rgb(18, 11, 6), opacity: 0.3 });
+        drawRect({ pos: vec2(cx - rbw / 2, rt), width: rbw, height: rbh, radius: rbh / 2, color: RED });
+        drawRect({ pos: vec2(cx - rbw / 2, rt), width: rbw, height: rbh, radius: rbh / 2, fill: false, outline: { width: 3, color: REDDK } });
+        drawRect({ pos: vec2(cx - rbw / 2 + 8, rt + 5), width: rbw - 16, height: 6, radius: 3, color: rgb(255, 255, 255), opacity: 0.18 });
+        const eY = rt - 9;                                           // soleil-embleme cresting au-dessus du ruban
+        for (let i = 0; i < 8; i++) { const a = -rot * 1.3 + i * Math.PI / 4; drawTriangle({ p1: vec2(cx + Math.cos(a) * 27, eY + Math.sin(a) * 27), p2: vec2(cx + Math.cos(a + 0.16) * 15, eY + Math.sin(a + 0.16) * 15), p3: vec2(cx + Math.cos(a - 0.16) * 15, eY + Math.sin(a - 0.16) * 15), color: GOLD }); }
+        drawCircle({ pos: vec2(cx, eY), radius: 13, color: GOLDHI });
+        drawCircle({ pos: vec2(cx, eY), radius: 13, fill: false, outline: { width: 2.5, color: rgb(196, 120, 30) } });
+        drawCircle({ pos: vec2(cx - 4, eY - 4), radius: 4, color: rgb(255, 255, 255), opacity: 0.5 });
+        ink('PAUSE', cx, top + 1, 22, CREAM, 1);
+
+        // 5) titre (typo native a contour) + ombre douce
+        ink('Quitter le niveau ?', cx, cy - 83, 30, GOLD, 1);
+
+        // 6) jalon decoratif (motif carte) entre titre et sous-titre
+        drawRect({ pos: vec2(cx - 84, cy - 58), width: 168, height: 2, radius: 1, color: INKSOFT, opacity: 0.4 });
+        drawTriangle({ p1: vec2(cx, cy - 64), p2: vec2(cx - 6, cy - 57), p3: vec2(cx + 6, cy - 57), color: GOLD });
+        drawTriangle({ p1: vec2(cx, cy - 50), p2: vec2(cx - 6, cy - 57), p3: vec2(cx + 6, cy - 57), color: GOLD });
+        drawCircle({ pos: vec2(cx, cy - 57), radius: 1.6, color: REDDK });
+
+        // 7) avertissement
+        drawText({ text: 'Ta progression dans ce niveau sera perdue.', pos: vec2(cx, cy - 30), anchor: 'center', size: 15, color: BROWN });
+
+        // 8) deux options : keycap colore + label, la "sure" (continuer) pulse doucement
+        const opt = (y, cap, capCol, capDk, label, glow) => {
+          const ow = 432, oh = 48, ox = cx - ow / 2;
+          if (glow) drawRect({ pos: vec2(ox - 5, y - oh / 2 - 5), width: ow + 10, height: oh + 10, radius: 16, color: GREEN, opacity: 0.16 + 0.16 * (0.5 + 0.5 * Math.sin(T * 4)) });
+          drawRect({ pos: vec2(ox + 3, y - oh / 2 + 4), width: ow, height: oh, radius: 13, color: rgb(18, 11, 6), opacity: 0.16 });
+          drawRect({ pos: vec2(ox, y - oh / 2), width: ow, height: oh, radius: 13, color: CREAM });
+          drawRect({ pos: vec2(ox, y - oh / 2), width: ow, height: oh, radius: 13, fill: false, outline: { width: 2.5, color: INKSOFT } });
+          const kw = 104, kh = 32, kx = ox + 12, ky = y - kh / 2;    // keycap (style HUD, en relief)
+          drawRect({ pos: vec2(kx, ky + 3), width: kw, height: kh, radius: 8, color: capDk });
+          drawRect({ pos: vec2(kx, ky), width: kw, height: kh, radius: 8, color: capCol });
+          drawRect({ pos: vec2(kx + 4, ky + 3), width: kw - 8, height: 7, radius: 4, color: rgb(255, 255, 255), opacity: 0.32 });
+          drawText({ text: cap, pos: vec2(kx + kw / 2, ky + kh / 2), anchor: 'center', size: 15, color: rgb(255, 248, 232) });
+          drawText({ text: label, pos: vec2(kx + kw + 18, y), anchor: 'left', size: 18, color: INK });
+        };
+        opt(cy + 24, TOUCH_ON ? 'OUI' : 'ESPACE', RED, REDDK, 'Oui, retour a la carte', false);
+        opt(cy + 82, TOUCH_ON ? 'NON' : 'ESC', GREEN, GREENDK, 'Non, je continue', true);
+        if (TOUCH_ON) drawText({ text: '(tape une option)', pos: vec2(cx, cy + 122), anchor: 'center', size: 13, color: BROWN, opacity: 0.85 });
+
+        popTransform();
+      });
+    };
+    const closeQuit = () => { if (quitBox) { destroy(quitBox); quitBox = null; } setPaused(false); };
+    const confirmQuit = () => { if (!quitBox) return; setPaused(false); go('overworld'); };
+
+    onPlayKey(C.controls.jump, () => {
       const p = PLAYER;
       if (aimingLob(p)) return;                            // HAUT sert a VISER la cloche, pas a sauter
       if (p.catCharge > 0 || get('cat').length) return;   // immobile pendant la charge / chat dehors
@@ -1399,10 +1743,22 @@
       if (p.isGrounded()) { p.jump(jf); p.jumpsLeft = C.player.maxJumps - 1; sfx('jump'); }
       else if (p.jumpsLeft > 0) { p.jump(jf); p.jumpsLeft--; sfx('jump'); }
     });
-    onKeys(C.controls.pleurer, castPleurer);
-    onKeys(C.controls.raler, castRaler);
-    onKeys(C.controls.quit, () => go('overworld'));   // ESC : abandonne le niveau, retour carte
-    onKeys(C.controls.switchAmmo, () => {
+    onPlayKey(C.controls.pleurer, castPleurer);
+    onPlayKey(C.controls.raler, castRaler);
+    onKeys(C.controls.quit, () => { quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
+    onKeyPress('space', confirmQuit);                                        // ESPACE/ENTREE : confirme la sortie
+    onKeyPress('enter', confirmQuit);
+    // Tactile/souris : taper directement une des deux rangees de la boite "quitter"
+    //  (touchToMouse mappe le tap -> souris ; la boite est en repere ecran, donc
+    //  mousePos() est dans le meme repere logique 960x528). Marche aussi a la souris.
+    onMousePress(() => {
+      if (!quitBox) return;
+      const m = mousePos(), cx = C.width / 2, cy = C.height / 2;
+      if (Math.abs(m.x - cx) > 224) return;                       // hors des rangees
+      if (Math.abs(m.y - (cy + 24)) <= 28) confirmQuit();         // rangee "Oui" -> carte
+      else if (Math.abs(m.y - (cy + 82)) <= 28) closeQuit();      // rangee "Non" -> reprendre
+    });
+    onPlayKey(C.controls.switchAmmo, () => {
       const order = C.ammoOrder;
       const i = order.indexOf(PLAYER.ammoKey);
       PLAYER.ammoKey = order[(i + 1) % order.length];
@@ -1410,10 +1766,10 @@
 
     // --- CHEATS de test (CONFIG.cheats). Mets cheats:false pour le cadeau.
     if (C.cheats) {
-      C.levels.forEach((lk, i) => onKeyPress(String(i + 1), () => go('game', lk)));  // 1-6
-      onKeyPress('0', () => { LEVEL.bossesAlive = 0; completeLevel(); });            // finir
-      onKeyPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
-      onKeyPress('h', () => {                                                        // plein
+      C.levels.forEach((lk, i) => onPlayPress(String(i + 1), () => go('game', lk)));  // 1-6
+      onPlayPress('0', () => { LEVEL.bossesAlive = 0; completeLevel(); });            // finir
+      onPlayPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
+      onPlayPress('h', () => {                                                        // plein
         PLAYER.hp = PLAYER.maxHp; PLAYER.sun = C.sun.max;
         PLAYER.catCharges = C.cat.maxCharges; flashMsg('PLEIN !');
       });
@@ -1467,6 +1823,12 @@
         if (keysDown(C.controls.aimDown)) p.aimAngle = Math.max(C.shot.aimMin, p.aimAngle - C.shot.aimSpeed * dt());
       }
       const crouching = p.isGrounded() && keysDown(C.controls.crouch) && !aiming;   // accroupi (au sol ; BAS sert a viser pendant la charge)
+      // SAUT MODULABLE : tenir BAS pendant la MONTEE coupe la courbe (saute moins
+      //  haut). N'agit que sur la phase ascendante (vel.y<0), en l'air, et hors
+      //  visee de cloche (ou BAS regle l'angle). Marche aussi en rollers/velo.
+      if (!aiming && !p.isGrounded() && keysDown(C.controls.crouch) && p.vel && p.vel.y < 0) {
+        p.vel = vec2(p.vel.x, p.vel.y + (C.player.jumpCutG || 0) * dt());
+      }
       // CHAT : Laura est IMMOBILE pendant la charge ET tant que le chat n'est pas
       //  revenu (il faut etre immobile pour le lancer, on ne bouge pas pendant la charge).
       const catOut = get('cat').length > 0;
@@ -1486,6 +1848,18 @@
       p.fireCd -= dt();
       if (eqv) {                                        // velo/rollers : on ne peut QUE se deplacer
         p.shootCharge = 0;
+      } else if (ammoNow.traj === 'arc' && assistAim()) {
+        // MOBILE assiste : la cloche s'auto-vise + part en tapotant (rafale lente).
+        p.shootCharge = 0;
+        if (keysDown(C.controls.shoot) && p.fireCd <= 0) {
+          if (!C.sun.enabled || p.sun >= cost) {
+            const aim = autoAimArc(p);
+            p.facing = aim.facing; p.aimAngle = aim.aimAngle;
+            p.sun = Math.max(0, p.sun - cost);
+            playerShoot(aim.power);
+            p.fireCd = C.shot.rate * 1.7;               // cadence cloche < tir droit
+          } else { p.fireCd = 0.2; }
+        }
       } else if (ammoNow.traj === 'arc') {
         if (keysDown(C.controls.shoot)) {
           p.shootCharge = Math.min(C.shot.chargeTime, p.shootCharge + dt());
@@ -1612,6 +1986,117 @@
     add([text(str, { size, align: 'center', width: w || (C.width - 80) }), pos(C.width / 2, y), anchor('center'), color(col[0], col[1], col[2])]);
   }
 
+  // --- UI partagee des ecrans de victoire (meme langage que title/overworld) ---
+  const UI = {
+    INK:   [58, 36, 22],    // brun encre (contours)
+    GOLD:  [255, 206, 71],  // soleil
+    CREAM: [255, 244, 219], // creme (texte sur fond sombre)
+    RED:   [226, 74, 60],   // terracotta (ruban accent)
+    GREEN: [86, 158, 74],   // vert riziere
+    NIGHT: [40, 30, 54],    // bleu nuit (cartouche)
+  };
+  // fond peint plein ecran (ou aplat de secours si le PNG manque)
+  function uiBg(name, fb) {
+    return hasSprite(name)
+      ? add([sprite(name, { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)])
+      : add([rect(C.width, C.height), pos(0, 0), anchor('topleft'), color(fb[0], fb[1], fb[2]), z(-10)]);
+  }
+  // voile translucide pour poser du texte sur l'art
+  function uiScrim(y, h, col, op) {
+    return add([rect(C.width, h), pos(0, y), anchor('topleft'), color(col[0], col[1], col[2]), opacity(op), z(-9)]);
+  }
+  const uiPill = (x, y, w, h, col, op, r, zz) => add([
+    rect(w, h, { radius: r == null ? h / 2 : r }), pos(x, y), anchor('center'),
+    color(col[0], col[1], col[2]), opacity(op == null ? 1 : op), z(zz == null ? 4 : zz),
+  ]);
+  // texte a contour 8-directions : lisible par-dessus n'importe quel fond peint
+  function uiText(str, x, y, size, fill, opts) {
+    opts = opts || {};
+    const w = opts.width || (C.width - 80);
+    const ow = opts.outline == null ? 3 : opts.outline;
+    const ink = opts.ink || UI.INK;
+    const z0 = opts.z == null ? 6 : opts.z;
+    const group = [];
+    const mk = (dx, dy, col, zz, op) => {
+      const o = add([
+        text(str, { size, align: 'center', width: w, lineSpacing: opts.lineSpacing }),
+        pos(x + dx, y + dy), anchor('center'), color(col[0], col[1], col[2]),
+        z(zz), opacity(op == null ? 1 : op),
+      ]);
+      group.push(o); return o;
+    };
+    if (opts.shadow) mk(0, ow + 3, [20, 12, 8], z0 - 1, 0.4);
+    for (let a = 0; a < 8; a++) mk(Math.round(Math.cos(a * Math.PI / 4) * ow), Math.round(Math.sin(a * Math.PI / 4) * ow), ink, z0);
+    const face = mk(0, 0, fill, z0 + 1);
+    face.group = group;   // contour + face : pour animer tout le bloc ensemble
+    return face;
+  }
+  // apparition etagee : fade-in + petit glissement (delay en s, dy = decalage de depart)
+  function uiAppear(obj, delay, dy) {
+    const group = obj.group || [obj];
+    const baseOp = group.map((o) => o.opacity);
+    const baseY = group.map((o) => o.pos.y);
+    dy = dy || 0;
+    group.forEach((o, i) => { o.opacity = 0; o.pos.y = baseY[i] + dy; });
+    let t = -(delay || 0);
+    obj.onUpdate(() => {
+      t += dt();
+      const k = t <= 0 ? 0 : Math.min(1, t / 0.45);
+      const e = 1 - Math.pow(1 - k, 3);   // easeOutCubic
+      group.forEach((o, i) => { o.opacity = baseOp[i] * e; o.pos.y = baseY[i] + dy * (1 - e); });
+    });
+    return obj;
+  }
+  // pop d'entree (easeOutBack) + leger battement, sur un sprite (base = echelle d'affichage)
+  function uiPop(obj, base, delay, bob) {
+    let t = -(delay || 0);
+    obj.scale = vec2(0.0001);
+    obj.onUpdate(() => {
+      t += dt();
+      if (t <= 0) { obj.scale = vec2(0.0001); return; }
+      const k = Math.min(1, t / 0.5);
+      const s = 1.70158;
+      const back = 1 + (s + 1) * Math.pow(k - 1, 3) + s * Math.pow(k - 1, 2);
+      obj.scale = vec2(k < 1 ? base * back : base * (1 + (bob ? 0.05 * Math.sin(t * 3) : 0)));
+    });
+    return obj;
+  }
+  // pastille "ESPACE pour continuer" clignotante (apparait apres `delay`)
+  function uiPrompt(str, x, y, delay) {
+    const cap = uiPill(x, y, Math.max(300, str.length * 12), 40, [40, 26, 16], 0.8, 20, 5);
+    uiAppear(cap, delay, 10);
+    const p = uiText(str, x, y, 19, UI.GOLD, { outline: 3, z: 8 });
+    p.group.forEach((g) => { g.opacity = 0; });
+    let bt = -(delay + 0.02);
+    p.onUpdate(() => { bt += dt(); if (bt < 0) return; const o = 0.45 + 0.55 * Math.abs(Math.sin(bt * 2.6)); p.group.forEach((g) => { g.opacity = o; }); });
+    return p;
+  }
+  // confettis / etincelles qui pleuvent (ou montent si dir=270)
+  function uiConfetti(cols, rate, opts) {
+    opts = opts || {};
+    const dir = opts.dir == null ? 90 : opts.dir;
+    const host = add([pos(0, 0), { acc: 0 }]);
+    host.onUpdate(() => {
+      host.acc += dt();
+      while (host.acc > rate) {
+        host.acc -= rate;
+        const c = cols[Math.floor(rand(0, cols.length))];
+        const sz = rand(opts.min || 5, opts.max || 11);
+        const a = (dir + rand(-12, 12)) * Math.PI / 180;   // direction en vec2 (KAPLAY ici n'utilise que des vec2)
+        const p = add([
+          rect(sz, sz * rand(0.9, 1.5), { radius: 2 }),
+          pos(rand(-10, C.width + 10), opts.y == null ? -20 : opts.y), anchor('center'),
+          color(c[0], c[1], c[2]), rotate(rand(0, 360)),
+          move(vec2(Math.cos(a), Math.sin(a)), rand(opts.vmin || 70, opts.vmax || 180)),
+          opacity(0.95), z(3), lifespan(opts.life || 5.5, { fade: 1.2 }),
+        ]);
+        p.spin = rand(-220, 220);
+        p.onUpdate(() => { p.angle += p.spin * dt(); });
+      }
+    });
+    return host;
+  }
+
   scene('title', () => {
     setCam(C.width / 2, C.height / 2);
     if (hasSprite('bg_title')) add([sprite('bg_title', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
@@ -1629,14 +2114,21 @@
       const ow = opts.outline || 3;
       const ink = opts.ink || INK;
       const ls = opts.lineSpacing;
-      const mk = (dx, dy, col, zz) => add([
-        text(str, { size, align: 'center', width: w, lineSpacing: ls }),
-        pos(x + dx, y + dy), anchor('center'), color(col[0], col[1], col[2]), z(zz),
-      ]);
+      const layers = [];
+      const mk = (dx, dy, col, zz) => {
+        const o = add([
+          text(str, { size, align: 'center', width: w, lineSpacing: ls }),
+          pos(x + dx, y + dy), anchor('center'), color(col[0], col[1], col[2]), z(zz), opacity(1),
+        ]);
+        layers.push(o);
+        return o;
+      };
       const z0 = opts.z || 6;
       if (opts.shadow) mk(0, ow + 3, [20, 12, 8], z0 - 1).use(opacity(0.45));
       for (let a = 0; a < 8; a++) mk(Math.round(Math.cos(a * Math.PI / 4) * ow), Math.round(Math.sin(a * Math.PI / 4) * ow), ink, z0);
-      return mk(0, 0, fill, z0 + 1);
+      const out = mk(0, 0, fill, z0 + 1);
+      out.layers = layers;       // contour + remplissage : permet de faire clignoter le bloc entier
+      return out;
     }
     const pill = (x, y, w, h, col, op, r, zz) => add([
       rect(w, h, { radius: r == null ? h / 2 : r }), pos(x, y), anchor('center'),
@@ -1653,22 +2145,25 @@
     pill(C.width / 2, 128, 470, 38, RED, 0.9, 19, 5);
     inkText(C.story.subtitle, C.width / 2, 128, 22, CREAM, { outline: 2, ink: [120, 30, 24], z: 6 });
     // --- accroche : une ligne qui claque -------------------------------
-    inkText('Des rizieres a la soutenance : bats chaque boss et redige ta these !', C.width / 2, 178, 17, CREAM, { outline: 2, z: 6 });
+    inkText('Des rizières à la soutenance : bats chaque boss et rédige ta thèse !', C.width / 2, 178, 17, CREAM, { outline: 2, z: 6 });
 
     // --- bandeau bas : controles -------------------------------------
     pill(C.width / 2, C.height - 22, C.width, 56, [26, 18, 12], 0.5, 0, 3);
-    inkText('Q/D ou Fleches : bouger     HAUT : sauter     ESPACE : lancer', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
-    inkText('MAJ : changer d arme     C (2s) : chat     X : pleurer     V : raler', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
+    inkText('Q/D ou Flèches : bouger     HAUT : sauter     ESPACE : lancer', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
+    inkText('MAJ : changer d arme     C (2s) : chat     X : pleurer     V : râler', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
 
     // --- invite "ESPACE pour commencer" : pastille doree clignotante ---
-    pill(C.width / 2, 430, 348, 44, [40, 26, 16], 0.78, 22, 5);
+    const startPill = pill(C.width / 2, 430, 500, 44, [40, 26, 16], 0.78, 22, 5);
     const start = inkText(C.story.start, C.width / 2, 430, 22, GOLD, { outline: 3, z: 7 });
 
     let t = 0;
     onUpdate(() => {
       t += dt();
       title.pos.y = titleY + Math.sin(t * 2) * 3;
-      start.opacity = 0.45 + 0.55 * Math.abs(Math.sin(t * 2.6));
+      const blink = Math.abs(Math.sin(t * 2.6));   // pastille + texte clignotent ensemble
+      const tOp = 0.45 + 0.55 * blink;
+      start.layers.forEach((o) => { o.opacity = tOp; });
+      startPill.opacity = 0.30 + 0.50 * blink;
     });
 
     const go1 = () => go('slots');
@@ -1692,7 +2187,7 @@
 
     // --- bandeau d'aide en bas (pastille sombre pour lisibilite sur l'herbe) ---
     add([rect(652, 46, { radius: 14 }), pos(480, C.height - 26), anchor('center'), color(28, 18, 12), opacity(0.42), z(3)]);
-    add([text('Fleches : choisir     ESPACE : valider     E : effacer', { size: 15, align: 'center' }), pos(480, C.height - 33), anchor('center'), color(255, 244, 222), z(6)]);
+    add([text('Flèches : choisir     ESPACE : valider     E : effacer', { size: 15, align: 'center' }), pos(480, C.height - 33), anchor('center'), color(255, 244, 222), z(6)]);
     if (!SAVEAPI.persistent) add([text('(sauvegarde non persistante en file:// : sers via http pour garder)', { size: 11, align: 'center' }), pos(480, C.height - 14), anchor('center'), color(255, 200, 178), z(6)]);
 
     let cur = 0;
@@ -1755,6 +2250,7 @@
     onKeyPress('right', () => { cur = (cur + 1) % 3; render(); });
     onKeyPress('e', () => { SAVEAPI.erase(cur); render(); });
     onConfirm(pick);
+    onBack(() => go('title'));   // ESC : retour ecran titre
   });
 
   // --- CARTE DU MONDE (overworld facon Dora) --------------------------
@@ -1856,8 +2352,8 @@
       const lw = Math.max(48, n.label.length * 9 + 18);
       pill(n.x, n.y - R - 16, lw, 21, INK, 0.92, 10, 3);
       add([text(n.label, { size: 13, align: 'center' }), pos(n.x, n.y - R - 16), anchor('center'), color(CREAM[0], CREAM[1], CREAM[2]), z(3.1)]);
-      // nom du boss (sous le noeud) — masque si verrouille
-      inkText(unlocked ? n.boss : '? ? ?', n.x, n.y + R + 12, 11, unlocked ? [255, 236, 206] : [210, 216, 222], { outline: 2, z: 3 });
+      // nom du boss (sous le noeud) — masque tant que le niveau n'est pas fini
+      inkText(done ? n.boss : '? ? ?', n.x, n.y + R + 12, 11, done ? [255, 236, 206] : [210, 216, 222], { outline: 2, z: 3 });
     });
 
     // --- bandeaux titre + aide -----------------------------------------
@@ -1889,31 +2385,74 @@
     onKeyPress('right', () => move(1));
     const enter = () => { if (cur <= SAVE.unlockedMax) go('game', nodes[cur].key); };
     onConfirm(enter);
+    onBack(() => go('slots'));   // ESC : retour selection de sauvegarde
   });
 
   // --- CHAPITRE GAGNE -------------------------------------------------
+  // --- CHAPITRE ECRIT (apres chaque boss de niveau) : bureau de redaction ---
   scene('chapter', (data) => {
     setCam(C.width / 2, C.height / 2);
-    add([rect(C.width, C.height), pos(0, 0), color(255, 226, 120)]);
-    add([sprite('pickup_page'), pos(C.width / 2, 150), anchor('center'), artScale(2.2)]);
-    bigText(C.story.chapterDone, 250, 34, [42, 29, 24]);
-    const txt = (C.story.chapters[data.idx] || '');
-    bigText(txt, 330, 22, [60, 50, 30], C.width - 160);
-    bigText(C.story.retry, 460, 20, [42, 29, 24]);
+    const idx = (data && data.idx) || 0;
+    const N = SAVEAPI.N_LEVELS;
+    const gotPubli = !!(SAVE && SAVE.publis && SAVE.publis[idx]);
+    const done = SAVE ? SAVE.levelsDone.filter(Boolean).length : (idx + 1);
+
+    uiBg('bg_chapter', [34, 28, 46]);
+    uiScrim(0, 150, [20, 14, 30], 0.34);                 // voile haut -> titre lisible
+    uiConfetti([UI.GOLD, UI.CREAM, [255, 226, 120]], 0.2, // fine poussiere doree qui monte
+      { dir: 270, y: C.height + 10, vmin: 22, vmax: 52, min: 3, max: 6, life: 4.2 });
+
+    // titre sur ruban terracotta
+    uiAppear(uiPill(C.width / 2, 74, 470, 46, UI.RED, 0.92, 23, 4), 0.12, -14);
+    uiAppear(uiText(C.story.chapterDone, C.width / 2, 74, 29, UI.GOLD, { outline: 3, shadow: true, z: 7 }), 0.15, -14);
+
+    // progression du manuscrit (+ mention publi si 100%)
+    let prog = 'Manuscrit : ' + Math.min(done, N) + ' / ' + N + ' chapitres';
+    if (gotPubli) prog += '     +  PUBLICATION !';
+    uiAppear(uiText(prog, C.width / 2, 118, 15, UI.CREAM, { outline: 2, z: 7 }), 0.26, -8);
+
+    // cartouche : le texte du chapitre (pose sur le bas, laisse voir le decor)
+    uiAppear(uiPill(C.width / 2, 420, 772, 116, UI.NIGHT, 0.72, 16, 4), 0.32, 16);
+    uiAppear(uiText(C.story.chapters[idx] || '', C.width / 2, 418, 17, UI.CREAM, { outline: 2, z: 7, width: 724, lineSpacing: 6 }), 0.4, 16);
+
+    uiPrompt(C.story.retry, C.width / 2, 492, 0.58);
     const next = () => go('overworld');
-    onConfirm(next); onClick(next);
+    onConfirm(next); onClick(next); onBack(next);
   });
 
+  // --- SOUTENANCE REUSSIE (apres le jury) : remise du diplome ---------------
   scene('win', (data) => {
     setCam(C.width / 2, C.height / 2);
-    add([rect(C.width, C.height), pos(0, 0), color(255, 226, 120)]);
-    add([sprite('sun_goal'), pos(C.width / 2, 140), anchor('center'), artScale(1.3)]);
-    bigText(C.story.win, 280, 30, [42, 29, 24]);
+    const parts = String(C.story.win).split(/\s{2,}/).filter(Boolean);
+    const head = parts[0] || String(C.story.win);
+    const sub = parts.slice(1).join(' ');
     const comp = SAVE ? SAVEAPI.completion(SAVE) : 0;
-    bigText('Completion : ' + comp + '%    Best : ' + (SAVE ? SAVE.bestScore : (data ? data.score : 0)), 340, 22, [226, 59, 80]);
-    bigText(C.story.retry, 420, 22, [42, 29, 24]);
+    const best = SAVE ? SAVE.bestScore : (data ? data.score : 0);
+
+    uiBg('bg_win', [255, 206, 110]);
+    uiConfetti([UI.GOLD, UI.RED, UI.CREAM, [120, 200, 255], UI.GREEN], 0.05, {});  // pluie de confettis
+
+    // plaque-diplome en bas : tout le texte pose sur un fond sombre borde d'or
+    // (l'art de Laura diplomee reste entierement degage au-dessus)
+    add([rect(884, 216, { radius: 22 }), pos(C.width / 2, 424), anchor('center'),
+      color(UI.NIGHT[0], UI.NIGHT[1], UI.NIGHT[2]), opacity(0.52), outline(3, rgb(255, 206, 71)), z(1)]);
+
+    uiAppear(uiText(head, C.width / 2, 348, 26, UI.GOLD, { outline: 4, shadow: true, z: 7 }), 0.12, -14);
+    if (sub) uiAppear(uiText(sub, C.width / 2, 386, 18, UI.CREAM, { outline: 2, z: 7 }), 0.26, -8);
+
+    const mkChip = (cx, cy, label, value) => {
+      const box = uiPill(cx, cy, 224, 60, [26, 19, 36], 0.92, 13, 4);
+      const lab = uiText(label, cx, cy - 12, 12, [255, 214, 150], { outline: 2, z: 7 });
+      const val = uiText(value, cx, cy + 10, 24, UI.GOLD, { outline: 3, z: 7 });
+      box.group = [box].concat(lab.group, val.group);
+      return box;
+    };
+    uiAppear(mkChip(C.width / 2 - 128, 436, 'COMPLETION', comp + '%'), 0.4, 12);
+    uiAppear(mkChip(C.width / 2 + 128, 436, 'MEILLEUR SCORE', String(best)), 0.46, 12);
+
+    uiPrompt(C.story.retry, C.width / 2, 490, 0.58);
     const again = () => go('overworld');
-    onConfirm(again); onClick(again);
+    onConfirm(again); onClick(again); onBack(again);
   });
 
   scene('lose', (data) => {
@@ -1924,7 +2463,7 @@
     bigText('SCORE : ' + (data ? data.score : 0), 350, 24, [255, 226, 120]);
     bigText(C.story.retry, 420, 22, [255, 255, 255]);
     const again = () => go(SAVE ? 'overworld' : 'title');
-    onConfirm(again); onClick(again);
+    onConfirm(again); onClick(again); onBack(again);
   });
 
   // debug handle
@@ -1939,6 +2478,16 @@
   } else if (typeof location !== 'undefined' && location.hash.indexOf('map') >= 0) {
     SLOT = 0; SAVE = SAVEAPI.load(0) || SAVEAPI.fresh('DEV');   // #map : carte du monde (dev)
     go('overworld');
+  } else if (typeof location !== 'undefined' && location.hash.indexOf('winscreen') >= 0) {
+    SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #winscreen : apercu ecran soutenance (save jetable, non persistee)
+    SAVE.levelsDone.fill(true); SAVE.publis.fill(true); SAVE.dataPct.fill(100); SAVE.juryDone = true; SAVE.bestScore = 4200;
+    go('win', { score: 4200 });
+  } else if (typeof location !== 'undefined' && location.hash.indexOf('chapterscreen') >= 0) {
+    SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #chapterscreen[0-4] : apercu ecran chapitre (save jetable)
+    const cm = location.hash.match(/chapterscreen([0-4])/); const ci = cm ? parseInt(cm[1], 10) : 1;
+    for (let i = 0; i <= ci; i++) SAVE.levelsDone[i] = true;
+    if (ci % 2 === 0) SAVE.publis[ci] = true;
+    go('chapter', { idx: ci, score: 1500 });
   } else {
     go('title');
   }

@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Run locally**: open `index.html` directly (works in `file://`). Assets are embedded as base64 in `js/assets_data.js`, so no server is needed.
 - **Run with persistence**: `python3 -m http.server 8000` then open `http://localhost:8000`. Needed because Chrome blocks `localStorage` in `file://`, so saves don't persist there (they fall back to session-only memory).
 - **Dev shortcuts** (URL hash): `index.html#game` jumps straight into level 1; `index.html#gameauto` runs an autopilot test mode.
+- **Mobile / tactile**: la manette tactile s'active **toute seule** sur écran tactile. Pour la forcer/désactiver (test desktop) : `index.html?touch=1#game` (force la manette) ou `?touch=0` (la coupe). Détails : section *Mobile / tactile* plus bas.
 - **In-game cheat keys** (only when `CONFIG.cheats: true`): `1`-`6` jump to a level, `0` finishes the level, `G` god mode, `H` refill everything.
 
 ### Re-embedding assets (required after any asset change)
@@ -29,6 +30,7 @@ Files prefixed with `_` in `assets/sprites/` are skipped by the generator.
    - *obstacle* → `theme.tiles['=']: ['tile_soil','tile_soil2']` (liste = variantes au hasard).
    - *monstre* → `theme.enemies.criquet: ['enemy_criquet','enemy_criquet2']`.
    - *nouveau type d'ennemi* → ajoute-le à `CONFIG.enemies` + un caractère dans le switch de `buildLevel` (`js/game.js`) + la légende de `js/level.js`.
+   - *figurant* (`N`) → un **passant** : corps `body_<biome>_<sexe>` (habits du décor) surmonté d'une **tête** `head_<biome>_<sexe>_<n>` choisie **au hasard** (enfant qui dodeline, toujours de face). Habits/têtes par niveau via `theme.passant` (helper `PASSANT(biome,nH,nF)` dans `js/level.js`). **Spec complète des assets : `SPRITES.md` §5bis.** Mockups : `python3 tools/gen_passant_mockups.py`.
 
 Tout sprite cité mais absent est ignoré (retour au défaut) — rien ne casse si tu oublies le PNG.
 
@@ -48,7 +50,7 @@ There is no `node` available; you cannot `node --check` the JS.
 ## Architecture
 
 ### Globals-as-modules (no imports/bundler)
-KAPLAY itself is **vendored** as a minified bundle in `engine/kaplay.js` (no CDN, no npm) and is the first script `index.html` loads; updating the engine means replacing that file. `index.html` then loads the game scripts in a fixed dependency order (`assets_data.js → config.js → level.js → save.js → bosses.js → game.js`); they communicate **only through `window` globals**. There are no ES modules or `require`. The contract:
+KAPLAY itself is **vendored** as a minified bundle in `engine/kaplay.js` (no CDN, no npm) and is the first script `index.html` loads; updating the engine means replacing that file. `index.html` then loads the game scripts in a fixed dependency order (`assets_data.js → config.js → level.js → save.js → bosses.js → mobile.js → game.js`); they communicate **only through `window` globals**. There are no ES modules or `require`. The contract:
 
 | Global | Defined in | Consumed by |
 |---|---|---|
@@ -57,9 +59,13 @@ KAPLAY itself is **vendored** as a minified bundle in `engine/kaplay.js` (no CDN
 | `window.LEVELS` | `js/level.js` | `game.js` |
 | `window.LQ_SAVE` | `js/save.js` | `game.js` |
 | `window.BOSS_AI` | `js/bosses.js` | `game.js` (`AI[def.behavior]`) |
+| `window.LQ_TOUCH` | `js/mobile.js` | `game.js` (`{active, assist}` ; lu **avant** `kaplay()` pour le letterbox mobile + l'auto-visée) |
 | `window.LQ` | `js/game.js` | debug handle (`LQ.player`, `LQ.level`, `LQ.save`) |
 
 `js/game.js` is one big IIFE that calls `kaplay({...})` and defines all KAPLAY scenes. **If you add a new JS file, wire it into `index.html` in the right order** (before `game.js`, after its own dependencies).
+
+### Mobile / tactile (web, pas de natif)
+`js/mobile.js` (chargé **avant** `game.js`) ajoute une **manette tactile** à l'écran sur mobile **sans toucher au gameplay** : chaque bouton synthétise un `KeyboardEvent` (keydown/keyup) sur le `<canvas>`, et comme tout l'input passe par `C.controls` + `keysDown`/`onKeys` (cf. `game.js`), le jeu réagit exactement comme au clavier. **Détection auto** via `(pointer: coarse)` ; override URL `?touch=1` (force) / `?touch=0` (désactive). Pose `window.LQ_TOUCH = {active, assist}` **avant** `kaplay()` (qui lit `.active` pour passer en `letterbox`+`stretch` plein écran **sur mobile uniquement** — desktop strictement inchangé). Tous les réglages sont dans `CONFIG.mobile`. La manette s'adapte à la scène (`getSceneName()` : gamepad complet en `game`, set réduit ◀▶/OK/pause dans les menus — où `OK`/jump valide). `assistAim` (helper `autoAimArc` dans `game.js`) fait **auto-viser** les armes en cloche (cookie/gâteau) sur l'ennemi le plus proche → un seul bouton TIR, pas de visée manuelle. Le bouton SAUT synthétise `z` (pas `up`) pour ne jamais entrer en conflit avec la visée. **Gotcha de test** : en headless, `--dump-dom` **ne fait pas tourner la boucle rAF** de KAPLAY (frames figées, aucun spawn) — un test *comportemental* tactile doit utiliser `--screenshot` (qui, lui, fait avancer les frames) en écrivant le résultat dans un `<div>` superposé (les overlays DOM apparaissent dans le screenshot). Penser aussi que KAPLAY applique une touche au **frame suivant** (`onOnce("input")`), donc un `isKeyDown` lu de façon synchrone après dispatch renvoie `false`.
 
 ### Config-driven design — edit `js/config.js`, not `game.js`
 Almost all behavior is data in `CONFIG`: physics (`player.jumpForce`, etc.), damage/HP, spell cooldowns, the cat ally (`cat.chargeTime` = hold duration), energy-as-ammo (`sun` + `ammoTypes[].cost`), enemy/boss stats, sprite sheets (`anims`), key bindings (`controls`), level order (`levels`), world map (`world.nodes`), and **all on-screen text** (`story.*`). Changing gameplay or wording usually means editing config, not engine code.

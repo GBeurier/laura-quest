@@ -19,14 +19,44 @@ Usage :
 """
 import os
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPR = os.path.join(ROOT, "assets", "sprites")
 
 
+# SECURITE : ne JAMAIS ecraser un asset existant (placeholder OU vrai PNG). Ce
+#  script ne fait que COMBLER les manquants. Mets FORCE=1 (env) pour regenerer
+#  malgre tout, ou supprime le PNG cible a la main avant de relancer.
+FORCE = os.environ.get("FORCE") == "1"
+
+
+def _exists(name):
+    return os.path.exists(os.path.join(SPR, name + ".png"))
+
+
 def _save(im, name):
+    if _exists(name) and not FORCE:
+        print("  skip    ", name, "(existe deja -> non ecrase)")
+        return
     im.save(os.path.join(SPR, name + ".png"))
+
+
+def _font(size):
+    for path in ("DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+F_TAG = _font(14)
+
+
+def _ctext(d, cx, y, s, fill, font=F_TAG):
+    w = d.textlength(s, font=font)
+    d.text((cx - w / 2, y), s, font=font, fill=fill)
 
 
 def _lerp(a, b, t):
@@ -35,6 +65,9 @@ def _lerp(a, b, t):
 
 # --- 1) Variantes par decalage de teinte (preserve alpha + decoupage) -------
 def hue_variant(base, out, deg, sat=1.0, val=1.0):
+    if _exists(out) and not FORCE:
+        print("  skip    ", out, "(existe deja -> non ecrase)")
+        return
     im = Image.open(os.path.join(SPR, base + ".png")).convert("RGBA")
     r, g, b, a = im.split()
     H, S, V = Image.merge("RGB", (r, g, b)).convert("HSV").split()
@@ -48,6 +81,9 @@ def hue_variant(base, out, deg, sat=1.0, val=1.0):
 
 # --- 1bis) Silhouette de fond TILEABLE (les bords se raccordent) ------------
 def silhouette(out, w, h, base_h, waves, color, alpha=255, ridge=18):
+    if _exists(out) and not FORCE:
+        print("  skip    ", out, "(existe deja -> non ecrase)")
+        return
     x = np.arange(w)
     prof = np.full(w, float(base_h))
     for n, amp, ph in waves:
@@ -154,6 +190,131 @@ def bg_map(name):
     print("  bg      ", name)
 
 
+# --- 5) Feuille MONSTRE placeholder : 6 frames walk(0-2)/hurt(3)/attack(4-5) ---
+#  Boite coloree + yeux ; bob/jambes alternes (walk), rouge + X (hurt), penche +
+#  '!' (attack) -> l'anim est VISIBLE en validation. Ancre 'bot' (pieds en bas).
+def monster_sheet(name, col, label):
+    CW, CH, N = 128, 128, 6
+    edge = _lerp(col, (0, 0, 0), 0.45)
+    sh = Image.new("RGBA", (CW * N, CH), (0, 0, 0, 0))
+    for i in range(N):
+        fr = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
+        d = ImageDraw.Draw(fr, "RGBA")
+        c, lean, bob = col, 0, (-6 if i in (0, 2) else 0)
+        if i == 3:                                   # hurt
+            c, lean = _lerp(col, (220, 40, 40), 0.55), -10
+        elif i >= 4:                                 # attack
+            c, lean = _lerp(col, (255, 255, 255), 0.18), 9
+        cx = CW // 2 + lean
+        bw, bh = 70, 78
+        by1 = CH - 12                                # baseline pieds
+        by0 = by1 - bh + bob
+        d.rounded_rectangle([cx - bw // 2, by0, cx + bw // 2, by1], radius=16, fill=c, outline=edge, width=3)
+        ey = by0 + 26
+        for s in (-1, 1):
+            ex = cx + s * 16
+            if i == 3:                               # yeux en X
+                d.line([ex - 7, ey - 7, ex + 7, ey + 7], fill=(40, 30, 30), width=3)
+                d.line([ex - 7, ey + 7, ex + 7, ey - 7], fill=(40, 30, 30), width=3)
+            else:
+                d.ellipse([ex - 9, ey - 9, ex + 9, ey + 9], fill=(255, 255, 255), outline=edge, width=2)
+                d.ellipse([ex - 3, ey - 3, ex + 5, ey + 5], fill=(30, 30, 40))
+        if i < 3:                                    # jambes alternees (walk)
+            off = (8 if i == 0 else (-8 if i == 2 else 0))
+            for dx in (12 + off, -12 - off):
+                d.rectangle([cx + dx - 6, by1 - 2, cx + dx + 6, by1 + 8], fill=edge)
+        if i >= 4:                                   # marqueur d'attaque
+            _ctext(d, cx + bw // 2 + 10, by0 + 4, "!", (250, 220, 60), _font(26))
+        _ctext(d, CW // 2, 5, label, (255, 255, 255, 185))
+        sh.paste(fr, (i * CW, 0), fr)
+    _save(sh, name)
+    print("  monstre ", name, "(6 frames)")
+
+
+# --- 6) Etagere (cap) : meme parallelogramme que le panneau, garni d'objets ---
+#  kind='books' = tranches de livres verticales ; kind='biblo' = bibelots varies.
+def shelf_cap(name, plank_col, kind):
+    W, H = 144, 88
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    bl, br, fr_, fl = (2, 24), (98, 24), (120, 60), (24, 60)
+    d.polygon([bl, br, fr_, fl], fill=plank_col + (255,))                       # planche
+    d.line([bl, br], fill=_lerp(plank_col, (255, 255, 255), 0.5) + (255,), width=3)
+    d.polygon([fl, fr_, (fr_[0], fr_[1] + 14), (fl[0], fl[1] + 14)],
+              fill=_lerp(plank_col, (0, 0, 0), 0.3) + (255,))                   # chant avant
+    cols = [(196, 64, 60), (60, 120, 196), (84, 168, 96), (224, 176, 64), (150, 96, 178), (90, 170, 170)]
+    if kind == "books":                                                        # tranches de livres
+        for j in range(7):
+            x = 18 + j * 14
+            col = cols[j % len(cols)]
+            d.rectangle([x, 2, x + 10, 26], fill=col, outline=(30, 24, 20))
+            d.line([(x, 7), (x + 10, 7)], fill=_lerp(col, (255, 255, 255), 0.5), width=1)
+    else:                                                                      # bibelots (vase/cadre/plante)
+        d.rectangle([22, 6, 40, 26], fill=(60, 120, 196), outline=(30, 24, 20))  # cadre
+        d.ellipse([54, 4, 74, 26], fill=(208, 150, 120), outline=(30, 24, 20))   # vase
+        d.rectangle([88, 10, 100, 26], fill=(140, 96, 60), outline=(30, 24, 20))  # pot
+        d.ellipse([84, 0, 104, 16], fill=(84, 168, 96))                          # plante
+    _save(im, name)
+    print("  etagere ", name)
+
+
+def wood_leg(name):                                                            # pied/support bois
+    W, H = 96, 48
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    wood, hi, dk = (140, 96, 56), (176, 130, 84), (96, 62, 34)
+    for px in (24, 60):
+        d.rectangle([px, 0, px + 12, H], fill=wood + (255,))
+        d.rectangle([px, 0, px + 3, H], fill=hi + (255,))
+        d.rectangle([px + 9, 0, px + 12, H], fill=dk + (255,))
+    _save(im, name)
+    print("  pied    ", name)
+
+
+# --- 7) Fond INTERIEUR (band tileable) : placeholder pour l'appart -----------
+def bg_appart(name):
+    W, H = 1024, 420
+    arr = _vgrad(W, H, (224, 206, 198), (206, 184, 178))                        # mur creme/rose
+    im = Image.fromarray(arr, "RGB").convert("RGBA")
+    d = ImageDraw.Draw(im, "RGBA")
+    for x in range(0, W, 64):                                                  # lambris vertical
+        d.line([(x, 0), (x, H)], fill=(180, 156, 150, 80), width=2)
+    for x in range(96, W, 256):                                                # cadres au mur (repete -> tileable)
+        d.rectangle([x, 60, x + 90, 170], fill=(150, 120, 96, 120), outline=(110, 84, 64, 160), width=3)
+        d.rectangle([x + 150, 90, x + 220, 200], fill=(120, 150, 170, 110), outline=(90, 110, 130, 150), width=3)
+    d.rectangle([0, H - 56, W, H], fill=(150, 110, 78, 255))                    # plinthe / parquet
+    d.line([(0, H - 56), (W, H - 56)], fill=(110, 80, 56, 255), width=4)
+    _save(im, name)
+    print("  bg      ", name, "(interieur appart, placeholder)")
+
+
+# --- 8) Pickup placeholder : 4 frames (idle bump) ----------------------------
+def pickup_bump(name, drawfn):
+    CW, CH, N = 96, 96, 4
+    sh = Image.new("RGBA", (CW * N, CH), (0, 0, 0, 0))
+    for i in range(N):
+        fr = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
+        d = ImageDraw.Draw(fr, "RGBA")
+        drawfn(d, CW // 2, CH // 2 + (-3 if i in (1, 3) else 0))
+        sh.paste(fr, (i * CW, 0), fr)
+    _save(sh, name)
+    print("  pickup  ", name, "(4 frames)")
+
+
+def _draw_pilule(d, cx, cy):
+    d.rounded_rectangle([cx - 26, cy - 12, cx + 26, cy + 12], radius=12, fill=(232, 232, 240), outline=(40, 40, 60), width=3)
+    d.rounded_rectangle([cx - 26, cy - 12, cx, cy + 12], radius=12, fill=(228, 92, 96), outline=(40, 40, 60), width=3)
+    d.line([(cx, cy - 12), (cx, cy + 12)], fill=(40, 40, 60), width=2)
+    d.ellipse([cx + 8, cy - 8, cx + 16, cy], fill=(255, 255, 255, 180))
+
+
+def _draw_champi(d, cx, cy):
+    d.rectangle([cx - 9, cy, cx + 9, cy + 26], fill=(238, 226, 200), outline=(120, 96, 70), width=2)   # pied
+    d.pieslice([cx - 28, cy - 26, cx + 28, cy + 18], 180, 360, fill=(206, 60, 56), outline=(120, 30, 28))  # chapeau
+    for dx, dy in ((-14, -10), (10, -8), (-2, -16), (16, -2)):
+        d.ellipse([cx + dx - 5, cy + dy - 5, cx + dx + 5, cy + dy + 5], fill=(250, 244, 230))           # points
+
+
 def main():
     print("Panneau solaire en perspective + pieds :")
     panel_cap("tile_panel", (74, 120, 196), (40, 64, 120), (150, 196, 240))
@@ -171,15 +332,48 @@ def main():
                waves=[(3, 42, 0.4), (7, 20, 2.0), (13, 9, 0.7)],
                color=(96, 152, 82), alpha=255, ridge=16)
 
-    print("Variantes de monstres / tuiles :")
-    hue_variant("enemy_criquet",  "enemy_criquet2",  120)
-    hue_variant("enemy_corbeau",  "enemy_corbeau2",  205)
-    hue_variant("enemy_assureur", "enemy_assureur2", 150)
-    hue_variant("enemy_ademe",    "enemy_ademe2",     95)
-    hue_variant("enemy_caillou",  "enemy_caillou2",   35, sat=0.8)
-    hue_variant("enemy_camion",   "enemy_camion2",   210)
+    # NB: plus de variantes enemy_*2 (les monstres ont desormais UNE feuille 6
+    #  frames chacun, comme corbeau). tile_soil2/tile_panel2 restent des vrais
+    #  assets (le guard skip-if-exists les protege).
+    print("Variantes de tuiles (skip si deja presentes) :")
     hue_variant("tile_soil",      "tile_soil2",       28, sat=1.1)
     hue_variant("tile_panel",     "tile_panel2",      70)   # derive du nouveau cap
+
+    print("Etageres (caps + pied bois) + fond interieur :")
+    shelf_cap("tile_shelf_biblo", (176, 134, 92), "biblo")   # appart : bibelots
+    shelf_cap("tile_shelf_books", (150, 110, 74), "books")   # labo / universite : livres
+    wood_leg("shelf_leg")
+    bg_appart("bg_appart")
+
+    print("Pickups manquants (pilule / champignon) :")
+    pickup_bump("pickup_pilule", _draw_pilule)
+    pickup_bump("pickup_champignon", _draw_champi)
+
+    print("Feuilles MONSTRES placeholder (6 frames walk/hurt/attack) :")
+    #  (caillou/camion/criquet/ademe/assureur restent en 2 frames -> regeneres en phase art)
+    MONSTERS = {
+        # regeneres (ex-mockups 2 frames) : memes feuilles 6 frames que les neufs
+        "enemy_caillou":      ((128, 122, 110), "CAILL"),
+        "enemy_camion":       ((176, 72, 60),   "TRACT"),
+        "enemy_criquet":      ((120, 176, 80),  "CRIQ"),
+        "enemy_ademe":        ((206, 192, 150), "ADEME"),
+        "enemy_assureur":     ((70, 86, 130),   "ASSUR"),
+        # nouveaux
+        "enemy_moustique":    ((118, 158, 182), "MOUST"),
+        "enemy_abeille":      ((232, 200, 64),  "ABEIL"),
+        "enemy_cafard":       ((96, 74, 60),    "CAFAR"),
+        "enemy_transpalette": ((222, 122, 44),  "TRANS"),
+        "enemy_livreur":      ((80, 150, 200),  "LIVR"),
+        "enemy_coursier":     ((150, 92, 172),  "COURS"),
+        "enemy_imprimante":   ((176, 182, 190), "IMPRI"),
+        "enemy_chips":        ((222, 182, 84),  "CHIPS"),
+        "enemy_tuyau":        ((92, 182, 152),  "TUYAU"),
+        "enemy_sac":          ((150, 112, 72),  "SAC"),
+        "enemy_fontaine":     ((120, 200, 220), "FONT"),
+        "enemy_dossiers":     ((202, 172, 112), "DOSS"),
+    }
+    for nm, (col, lab) in MONSTERS.items():
+        monster_sheet(nm, col, lab)
 
     print("OK. Lance maintenant : python3 gen_assets_data.py")
 

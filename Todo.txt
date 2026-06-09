@@ -1,0 +1,74 @@
+Monstre avec les tetes des gens
+Fixe Boss: assets, gameplay
+Level design
+Fix Animation laura chat et animation tir
+Intégrer laura victoire dans la page de fin
+
+
+utiliser rollers et vélo pour rendre des trucs accessible que comme ca (haut, haut caché, loin)
+Ajouter des level "hors ecran"
+
+Téléphone portable !!!
+
+
+
+
+
+
+Le design définitif (y a quelques changements)
+
+
+NIVEAU > CONTEXTE: BOSS
+
+MONSTRES: IMMOBILE, VEHICULE, VOLANT, SOL, TIR, RANDOM ("body")
+PICKUPS: 2 pickup types
+
+
+Riziere > Installation de la manip, récolte de données: boss Agriculteur Fou
+
+Monstres: Cailloux, Tracteur, Corbeaux, Criquets, Ademe, random agri
+Pickups: Graines, Plantes
+
+
+Appart > Installation de la colloc, bibliographie : boss Francois le proprio
+
+Monstres: Sac à dos, Huissier/assureur, Moustique, Cafard, Paquet chips, random pote
+Pickups: Pilules, Page
+
+
+Serre > Manip de précistion, récolte de données: Boss RStudio
+
+Monstres: Transpalette, Moustique, Criquet, tuyau arrosage, random Horticulteur
+Pickups: Plantes, Charts
+
+
+Labo > Rédaction des publis, analyse des résultats: boss Michael le directeur de thèse
+
+Monstres: Recharge fontaine a eau, Livreur fontaine eau, Abeille, Cafard, imprimante, random labo
+Pickups: Data, Sheets
+
+
+Université > Rédaction Thèse, Démarches administratives: boss Cendrine la vieille responsable
+
+Monstres: Tas de dossiers, Coursier avec dossiers, Moustiques, Cafards, imprimante, random Administratif
+Pickups: Pages, Data
+
+
+Arene universitaire > Soumission, Soutenance de thèse: Boss Jury de thèse
+
+Que des randoms body invoqués: random agri, pote, horticulteur, labo, admin (le boss les invoque)
+Pickups: Pilules, Champignons
+
+Ecran victoire avec défilé de tous les persos random (corps random, têtes qui défilent toutes) et animation de laura dans le décor. (je ferais plus tard).
+
+
+
+Je veux que tu réorganises les niveaux et que tu fasses générer les assets manquants (sauf les tetes que je ferai moi) à codex imagegen.
+Met un placeholder pour le background Appart, je fournirai l'asset. 
+
+Maintenant mon soucis sont les panneaux solaires.
+Je les vois bien dans le niveau Rizières et Serre, mais dans Appart et Lab et Université je mettrai bien des étagères à la place (bibelot pour appart, livres pour labo et université). Vois si tu peux aussi faire ces assets sinon je ferai.
+
+
+
+Dans les assets monstres existants, corbeau, les boss (sauf proprio francois) sont déjà faits. Tous les autres sont soit inexistants soit des mockups hideux. Donc il faut que tu t'organise bien pour faire générer des sprites sheet avec déplacement, touché/blessure et attaque pour tous les monstres. Dans les pickups seul pilule est manquant. Fais génèrer aussi les body des monstres random, je ferais les têtes.

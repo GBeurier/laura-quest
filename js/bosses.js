@@ -3,7 +3,8 @@
  *  game.js appelle BOSS_AI[def.behavior](b, p, api) a chaque frame.
  *    b   = entite boss (b.def, b.hp, b.maxHp, b.t, b.homeX, b.pos...)
  *    p   = joueur
- *    api = { TS, bullet(x,y,target,speed,kind), add(kind,x,y), shake(n), poof(x,y) }
+ *    api = { TS, bullet(x,y,target,speed,kind), add(kind,x,y), shake(n), poof(x,y),
+ *            marker(x,y,dur) = zone d'impact au sol pour telegraphier une chute }
  *  Convention : chaque IA pose b.animWant = 'idle' | 'attack' | 'hurt'
  *  (game.js lit ce champ pour jouer l'animation du boss).
  *
@@ -69,10 +70,10 @@ window.BOSS_AI = (() => {
     const d = vec2(up.x * c - up.y * s, up.x * s + up.y * c);
     api.bullet(b.pos.x, b.pos.y - api.TS, { pos: b.pos.add(d.scale(100)) }, sp * 0.85, 'boss');
   }
-  // danger qui tombe du ciel au-dessus du joueur. atX permet de viser un x precis.
-  function skyHazard(p, api, atX) {
-    const x = (atX === undefined) ? p.pos.x + rand(-70, 70) : atX;
-    api.bullet(x, p.pos.y - 380, { pos: vec2(x, p.pos.y + 400) }, 320, 'enemy');
+  // danger qui tombe sur une colonne VERROUILLEE (x, sol fige a l'instant du tell).
+  //  Trajectoire strictement verticale -> coherente avec le marqueur au sol.
+  function skyHazard(api, atX, groundY) {
+    api.bullet(atX, groundY - 380, { pos: vec2(atX, groundY + 400) }, 320, 'enemy');
   }
 
   const AI = {};
@@ -152,7 +153,9 @@ window.BOSS_AI = (() => {
     const stallT = b.def.stallTime || 1.5;
     const driveSpd = b.def.driveSpeed || (b.def.speed || 120) * 1.6;
     const forkEvery = b.def.forkEvery || 0.45;
-    const skyEvery = b.def.skyEvery || 1.1;
+    const skyEvery = b.def.skyEvery || 2.0;     // (B) cadence calmee (etait 1.1)
+    const skyDelay = b.def.skyDelay || 0.6;     // (A) fenetre de telegraphe lisible
+    const skyMinDist = b.def.skyMinDist || 150; // (B) chute SEULEMENT si joueur a distance
 
     if (b.ts === 'rev') {
       // TELEGRAPHE : choisit la direction, fait vrombir (shake), reste sur place
@@ -176,12 +179,18 @@ window.BOSS_AI = (() => {
       if (b.forkT >= forkEvery) { b.forkT = 0; lob(b, p, api, rand(-0.15, 0.15)); }
       b.skyT += dt();
       if (b.skyT >= skyEvery) {
-        // poof prealable au point d'impact pour prevenir AVANT la chute
-        b.skyT = -0.35;               // delai negatif = telegraphe puis chute
-        b._skyX = p.pos.x + rand(-60, 60);
-        api.poof(b._skyX, p.pos.y - 8);
+        if (Math.abs(p.pos.x - b.pos.x) > skyMinDist) {
+          // (A) telegraphe : colonne ET sol VERROUILLES maintenant (plus de drift),
+          //  marqueur au sol au point d'impact, puis chute apres skyDelay.
+          b.skyT = -skyDelay;          // delai negatif = fenetre d'alerte avant la chute
+          b._skyX = p.pos.x;
+          b._skyY = p.pos.y;
+          api.marker(b._skyX, b._skyY, skyDelay);
+        } else {
+          b.skyT = 0;                  // (B) joueur au contact -> on reporte (pas de spam)
+        }
       } else if (b.skyT >= 0 && b._skyX !== undefined) {
-        skyHazard(p, api, b._skyX); api.shake(2); b._skyX = undefined;
+        skyHazard(api, b._skyX, b._skyY); api.shake(2); b._skyX = undefined;
       }
       if (edge) { b.ts = 'stall'; b.tt = 0; b._skyX = undefined; }
     } else {
@@ -348,7 +357,7 @@ window.BOSS_AI = (() => {
         b.threw = true;
         const half = (formN - 1) / 2;
         for (let i = 0; i < formN; i++) shoot(b, p, api, sp, (i - half) * 0.16);
-        skyHazard(p, api);            // le "tampon" administratif
+        skyHazard(api, p.pos.x, p.pos.y);   // le "tampon" administratif tombe sur le joueur
         api.shake(2);
       }
       if (b.pt > throwT) { b.ps = 'window'; b.pt = 0; }
@@ -418,15 +427,15 @@ window.BOSS_AI = (() => {
           }
           api.shake(2);
         }
-        if (b.cyc % 3 === 0) api.add('chercheur', b.pos.x, b.pos.y - api.TS);
+        if (b.cyc % 3 === 0) api.add('passant', b.pos.x, b.pos.y - api.TS);   // jury : invoque un random (tous biomes)
       } else {
         // verdict / panique : large eventail rapide + pluie du ciel + shake
         const n = b.def.panicN || 7;
         const half = (n - 1) / 2;
         for (let i = 0; i < n; i++) shoot(b, p, api, sp * 1.1, (i - half) * 0.16);
-        skyHazard(p, api);
-        if (b.cyc % 2 === 0) skyHazard(p, api, b.pos.x + rand(-b.def.range, b.def.range));
-        if (b.cyc % 4 === 0) api.add('chercheur', b.pos.x, b.pos.y - api.TS);
+        skyHazard(api, p.pos.x, p.pos.y);
+        if (b.cyc % 2 === 0) skyHazard(api, b.pos.x + rand(-b.def.range, b.def.range), p.pos.y);
+        if (b.cyc % 4 === 0) api.add('passant', b.pos.x, b.pos.y - api.TS);   // jury : invoque un random (tous biomes)
         api.shake(3);
       }
     }

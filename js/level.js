@@ -20,12 +20,21 @@
  *    'k'  croquette (recharge le chat)
  *    'L'  rollers (equipement : + rapide, saute + haut ; perdu si touchee)
  *    'Y'  velo (equipement : + rapide, saute + haut ; perdu si touchee)
- *    '^'  caillou      (statique, indestructible)
- *    'T'  camion       (va-et-vient, gros degats)
- *    'A'  assureur     (te poursuit)
- *    'R'  rapport ADEME (tire de la paperasse)
- *    'V'  corbeau      (vole en patrouille)
+ *    '^'  caillou      (OBSTACLE solide : bloque monstres/camions, 0 degat ; Laura
+ *                       saute par-dessus. Un caillou est AUSSI auto-pose a chaque bord.)
+ *    'T'  camion/tracteur (VEHICULE : va-et-vient, gros degats)
+ *    'A'  assureur/huissier (te poursuit)
+ *    'R'  rapport ADEME (TIR : tire de la paperasse)
+ *    'V'  corbeau      (VOLANT : vole en patrouille)
  *    'J'  criquet      (saute vers toi)
+ *    --- nouveaux monstres (design definitif), poses sur la rangee d'entree ---
+ *    'M'  moustique    (VOLANT, auto-eleve)        'E'  abeille (VOLANT, auto-eleve)
+ *    'K'  cafard       (SOL : rampe vite vers toi)
+ *    'W'  transpalette  'G' livreur d'eau  'C' coursier  (VEHICULES : va-et-vient)
+ *    'I'  imprimante   'H' paquet de chips  'U' tuyau d'arrosage  (TIR : shooters)
+ *    'S'  sac a dos    'F' recharge fontaine  'D' tas de dossiers  (IMMOBILES)
+ *    'N'  passant      (figurant : corps "biome" + tete South Park tiree au
+ *                       hasard ; fait les cent pas. Habits/tetes via theme.passant.)
  *    'B'  boss (defini par .boss)
  *    '*'  sortie = chapitre (apparait apres le boss)
  *
@@ -46,18 +55,50 @@
  *    }
  *  Un sprite absent est ignore -> retour au defaut. cf. CLAUDE.md.
  * ===================================================================== */
+
+// --- PASSANTS par biome (figurants 'N', cf. theme.passant / SPRITES.md) ------
+//  Un biome = un jeu d'habits (corps body_<biome>_<h|f>) + un POOL de tetes
+//  triees par sexe (head_<biome>_<h|f>_<n>). Le moteur tire UN sexe + UN corps
+//  + UNE tete au hasard par 'N' au build du niveau. Helper DRY : PASSANT(biome,
+//  nH, nF) construit les listes pour nH tetes homme + nF tetes femme. Ajoute/
+//  retire des numeros quand tu generes tes vrais assets (un sprite absent est
+//  simplement ignore -> pas de crash).
+const PASSANT = (biome, nH, nF) => ({
+  bodies: { h: ['body_' + biome + '_h'], f: ['body_' + biome + '_f'] },
+  heads: {
+    h: Array.from({ length: nH }, (_, i) => 'head_' + biome + '_h_' + (i + 1)),
+    f: Array.from({ length: nF }, (_, i) => 'head_' + biome + '_f_' + (i + 1)),
+  },
+});
+
+// ARENE FINALE : le jury invoque des randoms de TOUS les biomes. Pool FUSIONNE
+//  -> chaque passant tire un corps + une tete au hasard parmi tous les biomes
+//  (cf. spawnEnemy/pickHead ; un corps/tete absent est simplement ignore).
+const PASSANT_ALL = (biomes, nH, nF) => {
+  const bodies = (sex) => biomes.map((b) => 'body_' + b + '_' + sex);
+  const heads = (sex, n) => biomes.flatMap((b) =>
+    Array.from({ length: n }, (_, i) => 'head_' + b + '_' + sex + '_' + (i + 1)));
+  return {
+    bodies: { h: bodies('h'), f: bodies('f') },
+    heads: { h: heads('h', nH), f: heads('f', nF) },
+  };
+};
+const BIOMES_ALL = ['champ', 'pote', 'horti', 'labo', 'bureau'];
+
 window.LEVELS = {
 
-  // --- INTRODUCTION : Le proprietaire terrien — RIZIERES DE CAMARGUE, plein jour
-  //  Le niveau le PLUS FACILE : densite d'ennemis allegee, beaucoup d'air.
-  //  Collectible 'd' = GRAINES (pickup_graine). Ciel bleu clair lumineux,
-  //  tint chaude/verte de Camargue (decor parallax par defaut).
+  // --- INTRODUCTION : L'agriculteur fou — RIZIERES DE CAMARGUE, plein jour ----
+  //  Installation de la manip + recolte de donnees. Le niveau le PLUS FACILE :
+  //  densite allegee, beaucoup d'air. Monstres : caillou '^', tracteur 'T',
+  //  corbeau 'V', criquet 'J', ademe 'R', random agri 'N'. Pickups 'd'=graines,
+  //  'p'=plants. Ciel bleu clair, tint verte de Camargue (parallax par defaut).
   niveau1: {
-    boss: 'proprietaire',
+    boss: 'agriculteur',
     theme: {
       sky: [150, 212, 246],
       tint: [228, 246, 214],
-      pickups: { data: 'pickup_graine' },
+      pickups: { data: 'pickup_graine', page: 'pickup_plant' },
+      passant: PASSANT('champ', 3, 3),   // habits des champs (Camargue)
     },
     map: [
       '                                                                                                ',
@@ -68,97 +109,120 @@ window.LEVELS = {
       '          ----              d                    ----              d                            ',
       '     d                            p         ----            p              c                    ',
       '                                               xx                                               ',
-      '   @ L Y  ^       A             J               d       p              k         d        B    *',
+      '   @  ^   N     T      V     N      R     J     d      T     p      V     R      J        B   * ',
       '================================================================================================',
-      '================================================================================================',
+      ''
     ],
   },
 
-  // --- CHAPITRE 1 : L'agriculteur fou — RIZIERES EN PLEIN CHAMP -------------
-  //  Collectible 'd' = PLANS DE RIZ (pickup_plant). Meme base parallax que
-  //  niveau1, tint plus doree/verte pour varier (midi au champ).
+  // --- CHAPITRE 1 : Francois le proprio — L'APPART / LA COLLOC (interieur) ---
+  //  Installation de la colloc + bibliographie. Decor INTERIEUR : placeholder
+  //  bg_appart (a remplacer par ton asset) + ETAGERES a bibelots a la place des
+  //  panneaux ('-'/'x' = cap tile_shelf_biblo, pied shelf_leg). Monstres : sac a
+  //  dos 'S', huissier 'A', moustique 'M', cafard 'K', paquet de chips 'H',
+  //  random pote 'N'. Pickups 'd'=pilules, 'p'=pages.
   niveau2: {
-    boss: 'agriculteur',
-    theme: { sky: [128, 200, 232], tint: [240, 234, 178], pickups: { data: 'pickup_plant' } },
+    boss: 'proprietaire',
+    theme: {
+      sky: [196, 188, 206],
+      tint: [222, 212, 224],
+      layers: [
+        { sprite: 'bg_appart', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
+      ],
+      tiles: { '-': ['tile_shelf_biblo'], 'x': ['tile_shelf_biblo'] },
+      panelLeg: 'shelf_leg',
+      indoor: true,
+      pickups: { data: 'pickup_pilule', page: 'pickup_page' },
+      passant: PASSANT('pote', 3, 3),
+    },
     map: [
-      '                                                                                                            ',
-      '                                          P                                                                 ',
-      '                                        xxxx                                                                ',
-      '                          o         ----            o                                                       ',
-      '                      ----      ----          d           ----        d                 xxx                 ',
-      '        o         ----                 p              ----                    d         c                   ',
-      '     d        ----        d      V            J            p      V                k                        ',
-      '                                                     xx                                                     ',
-      '   @     ^     A    T        J      A      d     V      p    T      A      d     J      p    A        B    *',
+      '',
+      '                                                                            P',
+      '                                                                ---        ----',
+      '                       d                      o               --',
+      '             o        ---        p           ---                      M',
+      '            ---                 ---                        --',
+      '',
+      '                                                     Y  --',
+      '   @      N     S      A     M     N      K     H     d      S     A      M     p     K      H        B   * ',
       '============================================================================================================',
-      '============================================================================================================',
+      ''
     ],
   },
 
-  // --- CHAPITRE 2 : Michael Dingkhun — SERRE DE CULTURE (interieur verre) ---
-  //  Collectible 'd' = COURBES/CHARTS (pickup_chart). Decor INTERIEUR :
-  //  ciel vert pale (verre), bandeau bg_serre + une couche legere devant.
-  //  tint verdatre lumineuse.
+  // --- CHAPITRE 2 : RStudio — SERRE DE CULTURE (interieur verre) ------------
+  //  Manip de precision + recolte de donnees. Decor INTERIEUR : ciel vert pale,
+  //  bandeau bg_serre, PANNEAUX SOLAIRES conserves. Monstres : transpalette 'W',
+  //  moustique 'M', criquet 'J', tuyau d'arrosage 'U', random horti 'N'.
+  //  Pickups 'd'=plants, 'p'=charts.
   niveau3: {
-    boss: 'michael',
+    boss: 'rstudio',
     theme: {
       sky: [196, 226, 200],
       tint: [206, 236, 200],
       layers: [
         { sprite: 'bg_serre', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      pickups: { data: 'pickup_chart' },
+      indoor: true,
+      pickups: { data: 'pickup_plant', page: 'pickup_chart' },
+      passant: PASSANT('horti', 3, 3),   // serre -> tenue d'horticulteur
     },
     map: [
-      '                                                                                                                    ',
-      '                                                  P                                                                 ',
-      '                                                xxxx                                                                ',
-      '                              o             ----          o            d                                           ',
-      '                  o       ----        ----         d            ----          d        o            xxx            ',
-      '       d      ----                p          V            ----          p            ----      c                    ',
-      '   d      ----      d     V             J          A             V    d        J          p         k               ',
-      '                                                         xx                                                         ',
-      '  @    ^   A   J     J     A    d    J    V     p    J    A    d    J    V    p    J    A    J    d     A        B  *',
+      '',
+      '                                                                       P',
+      '',
+      '                         d                         o                                     d',
+      '             o          ---          p            ---                         M         ---          o',
+      '            ---                     ---                                                             ---',
+      '',
+      '                                                                       L',
+      '   @      N      W       M      J       N      U       d      W       J      M       p      U       J         B   * ',
       '====================================================================================================================',
-      '====================================================================================================================',
+      ''
     ],
   },
 
-  // --- CHAPITRE 3 : RStudio — LABORATOIRE (interieur paillasses/ordis) ------
-  //  Collectible 'd' = HISTOGRAMMES (pickup_barchart). Decor INTERIEUR :
-  //  ambiance froide, bandeau bg_labo. Exemple de theme avec variantes de
-  //  tuiles/monstres ('...2' pris si le PNG existe, sinon retour au defaut).
+  // --- CHAPITRE 3 : Michael le directeur — LABORATOIRE (interieur) ----------
+  //  Redaction des publis + analyse des resultats. Decor INTERIEUR froid,
+  //  bandeau bg_labo + ETAGERES a livres a la place des panneaux ('-'/'x' = cap
+  //  tile_shelf_books, pied shelf_leg). Monstres : recharge fontaine 'F',
+  //  livreur d'eau 'G', abeille 'E', cafard 'K', imprimante 'I', random labo
+  //  'N'. Pickups 'd'=data, 'p'=sheets.
   niveau4: {
-    boss: 'rstudio',
+    boss: 'michael',
     theme: {
       sky: [170, 184, 200],
       tint: [200, 212, 230],
       layers: [
         { sprite: 'bg_labo', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      tiles:   { '=': ['tile_soil', 'tile_soil2'], '-': ['tile_panel', 'tile_panel2'], 'x': ['tile_panel', 'tile_panel2'] }, // obstacles multi-variantes
-      enemies: { criquet: ['enemy_criquet', 'enemy_criquet2'], camion: ['enemy_camion', 'enemy_camion2'] },                 // monstres multi-variantes
-      pickups: { data: 'pickup_barchart' },
+      tiles: { '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
+      panelLeg: 'shelf_leg',
+      indoor: true,
+      pickups: { data: 'pickup_data', page: 'pickup_sheet' },
+      passant: PASSANT('labo', 3, 3),    // labo -> blouse blanche
     },
     map: [
-      '                                                                                                                              ',
-      '                                                        P                                                                     ',
-      '                                                      xxxx                                                                    ',
-      '                            o              o      ----        o          d         o                                          ',
-      '                o       ----        ----      d        ----        d          ----       d        o            xxx           ',
-      '      d     ----    d       p    V       J        R         p   V        J         R   p       ----     c                     ',
-      '  d     ----    V       A      d     T      A    d     R     V    d    A     T    d     V    A     d   k     d                 ',
-      '                                                              xx                                                              ',
-      ' @   ^  A  T   J   A   R   d  V  J   A   T   d   R   J   A   V   d   T   J   A   R   d   V   J   A   T   d   R   A      B     * ',
+      '',
+      '                                                                                     P',
+      '                                                                ---       ---       ----',
+      '                         d                       o            --',
+      '             o          ---          p          ---                   E          E',
+      '            ---                     ---                    --',
+      '',
+      '                                                     Y  --',
+      '   @      N       F      G       E       K      I       N       d      G       E      K       p       I      K          B   * ',
       '==============================================================================================================================',
-      '==============================================================================================================================',
+      ''
     ],
   },
 
-  // --- CONCLUSION : Cendrine — COULOIRS DE L'UNIVERSITE (interieur) ---------
-  //  Le niveau le PLUS DUR des 5 (densite max). Collectible 'd' = FEUILLES
-  //  (pickup_sheet). Decor INTERIEUR : beige/creme institutionnel, bandeau
-  //  bg_couloir, tint neutre.
+  // --- CONCLUSION : Cendrine la responsable — UNIVERSITE (couloirs) ---------
+  //  Redaction de la these + demarches administratives. Le niveau le PLUS DUR
+  //  des 5 (densite max). Decor INTERIEUR beige institutionnel, bandeau
+  //  bg_couloir + ETAGERES a livres a la place des panneaux. Monstres : tas de
+  //  dossiers 'D', coursier 'C', moustique 'M', cafard 'K', imprimante 'I',
+  //  random admin 'N'. Pickups 'd'=pages, 'p'=data.
   niveau5: {
     boss: 'cendrine',
     theme: {
@@ -167,27 +231,36 @@ window.LEVELS = {
       layers: [
         { sprite: 'bg_couloir', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      pickups: { data: 'pickup_sheet' },
+      tiles: { '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
+      panelLeg: 'shelf_leg',
+      indoor: true,
+      pickups: { data: 'pickup_page', page: 'pickup_data' },
+      passant: PASSANT('bureau', 3, 3),  // couloirs/admin -> tenue de bureau
     },
     map: [
-      '                                                                                                                                      ',
-      '                                                            P                                                                         ',
-      '                                                          xxxx                                                                        ',
-      '                          o          o            o   ----        o          o          d        o                                   ',
-      '              o      ----      ----       d   ----       d   ----      d  ----      d ----     d      o              xxx              ',
-      '     d    ----   d     p   V      J    R      p    A    V    p    J    R     p   V    A     p   J   ----   c                          ',
-      ' d    ----  V    A   d    T   A   d   R   V   J  d   A   T   d   R   V   J  d   A   R   V  d  T   A  d   k    d                         ',
-      '                                                                  xx                                                                  ',
-      '@  ^  A T  J  A R  d V J  A T  R  J  A V  d R  J  A T  d  R  V  J A  R d  V  J  A T  d R  J  A V  d  T  R  A  J  d  A       B        *  ',
+      '',
+      '',
+      '                                                                                        P',
+      '',
+      '',
+      '',
+      '                           d                       o                       p',
+      '               o          ---          p          ---          d          ---',
+      '              ---                     ---                     ---               M',
+      '',
+      '                                                                                        L',
+      '   @      N    D    C     M    K    I    N     M    K    d    C     I    D    M    K    p     I    C    N    M     K    I       B   * ',
       '======================================================================================================================================',
-      '======================================================================================================================================',
+      ''
     ],
   },
 
-  // --- FINAL : Le jury de these (megaboss multi-phases) — nuit dramatique
+  // --- FINAL : Le jury de these (megaboss multi-phases) — ARENE, nuit ---------
+  //  Soumission + soutenance. Le boss n'invoque QUE des randoms (passants de tous
+  //  les biomes, cf. bosses.js jury). Pickups 'd'=pilules, 'p'=champignons.
   jury: {
     boss: 'jury',
-    theme: { sky: [70, 86, 140], tint: [150, 162, 205] },   // nuit : tint sur le decor par defaut
+    theme: { sky: [70, 86, 140], tint: [150, 162, 205], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL, 3, 3) },   // nuit ; randoms de tous les biomes
     map: [
       '                                                            ',
       '                                                            ',
@@ -195,11 +268,11 @@ window.LEVELS = {
       '              ----                    ----                  ',
       '         k              c        d              k           ',
       '                  ----      ----        ----                ',
-      '      d                                            d        ',
+      '      d                                            p        ',
       '                                                            ',
-      '  @         d         c          d          c        B    * ',
+      '  @  ^      d         c          p          c        B    * ',
       '============================================================',
-      '============================================================',
+      ''
     ],
   },
 };
