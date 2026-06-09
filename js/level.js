@@ -108,7 +108,7 @@ window.LEVELS = {
       '          ----              d                    ----              d                            ',
       '     d                            p         ----            p              c                    ',
       '                                               xx                                               ',
-      '   @  ^   N     T      V     N      R     J     d      T     p      V     R      J        B   * ',
+      '   @  N   ^N   TVN R  N  TJVN    N  TNRV    NJT dN V   NRT  NpVJ N T   N  VRN T  JN  V    B   * ',
       '================================================================================================',
       ''
     ],
@@ -143,7 +143,7 @@ window.LEVELS = {
       '            ---                 ---                        --',
       '',
       '                                                     Y  --',
-      '   @      N     S      A     M     N      K     H     d      S     A      M     p     K      H        B   * ',
+      '   @  N       NAM SH   N    MSANHK     MSN  A  HN  SM d  NAKHSM  N      SAMHN   p NS  MA KHN  S  M    B   * ',
       '============================================================================================================',
       ''
     ],
@@ -151,9 +151,9 @@ window.LEVELS = {
 
   // --- CHAPITRE 2 : RStudio — SERRE DE CULTURE (interieur verre) ------------
   //  Manip de precision + recolte de donnees. Decor INTERIEUR : ciel vert pale,
-  //  bandeau bg_serre, PANNEAUX SOLAIRES conserves. Monstres : transpalette 'W',
-  //  moustique 'M', criquet 'J', tuyau d'arrosage 'U', random horti 'N'.
-  //  Pickups 'd'=plants, 'p'=charts.
+  //  bandeau bg_serre, PANNEAUX SOLAIRES conserves. Monstres : recharge fontaine
+  //  'F' (IMMOBILE), transpalette 'W', moustique 'M', criquet 'J', tuyau
+  //  d'arrosage 'U', random horti 'N'. Pickups 'd'=plants, 'p'=charts.
   niveau3: {
     boss: 'rstudio',
     theme: {
@@ -176,7 +176,7 @@ window.LEVELS = {
       '            ---                     ---                                                             ---',
       '',
       '                                                                       L',
-      '   @      N      W       M      J       N      U       d      W       J      M       p      U       J         B   * ',
+      '   @  N       NW FMU  N   F WN U MF  N    WFJUNM   F N dW U FNM     NFWU   NMF    WNUpF   MNJ F W UN   F M    B   * ',
       '====================================================================================================================',
       ''
     ],
@@ -211,7 +211,7 @@ window.LEVELS = {
       '            ---                     ---                    --',
       '',
       '                                                     Y  --',
-      '   @      N       F      G       E       K      I       N       d      G       E      K       p       I      K          B   * ',
+      '   @  N      N G  FEIN     NGF  E   IN F G N  EK FN   GI  NEF   dN G  FI EN    NGF    NEI  F GpN   K FEN  GI  N F  E    B   * ',
       '==============================================================================================================================',
       ''
     ],
@@ -249,7 +249,7 @@ window.LEVELS = {
       '              ---                     ---                     ---               M',
       '',
       '                                                                                        L',
-      '   @      N    D    C     M    K    I    N     M    K    d    C     I    D    M    K    p     I    C    N    M     K    I       B   * ',
+      '   @  N       NCIMD    N   DC MIN   D   CNI M D NK  C  DIdMN    DCNI  M   DN C  I NDM   p CNDI   M  N DCIK  N MD  C NI  D  M    B   * ',
       '======================================================================================================================================',
       ''
     ],
@@ -270,7 +270,7 @@ window.LEVELS = {
       '                  ----      ----        ----                ',
       '      d                                            p        ',
       '                                                            ',
-      '  @  ^      d         c          p          c        B    * ',
+      '  @  N N N^ dNN N  N NcN N N  N NpN N  N N NcN  N    B    * ',
       '============================================================',
       ''
     ],

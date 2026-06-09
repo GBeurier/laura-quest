@@ -386,13 +386,14 @@
         ammoKey: C.player.startAmmo,
         fireCd: 0,
         spellCd: { pleurer: 0, raler: 0 },
-        sun: C.sun.max,
-        score: 0,
+        sun: C.sun.max, sunMax: C.sun.max,    // sunMax FOND a chaque passant tue (cf. registerKill)
+        score: 0, kills: 0,                    // kills = passants abattus (stat de "meurtre")
         data: 0, pages: 0, gotPubli: false,
         catCharges: C.cat.startCharges,
         catCharge: 0, catLock: false,
         shootCharge: 0,
         _sunCharging: false, _sunShaded: false, sunFlash: 0,   // etat de recharge solaire (HUD glow)
+        killFlash: 0,                                          // pulse du compteur tete-de-mort a chaque meurtre
         knockX: 0, knockT: 0,
         equipped: null, _overlay: null,
         _spr: 'hero_idle', _anim: null,
@@ -409,6 +410,7 @@
   }
   function damagePlayer(dmg, srcX) {
     const p = PLAYER;
+    if (!dmg || dmg <= 0) return;            // contact INOFFENSIF (passant) : ni recul, ni perte d'equip, ni shake
     if (p._god || p.invuln > 0 || p.shielded > 0) return;
     knockPlayer(srcX);                     // recul + (l'anim "hurt" se joue via invuln)
     if (p.equipped) {                       // l'equipement encaisse le coup A LA PLACE d'une vie
@@ -762,12 +764,32 @@
     e.hp -= (bullet ? bullet.dmg : 1);
     if (e.hp <= 0) {
       PLAYER.score += e.def.score || 0;
+      if (e.def.persona) registerKill();   // passant inoffensif abattu -> malus d'energie max
       addPoof(e.pos.x, e.pos.y - TS * 0.5);
       destroy(e);
     } else {
       e.hurtT = 0.2;                 // declenche la frame 'hurt' (cf. enemyAnim)
       e.opacity = 0.5;
       wait(0.08, () => { if (e.exists()) e.opacity = 1; });
+    }
+  }
+
+  // PASSANTS = figurants INOFFENSIFS. Les abattre ne rapporte rien et fait
+  //  FONDRE le plafond d'energie (sunMax) de C.sun.killPenalty, jusqu'au
+  //  plancher C.sun.minMax -> plus on tue, moins on peut tirer (la graine elle
+  //  -meme coute un peu). Incite a traverser sans toucher aux passants. Le
+  //  compteur p.kills (stat de "meurtre") s'affiche dans le HUD. Etat par
+  //  niveau : repart du max au niveau suivant (PLAYER recree par scene).
+  function registerKill() {
+    const p = PLAYER; if (!p) return;
+    p.kills = (p.kills || 0) + 1;
+    p.killFlash = 0.6;                       // declenche le pulse du compteur HUD
+    const pen = C.sun.killPenalty || 0;
+    if (pen > 0) {
+      const floor = C.sun.minMax || 0;
+      p.sunMax = Math.max(floor, (p.sunMax != null ? p.sunMax : C.sun.max) - pen);
+      p.sun = Math.min(p.sun, p.sunMax);     // le stock ne depasse jamais le nouveau plafond
+      flashMsg('PASSANT ABATTU  -' + pen + ' ENERGIE MAX');
     }
   }
 
@@ -969,7 +991,7 @@
     if (!it.exists()) return;
     const p = PLAYER;
     switch (it.kind) {
-      case 'sunray': p.sun = Math.min(C.sun.max, p.sun + C.sun.rayGain); break;
+      case 'sunray': p.sun = Math.min(p.sunMax, p.sun + C.sun.rayGain); break;
       case 'cafe':   p.hp = Math.min(p.maxHp, p.hp + (it.def.heal || 1)); break;
       case 'data':   p.data++; break;
       case 'page':   p.pages++; break;
@@ -1326,6 +1348,7 @@
     heart: 56, pickup_data: 64, pickup_page: 64, pickup_publi: 64,
     pickup_croquette: 64, ammo_graine: 52, ammo_riz: 52, ammo_cookie: 30,
     ammo_gateau: 60, cat_run: 112, pickup_sunray: 64, pickup_cafe: 64,
+    skull: 56,
   };
 
   function buildHUD() {
@@ -1399,10 +1422,25 @@
         const bob = full ? Math.sin(t * 4 + i * 0.6) * 1.2 : 0;
         icon('heart', vx + 26 + i * 24, vy + 24 + bob, 21, { frame: full ? 0 : 1, opacity: full ? 1 : 0.28 });
       }
+      // COMPTEUR "TETE DE MORT" (a cote des coeurs) : nb de passants inoffensifs
+      //  abattus. HIERARCHIE : les coeurs (vie) dominent ; le crane est une note
+      //  SECONDAIRE, estompee tant qu'on n'a tue personne ("conscience propre"),
+      //  qui vire au ROUGE et PULSE a chaque meurtre (killFlash). Tradition
+      //  arcade : un petit halo rouge a l'instant du coup.
+      const killed = p.kills > 0;
+      const fk = Math.min(1, (p.killFlash || 0) / 0.6);             // 0..1, "chaud" juste apres un meurtre
+      const skx = vx + 170, sky2 = vy + 24;
+      R(vx + 144, vy + 13, 1.5, 23, { color: COL.ink, opacity: 0.16 });   // fin separateur vie | conscience
+      if (killed && fk > 0) drawCircle({ pos: vec2(skx, sky2), radius: 15 + fk * 9, color: COL.red, opacity: 0.30 * fk });
+      const skBob = killed ? Math.sin(t * 3) * 0.8 : 0;             // leger flottement quand actif
+      icon('skull', skx, sky2 - fk * 3 + skBob, 24 * (1 + 0.34 * fk), { opacity: killed ? 1 : 0.30 });
+      T('x' + p.kills, skx + 17, sky2, killed ? 18 : 15, killed ? COL.red : COL.inkSoft, 'left');
       // jauge soleil = energie = munitions lourdes (avec GLOW de recharge)
       const sy = vy + 47;
       const sbx = vx + 38, sbw = vw - 38 - 16, sbh = 13;
-      const sf = p.sun / C.sun.max;
+      const absMax = C.sun.max || 1;
+      const sf = p.sun / absMax;                                          // remplissage RELATIF a la capacite d'origine
+      const capFrac = Math.max(0, Math.min(1, (p.sunMax != null ? p.sunMax : absMax) / absMax));  // plafond actuel
       const fw = Math.max(sbh, sbw * sf);
       const charging = p._sunCharging || p.sunFlash > 0;
       const pulse = 0.5 + 0.5 * Math.sin(t * 6);
@@ -1425,6 +1463,14 @@
         const bandX = sbx + sweep * fw, bandW = 18;
         const x0 = Math.max(sbx, bandX - bandW / 2), x1 = Math.min(sbx + fw, bandX + bandW / 2);
         if (x1 > x0) R(x0, sy + 1, x1 - x0, sbh - 2, { radius: (sbh - 2) / 2, color: COL.cream, opacity: 0.9 });
+      }
+      // CAPACITE CONDAMNEE par les meurtres : la portion au-dela du plafond
+      //  actuel est verrouillee (zone sombre + trait rouge) -> on VOIT le max
+      //  fondre a chaque passant abattu.
+      if (capFrac < 0.999) {
+        const lx = sbx + sbw * capFrac;
+        R(lx, sy, sbx + sbw - lx, sbh, { radius: sbh / 2, color: COL.redDk, opacity: 0.6 });
+        R(lx - 1, sy - 2, 2, sbh + 4, { color: COL.red });               // marque le plafond restant
       }
       // icone soleil : pulse quand ca recharge, ternie a l'ombre
       const sunPulse = p._sunCharging ? (1 + Math.sin(t * 6) * 0.16) : 1;
@@ -1799,7 +1845,7 @@
       onPlayPress('0', () => { LEVEL.bossesAlive = 0; completeLevel(); });            // finir
       onPlayPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
       onPlayPress('h', () => {                                                        // plein
-        PLAYER.hp = PLAYER.maxHp; PLAYER.sun = C.sun.max;
+        PLAYER.hp = PLAYER.maxHp; PLAYER.kills = 0; PLAYER.sunMax = C.sun.max; PLAYER.sun = C.sun.max;
         PLAYER.catCharges = C.cat.maxCharges; flashMsg('PLEIN !');
       });
     }
@@ -1982,6 +2028,7 @@
       if (p.shielded > 0) { p.shielded -= dt(); p.opacity = 0.85; }
       p.spellCd.pleurer = Math.max(0, p.spellCd.pleurer - dt());
       p.spellCd.raler = Math.max(0, p.spellCd.raler - dt());
+      p.killFlash = Math.max(0, (p.killFlash || 0) - dt());
 
       // RECHARGE SOLAIRE (photosynthese) : la jauge remonte toute seule au
       //  soleil, pas a l'ombre d'un panneau. Le front montant (reprise de
@@ -1990,8 +2037,8 @@
       if (C.sun.enabled) {
         const shaded = inShade(p);
         const rate = shaded ? (C.sun.regenShade || 0) : (C.sun.regen || 0);
-        const charging = (rate > 0 && p.sun < C.sun.max);
-        if (charging) p.sun = Math.min(C.sun.max, p.sun + rate * dt());
+        const charging = (rate > 0 && p.sun < p.sunMax);
+        if (charging) p.sun = Math.min(p.sunMax, p.sun + rate * dt());
         if (charging && !p._sunCharging) p.sunFlash = 0.5;
         p.sunFlash = Math.max(0, (p.sunFlash || 0) - dt());
         p._sunCharging = charging;

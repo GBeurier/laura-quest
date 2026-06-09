@@ -1,13 +1,50 @@
-Monstre avec les tetes des gens
-Fixe Boss: assets, gameplay
-Level design
-Fix Animation laura chat et animation tir
-Intégrer laura victoire dans la page de fin
+- Fixe Boss: assets, gameplay
+- Level design
+- Fix Animation laura chat et animation tir
+- Intégrer laura victoire dans la page de fin
 
-Ajouter des level "hors ecran"
+- Ajouter des level "hors ecran"
 
 
-Le design définitif (y a quelques changements)
+- Ecran victoire avec défilé de tous les persos random (corps random, têtes qui défilent toutes) et animation de laura dans le décor. (je ferais plus tard).
+
+
+
+Bounding box cailloux
+
+
+
+
+
+
+
+
+┌────────────┬──────────────────┬──────────────────┬────────┬─────┬─────┬────────────┐
+│   Level    │     IMMOBILE     │     VEHICULE     │ VOLANT │ TIR │ NPC │ (kept SOL) │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ 1 Camargue │ ^ caillou        │ T                │ V      │ R   │ N   │ J          │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ 2 appart   │ S sac            │ C coursier (new) │ M      │ H   │ N   │ A,K        │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ 3 serre    │ F fontaine (new) │ W                │ M      │ U   │ N   │ J          │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ 4 labo     │ F fontaine       │ G                │ E      │ I   │ N   │ K          │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ 5 univ     │ D dossiers       │ C                │ M      │ I   │ N   │ K          │
+├────────────┼──────────────────┼──────────────────┼────────┼─────┼─────┼────────────┤
+│ jury       │ ^ caillou        │ —                │ —      │ —   │ N   │ —          │
+└────────────┴──────────────────┴──────────────────┴────────┴─────┴─────┴────────────┘
+
+
+
+
+
+
+
+
+
+
+
 
 
 NIVEAU > CONTEXTE: BOSS
@@ -51,6 +88,12 @@ Arene universitaire > Soumission, Soutenance de thèse: Boss Jury de thèse
 Que des randoms body invoqués: random agri, pote, horticulteur, labo, admin (le boss les invoque)
 Pickups: Pilules, Champignons
 
-Ecran victoire avec défilé de tous les persos random (corps random, têtes qui défilent toutes) et animation de laura dans le décor. (je ferais plus tard).
 
+Obstacle Immobile toujours 2 au début et 1 fin (donc 3 mini).
 
+1: 3 2 2 1 4
+2: 3 2 3 2 4
+3: 5 3 3 3 6
+4: 5 4 4 3 7
+5: 7 5 5 5 8
+Final: 3 0 0 0 10

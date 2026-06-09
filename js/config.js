@@ -142,12 +142,13 @@ window.CONFIG = {
   // Armes lancees (4) : 2 familles. graine/pied_riz tout droit, cookie/gateau
   // en cloche. On change d'arme avec MAJ (cf. ammoOrder).
   //  cost = energie consommee par tir (l'energie = la jauge "soleil").
-  //  GRAINE = GRATUITE (cost 0) : arme de base infinie -> on n'est JAMAIS
-  //  bloque. L'energie ne sert qu'aux 3 armes lourdes (riz/cookie/gateau).
+  //  GRAINE = arme de base, cout MINIME (la regen solaire la recharge plus
+  //  vite qu'on ne tire) -> on n'est jamais durablement bloque. Les armes
+  //  lourdes (riz/cookie/gateau) coutent bien plus cher.
   //  traj : 'straight' (tout droit, oriente par HAUT/BAS) ou 'arc' (en cloche).
   //  Deux familles ; dans chaque famille le 2e est plus fort ET plus cher.
   ammoTypes: {
-    graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
+    graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 2,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
     pied_riz: { sprite: 'ammo_riz',    label: 'PIEDS DE RIZ', damage: 2, speed: 520, cost: 14, traj: 'straight', throwSprite: 'hero_throw_rice'   },
     cookie:   { sprite: 'ammo_cookie', label: 'COOKIES',      damage: 2, speed: 540, cost: 10, traj: 'arc',      throwSprite: 'hero_throw_cookie' },
     //  GATEAU = cloche EXPLOSIVE : a l'impact, eclate en AoE (degats a tout ce
@@ -183,9 +184,11 @@ window.CONFIG = {
 
   // --- Jauge "Soleil" = ENERGIE = MUNITIONS lourdes -------------------
   //  Laura EST un panneau solaire : la jauge se RECHARGE toute seule au
-  //  soleil (regen), mais PAS a l'ombre d'un panneau (regenShade). La
-  //  graine etant gratuite, on n'est jamais bloque ; l'energie ne sert
-  //  qu'aux armes lourdes. Les rayons 'o' restent un bonus instantane.
+  //  soleil (regen), mais PAS a l'ombre d'un panneau (regenShade). Tirer
+  //  COUTE de l'energie (un peu pour la graine, beaucoup pour les armes
+  //  lourdes). MEURTRES : abattre un passant inoffensif BAISSE le plafond
+  //  d'energie (sunMax) de killPenalty, jusqu'au plancher minMax -> jouer
+  //  "sans tuer" preserve sa puissance de feu. Les rayons 'o' = bonus instant.
   sun: {
     enabled: true,
     max: 100,
@@ -193,6 +196,11 @@ window.CONFIG = {
     regenShade: 0,        // recharge/s A L'OMBRE sous un panneau ('-'/'x') -> 0 = aucune
     rayGain: 28,          // bonus instantane d'un rayon de soleil ramasse
     bossDropEvery: 9,     // rayons plus RARES pendant un boss (le passif fait le gros)
+    // MEURTRES : chaque passant tue retire killPenalty au plafond d'energie,
+    //  jusqu'a minMax (jamais 0 -> la graine reste tirable). Etat par-niveau
+    //  (repart du max au niveau suivant). cf. registerKill dans game.js.
+    killPenalty: 8,
+    minMax: 20,
   },
 
   // --- Ennemis (modeles) ----------------------------------------------
@@ -233,14 +241,17 @@ window.CONFIG = {
     // minions de boss (reutilisent des sprites existants)
     bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60 },
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120 },
-    // PASSANT = figurant ambiant : un petit monstre qui fait les cent pas.
+    // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
+    //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
+    //  FONDRE le plafond d'energie (cf. sun.killPenalty / registerKill) -> on
+    //  est cense les laisser tranquilles.
     //  persona:true -> spawnEnemy (game.js) compose un CORPS (selon le biome +
     //  un sexe tire au hasard, cf. theme.passant.bodies) + une TETE "South Park"
     //  de face, choisie AU HASARD dans le pool du biome (theme.passant.heads),
     //  montee en ENFANT du corps (elle dodeline, ne se mirroir pas). Pose-le
     //  dans une map avec le caractere 'N' (cf. legende level.js). sprite =
     //  base de secours si le theme ne fournit pas de corps ('body_champ_<sexe>').
-    passant:  { sprite: 'body_champ',     hp: 2,        touchDamage: 1, move: 'patrol', speed: 48,  range: 70, persona: true, anim: 'walk', score: 90 },
+    passant:  { sprite: 'body_champ',     hp: 2,        touchDamage: 0, move: 'patrol', speed: 48,  range: 70, persona: true, anim: 'walk', score: 0 },
   },
 
   // --- Boss (1 IA differente par boss, cf. js/bosses.js) --------------
