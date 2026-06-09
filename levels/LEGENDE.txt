@@ -18,6 +18,8 @@ DECOR / TERRAIN
   x         panneau/etagere CASSABLE (explose apres un saut dessus -> 1 saut)
   ^         caillou (OBSTACLE solide : bloque monstres/camions, 0 degat ;
             Laura saute par-dessus. Un caillou est AUSSI auto-pose a chaque bord.)
+  %         sol piege (clous/acide/tessons selon le biome) : NON solide, on court
+            au travers mais ca pique (degat au contact). Le DASH le traverse safe.
 
 DEPART / SORTIE / BOSS
   @         depart de Laura

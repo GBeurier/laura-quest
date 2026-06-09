@@ -76,6 +76,16 @@ window.BOSS_AI = (() => {
     api.bullet(atX, groundY - 380, { pos: vec2(atX, groundY + 400) }, 320, 'enemy');
   }
 
+  // SPAWN-EN-FACE (dette tech 3) : pose un minion ENTRE le boss et le joueur
+  //  (jamais derriere la camera) + poof de telegraphe. Clampe a l'arene.
+  function spawnEnFace(b, p, api, kind) {
+    const r = b.def.range || 360;
+    let x = (b.pos.x + p.pos.x) / 2;
+    x = Math.max(b.homeX - r, Math.min(b.homeX + r, x));
+    api.poof(x, b.pos.y - api.TS);
+    api.add(kind, x, b.pos.y - api.TS);
+  }
+
   const AI = {};
 
   // --- defaut : tir en eventail + avance lente (filet de securite) -----

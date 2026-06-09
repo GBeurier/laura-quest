@@ -408,6 +408,18 @@
       { dmg: 1 },
     ]);
     b.onCollide('solid', () => destroy(b));
+    // POLISH (dette tech) : rotation + petite trainee -> projectiles moins "plats".
+    let trailT = 0;
+    b.onUpdate(() => {
+      if (b.angle != null) b.angle += 300 * dt();
+      trailT += dt();
+      if (trailT >= 0.06) {
+        trailT = 0;
+        add([circle(4), pos(b.pos.x, b.pos.y), anchor('center'),
+          color(kind === 'boss' ? rgb(255, 150, 90) : rgb(240, 238, 230)),
+          opacity(0.45), z(-0.2), lifespan(0.18, { fade: 0.18 }), 'fx']);
+      }
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -745,7 +757,11 @@
       rotate(0),
       z(1),                  // au-dessus du corps (meme parent)
       'passanthead',
-      { t: (e.phase || 0), baseY: off[1] },
+      // deadDrop/deadScale : transfo appliquee par corpsify quand le corps s'affale
+      //  (tete plus basse + plus petite, cf. CONFIG.theme.passant.deadHead*).
+      { t: (e.phase || 0), baseY: off[1],
+        deadDrop: (pcfg.deadHeadDrop != null ? pcfg.deadHeadDrop : 0),
+        deadScale: (pcfg.deadHeadScale != null ? pcfg.deadHeadScale : 1) },
     ]);
     playIfAnim(h, name);
     h.onUpdate(() => {
@@ -927,7 +943,10 @@
     const h = e.head;                          // tete vivante -> tete zombie
     if (h && h.exists()) {
       h.dead = true;
-      h.pos.y = h.baseY;
+      // Corps affale : on DESCEND la tete (deadDrop) pour qu'elle touche le corps
+      //  et on la RETRECIT (deadScale) pour suivre la perspective du cadavre.
+      h.pos.y = h.baseY + (h.deadDrop || 0);
+      if (h.deadScale && h.deadScale !== 1) h.scale = h.scale.scale(h.deadScale);
       h.angle = rand(-8, 8);                    // petit tilt aleatoire : les cadavres ne sont pas tous parfaitement droits
       const dn = (e.passantHead || '') + '_dead';
       if (hasSprite(dn)) { try { h.stop(); } catch (_) {} h.use(sprite(dn)); }
@@ -965,6 +984,35 @@
     });
   }
 
+  // BOMBE QUI TOMBE (dette tech 2) : remplace l'ancien skyHazard "bullet plate".
+  //  Un vrai projectile descend pendant le telegraphe (ombre qui grandit), puis
+  //  EXPLOSE au sol (addBoom + shake + degat de zone si Laura est dessous). Le
+  //  DASH / saut permet d'esquiver. sprName = sprite de bombe (fallback cercle).
+  function dropBomb(atX, groundY, delay, sprName) {
+    const d = delay || 0.6;
+    addImpactMarker(atX, groundY, d);
+    const startY = groundY - 360;
+    const spr = (sprName && hasSprite(sprName)) ? sprName : 'shot_bomb';
+    const useSpr = hasSprite(spr);
+    const bomb = add([
+      ...(useSpr ? [sprite(spr), artScale()] : [circle(12), color(26, 22, 24), outline(3, rgb(255, 150, 70))]),
+      pos(atX, startY), anchor('center'), z(10),
+      offscreen({ distance: 600, destroy: true }), 'fx', { t: 0 },
+    ]);
+    if (useSpr) playIfAnim(bomb, spr);
+    bomb.onUpdate(() => {
+      bomb.t += dt();
+      bomb.pos.y = startY + (groundY - startY) * Math.min(1, bomb.t / d);
+      if (bomb.angle != null) bomb.angle += 240 * dt();
+      if (bomb.t >= d) {
+        const bx = bomb.pos.x; destroy(bomb);
+        addBoom(bx, groundY); safeShake(8);
+        const p = PLAYER;
+        if (p && p.exists() && Math.abs(p.pos.x - bx) < TS * 1.1 && p.pos.y > groundY - TS * 2.2) damagePlayer(2, bx);
+      }
+    });
+  }
+
   // ---------------------------------------------------------------------
   //  BOSS (IA deportee dans js/bosses.js)
   // ---------------------------------------------------------------------
@@ -975,6 +1023,12 @@
     shake: safeShake,
     poof: addPoof,
     marker: addImpactMarker,
+    dropBomb: dropBomb,                       // bombe qui tombe + explose (dette tech 2)
+    hazard: (atX, groundY, dur, delay) => {   // tampon-piege au sol temporaire (Cendrine / jury)
+      const dl = delay || 0;
+      if (dl > 0) addImpactMarker(atX, groundY, dl);
+      wait(dl, () => { const h = spawnHazard(atX, groundY); if (h && dur) h.use(lifespan(dur, { fade: 0.3 })); });
+    },
   };
 
   function spawnBoss(key, x, y) {
