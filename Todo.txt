@@ -2,7 +2,6 @@
 - Level design
 - Fix Animation laura chat et animation tir
 - Intégrer laura victoire dans la page de fin
-
 - Ajouter des level "hors ecran"
 
 
@@ -10,10 +9,11 @@
 
 
 
-Bounding box cailloux
+Bounding box cailloux et trop gros
+NPC disparaissent quand on revient
 
-
-
+NPC doivent être derriere en Z ORDER
+Criquets marchent à l'envers et sont trop gros ou de taille variable. Complètement stuck derriere RStudio et manquand dans le niveau 1
 
 
 
@@ -97,3 +97,60 @@ Obstacle Immobile toujours 2 au début et 1 fin (donc 3 mini).
 4: 5 4 4 3 7
 5: 7 5 5 5 8
 Final: 3 0 0 0 10
+
+
+
+BOSSES FIXES:
+
+lvl 1: Agriculteur Fou
+- Tiles qui out of box
+- Pas d'anim de déplacement,
+- missiles vraiment vilains
+- animation bombe lachée: missible pourri, et animation sol pourrie > à revoir
+- Les panneaux solaires à coté doivent être solide pour tirer en cloche en étant en sécurité
+
+> Principe: rafales de missiles + drop bomb
+> Solution: Tirer en cloche depuis les panneau solaires en évitant les bombes
+
+
+lvl 2: Proprio
+- Animation complètement foireuse. Refaire complètement en forcant la taille des tiles
+- Tremblement de terre inutile >>> Peut être n'apparait qu'autour du boss et fait des dégats
+- on doit pouvoir se baisser en dessous du tir du milieu
+- Projectile pas top reskinner
+
+> Principe: triple missile ultra rapide alterné avec tremblement de terre.  (petit trensmblement pour prévenir puis gros pour dégats)
+> Solution: Se baisse pour éviter les missiles, saute pour eviter les tremblements de terres
+
+
+lvl 3: RStudio
+- Skin on voit pas assez RStudio, il faut voir le logo, refaire
+- Tir de près inutile
+
+> Principe: triple missile visé et super rapide + invocation petits cafard en vague très fragile. Toutes petites plateformes à coté
+> Solution: Movement et tir alterné entre hauteur et sol (A doser pour rendre la rencontre intéressante)
+
+
+lvl 4: Directeur Michael
+- La tete doit ressembler à la photo de référence: _bossgen/_michael.png
+- Gameplay incompréhensible, il lance des missiles dans le sol  
+
+> Principe: peut être des bombes en papiers ou je sais pas. A repenser entièrement
+
+lvl 5: Directrice école doctorale
+- Animation super approximative surtout le teleport, l'effet est nul
+- Bombes idem lvl 1:
+- missiles vraiment vilains
+- animation bombe lachée: missible pourri, et animation sol pourrie > à revoir
+- spawn de monstre pas bon (comme précédemment) parce qu'ils spawn derriere (boss de fin aussi)
+
+> Principe: Boss qui se téléporte à coté et explose, et lache des "huissiers" (ca c'est pas top)
+> Solution: mouvements et reflexes
+
+
+lvl 6: Jury de thèse
+
+Ici j'aime bien le bureau avec le jury mais j'aimerai quelque chose de plus. En gros par exemple ca commence au bureau, puis ensuite les boss 1 par 1 ou un truc du genre.
+Je veux encore un autre gameplay qui oblige à bouger bien. (voir utiliser le dash)
+
+
