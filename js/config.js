@@ -73,8 +73,13 @@ window.CONFIG = {
     //  - heads  : tetes "South Park" de face, par sexe ; UNE choisie AU HASARD
     //             par exemplaire au moment du spawn (a la creation du niveau).
     //  - femaleRatio : proba de tirer un corps/tete 'f' (0..1).
-    //  - sizeScale / headSizes : taille visuelle du passant selon la tete tiree.
-    //  - headScale   : taille relative de la tete par rapport au corps.
+    //  - sizeScale / headSizes : 4 tailles de passant. headSizes range chaque
+    //             tete (= chaque personne) dans une categorie ; sizeScale donne
+    //             le facteur applique. ATTENTION : SEUL LE CORPS change de taille
+    //             -> la TETE garde toujours la meme taille (les grands/petits ont
+    //             juste un corps plus/moins grand, cf. attachHead qui compense le
+    //             scale du parent). C'est voulu : pas de grosse tete sur grand corps.
+    //  - headScale   : taille de la tete (constante, independante de la taille du corps).
     //  - headLocal   : position de la tete dans le repere du CORPS (px @ART,
     //             ancre tete = 'bot' -> c'est le point du COU ; la tete pousse
     //             vers le haut). headBob = amplitude du dodelinement (px ecran),

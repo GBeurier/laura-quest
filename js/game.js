@@ -168,6 +168,7 @@
   let SLOT = 0;         // index du slot courant
   let CUR_IDX = 0;      // index du niveau dans C.levels
   let ENEMY_SEQ = 0;    // compteur d'ennemis -> ecart/phase perso (anti-agglutination)
+  let HEAD_DECKS = {};  // pioche de tetes de passants par sexe, SANS REMISE (cf. pickHead) ; reset par niveau
   const TS = C.tileSize;
   // --- Cadrage vertical : on descend tout le monde de CAM_DROP px (cf.
   //  C.groundDrop) -> sol plus bas, plus de ciel. GROUND_ROWS = epaisseur de
@@ -552,7 +553,7 @@
     const psex = isPersona
       ? (rand(0, 1) < (pcfg.femaleRatio != null ? pcfg.femaleRatio : 0.5) ? 'f' : 'h')
       : null;
-    const phead = isPersona ? pickHead(pcfg.heads && pcfg.heads[psex]) : null;
+    const phead = isPersona ? pickHead(pcfg.heads && pcfg.heads[psex], psex) : null;
     const psize = isPersona ? passantSize(phead, pcfg) : { key: 'moyen', scale: 1 };
     const sname = isPersona
       ? pickSkin(pcfg.bodies && pcfg.bodies[psex], def.sprite + '_' + psex)
@@ -605,10 +606,25 @@
   //  detruite avec le corps automatiquement, et NON mirroir quand le corps se
   //  retourne (flipX = drapeau de DESSIN, pas une transfo) -> la tete reste
   //  toujours de face. Elle dodeline (bob vertical + leger balancement au cou).
-  function pickHead(pool) {
+  //  TIRAGE SANS REMISE : pour ne jamais avoir 2 passants identiques, on tire
+  //  les tetes dans une pioche melangee (Fisher-Yates) propre a chaque sexe ;
+  //  on epuise toute la liste avant de remelanger et reboucler. Les pioches
+  //  sont remises a zero a chaque niveau (buildLevel).
+  function pickHead(pool, key) {
     const ok = (pool || []).filter(hasSprite);
     if (!ok.length) return null;
-    return ok.length > 1 ? ok[Math.floor(rand(0, ok.length))] : ok[0];
+    if (ok.length === 1) return ok[0];
+    const k = key || 'all';
+    let deck = HEAD_DECKS[k];
+    if (!deck || !deck.length) {
+      deck = ok.slice();
+      for (let i = deck.length - 1; i > 0; i--) {   // Fisher-Yates (rand du moteur)
+        const j = Math.floor(rand(0, i + 1));
+        const tmp = deck[i]; deck[i] = deck[j]; deck[j] = tmp;
+      }
+      HEAD_DECKS[k] = deck;
+    }
+    return deck.pop();
   }
 
   function passantSize(headName, pcfg) {
@@ -632,11 +648,17 @@
   function attachHead(e, pcfg, sex, headName) {
     const name = headName || pickHead(pcfg.heads && pcfg.heads[sex]);
     if (!name) return null;                        // pas de tete dispo -> corps seul (OK)
-    // headLocal reste dans le repere du corps : le scale du parent l'adapte aux
-    //  quatre tailles de NPC, et headScale ajuste seulement la taille de la tete.
+    // TAILLE DE TETE CONSTANTE : seul le CORPS change de taille selon le NPC
+    //  (4 tailles, cf. passantSize / sizeScale). La tete etant un ENFANT du corps,
+    //  elle herite du scale du parent ; on le COMPENSE (/ parentScale) pour que la
+    //  tete fasse toujours la meme taille (petit/grand = meme tete, corps different).
+    //  La POSITION du cou (`off`) reste, elle, dans le repere du corps -> elle suit
+    //  l'echelle du corps (corps plus grand => tete posee plus haut). headScale
+    //  ajuste seulement la taille de la tete.
+    const parentScale = (e && e.passantScale) || 1;
     const off = pcfg.headLocal || [0, -90];        // point du COU (repere corps, px @ART)
-    const headScale = (pcfg.headScale != null ? pcfg.headScale : 1);
-    const amp = (pcfg.headBob != null ? pcfg.headBob : 4) * ART;   // bob (px ecran -> px @ART)
+    const headScale = (pcfg.headScale != null ? pcfg.headScale : 1) / parentScale;
+    const amp = ((pcfg.headBob != null ? pcfg.headBob : 4) * ART) / parentScale;   // bob (px ecran -> px @ART, compense le scale du corps)
     const rotA = (pcfg.headRot != null ? pcfg.headRot : 3);
     const h = e.add([
       sprite(name),
@@ -1185,6 +1207,7 @@
   // ---------------------------------------------------------------------
   function buildLevel(def) {
     ENEMY_SEQ = 0;
+    HEAD_DECKS = {};   // nouveau niveau -> nouvelles pioches de tetes (sans remise)
     let cols = 0;
     const rows = def.map;
     rows.forEach((r) => { cols = Math.max(cols, r.length); });
@@ -2528,29 +2551,57 @@
       [210, 150, 235], [255, 180, 210], [140, 222, 232], [240, 232, 170],
       [255, 170, 110], [186, 196, 255], [120, 210, 180], [236, 150, 150],
     ];
+    // DECK de collegues : chaque TETE du pool = une personne (un visage). On
+    //  defile la liste ENTIERE (melangee) avant que quiconque repasse -> jamais
+    //  de tirage au hasard avec remise, donc jamais 2 fois le meme a l'ecran.
+    //  Quand le deck est vide, on le reconstruit + remelange (boucle infinie).
+    const buildDeck = () => {
+      const all = []
+        .concat(((pc.heads && pc.heads.f) || []).map((head) => ({ sex: 'f', head })))
+        .concat(((pc.heads && pc.heads.h) || []).map((head) => ({ sex: 'h', head })))
+        .filter((c) => hasSprite(c.head));
+      for (let i = all.length - 1; i > 0; i--) {   // Fisher-Yates (rand du moteur)
+        const j = Math.floor(rand(0, i + 1));
+        const tmp = all[i]; all[i] = all[j]; all[j] = tmp;
+      }
+      return all;
+    };
+    let deck = [];
     let clapSeq = 0;
     const spawnClapper = () => {
-      const sex = rand(0, 1) < (pc.femaleRatio != null ? pc.femaleRatio : 0.5) ? 'f' : 'h';
+      if (!deck.length) deck = buildDeck();
+      if (!deck.length) return;                    // aucune tete dispo -> rien a defiler
+      // Au raccord (remelange), evite quand meme un doublon avec ceux DEJA a
+      //  l'ecran : on prend la 1ere carte dont la tete n'est pas visible.
+      const onScreen = new Set(get('parade').map((p) => p.head));
+      let idx = deck.findIndex((c) => !onScreen.has(c.head));
+      if (idx < 0) idx = 0;
+      const card = deck.splice(idx, 1)[0];
+      const sex = card.sex;
+      const headName = card.head;
       const bodyName = hasSprite('body_clap_' + sex) ? 'body_clap_' + sex
         : ((pc.bodies && pc.bodies[sex] && pc.bodies[sex][0]) || ('body_champ_' + sex));
       if (!hasSprite(bodyName)) return;
-      // TAILLE = celle des passants ingame (sizeScale tire selon la tete).
-      const headName = pickHead(pc.heads && pc.heads[sex]);
-      const vs = passantSize(headName, pc).scale;
+      // TAILLE = celle des passants ingame (sizeScale tire selon la tete) ; seul
+      //  le CORPS grandit, la tete reste constante (attachHead lit passantScale).
+      //  Les 2 plus grands (tresGrand) : un peu plus grands que l'ingame pour
+      //  qu'ils depassent bien de la foule (cortege uniquement).
+      const ps = passantSize(headName, pc);
+      const vs = ps.key === 'tresGrand' ? ps.scale * 1.1 : ps.scale;
       const tint = CLAP_TINTS[(clapSeq++) % CLAP_TINTS.length];
       const e = add([
         sprite(bodyName), artScale(vs),
-        pos(C.width + rand(20, 90), 528), anchor('bot'), z(2),
+        pos(C.width + rand(20, 90), 528), anchor('bot'), z(20),
         color(tint[0], tint[1], tint[2]),
-        'parade', { phase: rand(0, Math.PI * 2), spd: rand(64, 104) },
+        'parade', { phase: rand(0, Math.PI * 2), spd: rand(64, 104), passantScale: vs, head: headName },
       ]);
       try { e.play('clap'); } catch (er) { playIfAnim(e, bodyName); }
       e.onUpdate(() => { e.pos.x -= e.spd * dt(); if (e.pos.x < -90) destroy(e); });
       // tete : MEME attache que l'ingame (attachHead -> meme stitch du cou,
-      //  meme headLocal/headScale/dodelinement) ; on remonte juste son z au-
-      //  dessus du corps (z2) pour le rendu de premier plan du cortege.
+      //  meme headLocal/headScale/dodelinement). Le cortege passe DEVANT tout
+      //  (plaque/pastilles/texte/consigne, z<=8) -> corps z20, tete z21.
       const h = attachHead(e, pc, sex, headName);
-      if (h) h.use(z(3));
+      if (h) h.use(z(21));
       return e;
     };
     const parade = add([pos(0, 0), { t: 0, acc: PARADE_GAP }]);
