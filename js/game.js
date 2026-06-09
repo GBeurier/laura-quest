@@ -18,7 +18,7 @@
     height: C.height,
     background: C.background,
     global: true,
-    crisp: false,
+    crisp: true,            // nearest-neighbour: keep the pixel-art boss sheets crisp
     touchToMouse: true,
     pixelDensity: (C.art && C.art.pixelDensity) || 1,
   });
@@ -148,6 +148,14 @@
   let CUR_IDX = 0;      // index du niveau dans C.levels
   let ENEMY_SEQ = 0;    // compteur d'ennemis -> ecart/phase perso (anti-agglutination)
   const TS = C.tileSize;
+  // --- Cadrage vertical : on descend tout le monde de CAM_DROP px (cf.
+  //  C.groundDrop) -> sol plus bas, plus de ciel. GROUND_ROWS = epaisseur de
+  //  sol des maps (rangees '=').
+  const GROUND_ROWS = 2;
+  const CAM_DROP = C.groundDrop != null ? C.groundDrop : 0;
+  // Y ECRAN de la surface du sol (= ligne d'horizon) apres ce decalage. Les
+  //  bandes parallax 'ground' s'ancrent ici pour monter depuis le sol visible.
+  const HORIZON_Y = (C.height - GROUND_ROWS * TS) + CAM_DROP;
   // Pente de l'ombre projetee par les panneaux (soleil rasant) : decalage
   //  horizontal vers la DROITE par pixel de profondeur sous le panneau.
   //  Partagee par le visuel (cone) ET par inShade() -> les deux restent alignes.
@@ -176,13 +184,33 @@
   // ---------------------------------------------------------------------
   //  PROJECTILES
   // ---------------------------------------------------------------------
+  //  Laura est-elle en train de VISER une cloche ? (arme 'arc' + maintien du tir,
+  //  sans equipement). Pendant ce temps HAUT/BAS reglent l'angle (pas saut/accroupi)
+  //  et la fleche de visee s'affiche (cf. aimGuide dans la scene 'game').
+  function aimingLob(p) {
+    if (!p || p.equipped) return false;
+    const a = C.ammoTypes[p.ammoKey];
+    return !!(a && a.traj === 'arc' && keysDown(C.controls.shoot));
+  }
+
+  // Vitesse de lancer d'une cloche pour une puissance pw (0..1) et l'angle vise
+  //  courant de Laura. Sert AU TIR et a l'apercu de trajectoire (meme physique).
+  function arcLaunch(p, pw) {
+    const fx = p.facing >= 0 ? 1 : -1;
+    const ammo = C.ammoTypes[p.ammoKey];
+    const mul = C.shot.arcMin + (C.shot.arcMax - C.shot.arcMin) * pw;
+    const ang = ((p.aimAngle != null) ? p.aimAngle : C.shot.aimDefault) * Math.PI / 180;
+    const spd = ammo.speed * mul;
+    return { vx: Math.cos(ang) * spd * fx, vy: -Math.sin(ang) * spd };
+  }
+
   function playerShoot(power) {
     const p = PLAYER;
     const ammo = C.ammoTypes[p.ammoKey];
     const sname = hasSprite(ammo.sprite) ? ammo.sprite : 'ammo_graine';   // garde-fou si PNG absent
     const fx = p.facing >= 0 ? 1 : -1;
-    const aimY = keysDown(C.controls.aimUp) ? -1 : (keysDown(C.controls.aimDown) ? 1 : 0);
     const traj = ammo.traj || 'straight';
+    const aoe = ammo.aoe || null;
     const pw = (power == null) ? 1 : Math.max(0, Math.min(1, power));   // charge 0..1 (cloche)
     const b = add([
       sprite(sname), artScale(),
@@ -190,27 +218,66 @@
       anchor('center'), area(),
       offscreen({ distance: 220, destroy: true }),
       'pbullet',
-      { dmg: ammo.damage, vx: 0, vy: 0, traj },
+      { dmg: ammo.damage, vx: 0, vy: 0, traj, aoe },
     ]);
     playIfAnim(b, sname);
-    if (traj === 'arc') {                       // en cloche : charge -> plus rapide -> plus loin
-      const mul = C.shot.arcMin + (C.shot.arcMax - C.shot.arcMin) * pw;
-      b.vx = fx * ammo.speed * 0.62 * mul;
-      b.vy = -ammo.speed * (aimY < 0 ? 0.95 : (aimY > 0 ? 0.42 : 0.7)) * mul;
-    } else {                                    // tout droit, oriente par HAUT/BAS
-      const d = vec2(fx, aimY).unit();
-      b.vx = d.x * ammo.speed; b.vy = d.y * ammo.speed;
+    if (traj === 'arc') {                       // en cloche : charge -> portee, HAUT/BAS -> angle
+      const v = arcLaunch(p, pw);
+      b.vx = v.vx; b.vy = v.vy;
+    } else {                                    // tout droit, horizontal
+      b.vx = fx * ammo.speed; b.vy = 0;
     }
     b.onUpdate(() => {
       if (b.traj === 'arc') b.vy += C.shot.arcGravity * dt();
       b.pos.x += b.vx * dt(); b.pos.y += b.vy * dt();
       if (b.pos.y > LEVEL.height + 100) destroy(b);
     });
-    b.onCollide('enemy', (e) => hitEnemy(e, b));
-    b.onCollide('boss', (e) => hitBoss(e, b));
-    b.onCollide('solid', () => destroy(b));
+    if (aoe) {                                  // GATEAU : eclate en AoE a l'impact
+      const boom = () => { if (!b.exists()) return; const bx = b.pos.x, by = b.pos.y; destroy(b); explodeAoe(bx, by, aoe.radius, aoe.damage || ammo.damage); };
+      b.onCollide('enemy', boom);
+      b.onCollide('boss', boom);
+      b.onCollide('solid', boom);
+    } else {
+      b.onCollide('enemy', (e) => hitEnemy(e, b));
+      b.onCollide('boss', (e) => hitBoss(e, b));
+      b.onCollide('solid', () => destroy(b));
+    }
     p.throwT = 0.26;   // = cadence de tir : la pose de lancer tient pendant la rafale
     sfx('shoot');
+  }
+
+  // Explosion de zone (gateau) : onde + miettes + degats a tout dans le rayon.
+  function explodeAoe(x, y, radius, dmg) {
+    addBoom(x, y);
+    safeShake(11);
+    sfx('spell');
+    const c = vec2(x, y);
+    get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
+    get('boss').forEach((bo) => { if (bo.exists() && bo.pos.dist(c) < radius) hitBoss(bo, { dmg }); });
+    get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });   // nettoie les tirs ennemis pris dans le souffle
+  }
+
+  // FX d'explosion : flash + onde de choc qui s'etend + eclats chauds (miettes).
+  function addBoom(x, y) {
+    add([circle(26), pos(x, y), anchor('center'), color(255, 250, 230), opacity(0.85), z(46), lifespan(0.12, { fade: 0.1 }), 'fx']);  // flash
+    const ring = add([circle(10), pos(x, y), anchor('center'), color(255, 236, 180), opacity(0.55), z(45), 'fx', { t: 0 }]);          // onde
+    ring.onUpdate(() => {
+      ring.t += dt();
+      ring.radius = 10 + ring.t * 280;
+      ring.opacity = Math.max(0, 0.55 - ring.t * 1.7);
+      if (ring.opacity <= 0) destroy(ring);
+    });
+    const cols = [[255, 196, 58], [255, 150, 70], [214, 120, 60], [120, 80, 40]];   // miettes : doree -> caramel -> croute
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + rand(-0.2, 0.2);
+      const cc = cols[i % cols.length];
+      add([
+        circle(rand(2.5, 5)), color(cc[0], cc[1], cc[2]), opacity(1),
+        pos(x, y), anchor('center'),
+        move(vec2(Math.cos(a), Math.sin(a)), rand(160, 320)),
+        lifespan(rand(0.3, 0.55), { fade: 0.25 }), 'fx',
+      ]);
+    }
   }
 
   // PROJECTILE du boss courant : son def.shot (sprite themE). Pose par spawnBoss.
@@ -256,6 +323,7 @@
       {
         hp: C.player.maxHp, maxHp: C.player.maxHp,
         facing: 1, invuln: 0, shielded: 0, throwT: 0, catOutT: 0, catInT: 0,
+        aimAngle: C.shot.aimDefault, aiming: false,   // angle de la cloche (deg) regle par HAUT/BAS
         jumpsLeft: C.player.maxJumps,
         ammoKey: C.player.startAmmo,
         fireCd: 0,
@@ -383,18 +451,27 @@
     const sname = pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
     const comps = [
       sprite(sname),
-      artScale(),
+      artScale(def.scale),
       pos(x, y),
       anchor('bot'),
       // collisionIgnore 'enemy' -> les monstres ne se bloquent/poussent jamais
       //  entre eux (ils se traversent), mais collisionnent toujours le sol.
       area({ scale: vec2(0.85, 0.9), collisionIgnore: ['enemy'] }),
+      // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
+      //  collision : la grille saute les objets pauses). Seuls les monstres a
+      //  l'ecran consomment du CPU -> un niveau large ne ralentit plus.
+      //  distance = marge pour qu'ils se "reveillent" avant d'entrer dans le
+      //  cadre (> max aggro/2 : ~720px du centre cam, couvre aggro 700).
+      offscreen({ hide: true, pause: true, distance: TS * 5 }),
       'enemy', kind,
       {
         kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: y, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
-        // ecart/phase perso : les suiveurs s'etalent autour du joueur au lieu
-        //  de s'empiler, et patrouillent en se balancant (cf. enemyBehavior).
-        gap: TS * (0.55 + (ENEMY_SEQ % 4) * 0.5),
+        // ANTI-EMPILEMENT : decalage perso (cote alterne + distance croissante,
+        //  cycle de 8) -> chaque monstre patrouille autour d'un point DECALE du
+        //  joueur au lieu de converger sur sa colonne. Mieux pour le jeu (ils
+        //  encerclent au lieu de fusionner en un tas) ET pour le CPU (ils
+        //  tombent dans des cellules de collision distinctes -> pas de O(k2)).
+        standoff: ((ENEMY_SEQ % 2) ? 1 : -1) * TS * (0.6 + (Math.floor(ENEMY_SEQ / 2) % 4) * 0.6),
         phase: (ENEMY_SEQ++ * 1.7) % (Math.PI * 2),
         _patrolling: false, _patrolCenter: x,
       },
@@ -433,7 +510,7 @@
           //  on patrouille sous lui (meme s'il est sur un panneau) sans jamais
           //  se garer pile dessous. L'ecart perso (gap) etale les exemplaires.
           e._patrolling = false;
-          patrolSweep(e, p.pos.x, e.def.range + (e.gap - TS * 0.55));
+          patrolSweep(e, p.pos.x + e.standoff, e.def.range);
         } else {                                            // patrouille locale autour du point d'arret
           if (!e._patrolling) { e._patrolCenter = e.pos.x; e._patrolling = true; }
           patrolSweep(e, e._patrolCenter, e.def.range);
@@ -444,7 +521,7 @@
       case 'chase': {
         e.t += dt();
         if (Math.abs(toP) < e.def.aggro) {   // patrouille en aller-retour sous le joueur
-          patrolSweep(e, p.pos.x, (e.def.range || TS * 2.4) + (e.gap - TS * 0.55));
+          patrolSweep(e, p.pos.x + e.standoff, e.def.range || TS * 2.4);
         }
         e.flipX = e.dir > 0;
         break;
@@ -463,7 +540,7 @@
         e.move(e.dir * e.def.speed, 0);
         if (Math.abs(e.pos.x - e.homeX) > e.def.range) e.dir *= -1;
         e.pos.y = e.homeY + Math.sin(e.t * 3) * (e.def.amp || 30);
-        e.flipX = e.dir > 0;
+        e.flipX = e.dir < 0;          // sprite par defaut face a droite -> on ne mirror que vers la gauche
         break;
       }
       case 'jump': {                // criquet : bondit vers le joueur
@@ -531,7 +608,7 @@
     const aname = (def.attackSprite && hasSprite(def.attackSprite)) ? variant(def.attackSprite) : null;
     const b = add([
       sprite(sname),
-      artScale(),
+      artScale(def.scale || 1),    // jury (def.scale) rend plus gros (megaboss a 3 membres) ; autres = 1x
       pos(x, y),
       anchor('bot'),
       area({ scale: vec2(0.8, 0.92) }),
@@ -601,7 +678,8 @@
     if (get('cat').length) return;            // un seul chat a la fois
     if (p.catCharges <= 0) { flashMsg(C.story.catEmpty); return; }
     p.catCharges--;
-    p.catOutT = 0.45;                          // Laura pose le chat au sol devant elle (anim de depart)
+    // Laura reste figee sur la pose "chat lance" (sac vide) et immobile tant que le
+    //  chat est dehors : gere dans PLAYER.onUpdate via get('cat') (jusqu'au retour).
     const dir = p.facing >= 0 ? 1 : -1;
     const startX = p.pos.x + dir * (C.cat.spawnAhead || 42);  // pose au sol, juste devant Laura
     const cat = add([
@@ -739,6 +817,7 @@
   // ---------------------------------------------------------------------
   function castPleurer() {
     const p = PLAYER, sp = C.spells.pleurer;
+    if (p.equipped) return;                 // velo/rollers : on ne peut QUE se deplacer
     if (p.spellCd.pleurer > 0) return;
     p.spellCd.pleurer = sp.cooldown;
     for (let i = 0; i < 12; i++) {
@@ -761,6 +840,7 @@
 
   function castRaler() {
     const p = PLAYER, sp = C.spells.raler;
+    if (p.equipped) return;                 // velo/rollers : on ne peut QUE se deplacer
     if (p.spellCd.raler > 0) return;
     p.spellCd.raler = sp.cooldown;
     p.shielded = sp.duration;
@@ -806,7 +886,7 @@
     const z0  = spec.z != null ? spec.z : -20;
     const op  = spec.opacity != null ? spec.opacity : 1;
     const anc = spec.anchor || 'bot';
-    const y   = (spec.y == null || spec.y === 'ground') ? C.height : spec.y;
+    const y   = (spec.y == null || spec.y === 'ground') ? HORIZON_Y : spec.y;
     const sc  = (spec.scale || 1) / ART;
     const tw0 = spec.tileW || 320;
     const count = Math.ceil(C.width / tw0) + 2;
@@ -951,13 +1031,18 @@
       if (ch === '-' || ch === 'x') { tr = r; break; }     // panneau le plus haut de la colonne
     }
     if (tr < 0) return;
-    const x0 = c * TS, x1 = x0 + TS, yTop = (tr + 1) * TS;
+    const x0 = c * TS, yTop = (tr + 1) * TS;
     if (yBot - yTop <= 0) return;
     const dx = (yBot - yTop) * SHADE_SLOPE;                 // decalage horizontal au sol
-    reg[c].push(add([pos(0, 0), polygon([                   // parallelogramme penche
-      vec2(x0, yTop), vec2(x1, yTop), vec2(x1 + dx, yBot), vec2(x0 + dx, yBot),
-    ]), color(44, 62, 108), opacity(0.16), z(-0.5), 'shade', { col: c }]));
-    reg[c].push(add([rect(TS, 7), pos(x0, yTop), color(26, 36, 70), opacity(0.13), z(-0.5), 'shade', { col: c }])); // contact
+    // PERF : ombre ancree a SA colonne (pos x0) + points RELATIFS -> offscreen()
+    //  peut la cacher hors-cadre (sinon toutes les ombres se redessinent chaque
+    //  frame). Cam fixe en Y -> culling en X seul. Marge = TS + dx : couvre le
+    //  penche vers la droite pour ne jamais couper une ombre encore visible.
+    const sMargin = TS + dx;
+    reg[c].push(add([pos(x0, 0), polygon([                  // parallelogramme penche
+      vec2(0, yTop), vec2(TS, yTop), vec2(TS + dx, yBot), vec2(dx, yBot),
+    ]), color(44, 62, 108), opacity(0.16), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }]));
+    reg[c].push(add([rect(TS, 7), pos(x0, yTop), color(26, 36, 70), opacity(0.13), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }])); // contact
   }
 
   // Laura est-elle A L'OMBRE PROJETEE d'un panneau ? Le soleil est rasant :
@@ -1234,7 +1319,7 @@
     if (!PLAYER) { add([text('Pas de @ dans la map !', { size: 24 }), pos(40, 40)]); return; }
 
     const hud = buildHUD();
-    const camY = Math.min(LEVEL.height, C.height) / 2;
+    const camY = Math.min(LEVEL.height, C.height) / 2 - CAM_DROP;
 
     // jauges de charge (suivent Laura, visibles seulement pendant la charge)
     const catBarBg = add([rect(48, 8, { radius: 4 }), pos(0, -999), anchor('center'), color(40, 40, 50), opacity(0), z(60)]);
@@ -1242,8 +1327,73 @@
     const shotBarBg = add([rect(48, 8, { radius: 4 }), pos(0, -999), anchor('center'), color(40, 40, 50), opacity(0), z(60)]);
     const shotBar = add([rect(44, 4, { radius: 2 }), pos(0, -999), anchor('left'), color(255, 170, 60), opacity(0), z(61)]);
 
+    // --- FLECHE DE VISEE (cloches) : trainee de miettes + reticule d'impact -----
+    //  Apercu de la VRAIE parabole (meme physique que le projectile), peint en
+    //  repere MONDE (objet non-fixed). Visible tant que Laura charge une cloche
+    //  (HAUT/BAS reglent l'angle). Le reticule montre ou ca retombe -> la cloche
+    //  devient enfin controlable. Palette creme/or/encre du jeu.
+    const aimGuide = add([pos(0, 0), z(56)]);
+    aimGuide.onDraw(() => {
+      const p = PLAYER;
+      if (!p || !p.exists() || !p.aiming) return;
+      const fx = p.facing >= 0 ? 1 : -1;
+      const pw = Math.min(1, p.shootCharge / C.shot.chargeTime);      // puissance courante (0..1)
+      const v = arcLaunch(p, pw);
+      const g = C.shot.arcGravity;
+      const sx = p.pos.x + fx * 22, sy = p.pos.y - TS * 0.6;          // depart = spawn du projectile
+      const dy = p.pos.y - sy;                                        // chute jusqu'au niveau des pieds
+      const tLand = (-v.vy + Math.sqrt(v.vy * v.vy + 2 * g * dy)) / g;
+      const tn = time();
+      const warm = () => rgb(255, Math.round(150 + 95 * pw), Math.round(40 + 150 * pw));   // ambre -> creme dore
+      const INKC = rgb(60, 40, 26);
+      // 1) trainee de miettes le long de la parabole (echantillonnee en temps)
+      const N = 13;
+      for (let i = 1; i <= N; i++) {
+        const f = i / (N + 1), t = f * tLand;
+        const x = sx + v.vx * t, y = sy + v.vy * t + 0.5 * g * t * t;
+        const shimmer = 0.55 + 0.45 * Math.sin(tn * 7 - i * 0.7);     // lumiere qui "coule" vers la cible
+        const op = Math.max(0, (0.85 - f * 0.5) * shimmer);
+        const r = 3.2 - f * 1.0;
+        drawCircle({ pos: vec2(x, y), radius: r + 1, color: INKC, opacity: op * 0.5 });
+        drawCircle({ pos: vec2(x, y), radius: r, color: warm(), opacity: op });
+      }
+      // 2) reticule au point d'impact predit
+      const lx = sx + v.vx * tLand, ly = p.pos.y;
+      const pulse = 1 + Math.sin(tn * 6) * 0.12, R = 11 * pulse;
+      drawCircle({ pos: vec2(lx, ly), radius: R, fill: false, outline: { width: 3, color: INKC }, opacity: 0.85 });
+      drawCircle({ pos: vec2(lx, ly), radius: R, fill: false, outline: { width: 1.5, color: warm() } });
+      drawCircle({ pos: vec2(lx, ly), radius: 2.4, color: warm() });
+      for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2 + tn * 0.8;
+        drawCircle({ pos: vec2(lx + Math.cos(a) * R, ly + Math.sin(a) * R), radius: 1.6, color: INKC, opacity: 0.8 });
+      }
+      // 3) pointe de fleche pixel au depart, orientee vers le lancer, pulsation
+      const head = Math.atan2(v.vy, v.vx);
+      const len = (16 + 11 * pw) * (1 + Math.sin(tn * 8) * 0.05);
+      const wdt = 9 + 3 * pw;
+      const bx = sx + Math.cos(head) * 12, by = sy + Math.sin(head) * 12;
+      const tip = vec2(bx + Math.cos(head) * len, by + Math.sin(head) * len);
+      const nx = Math.cos(head + Math.PI / 2), ny = Math.sin(head + Math.PI / 2);
+      const q1 = tip, q2 = vec2(bx + nx * wdt, by + ny * wdt), q3 = vec2(bx - nx * wdt, by - ny * wdt);
+      drawTriangle({ p1: q1, p2: q2, p3: q3, color: INKC });          // bord sombre (style pixel)
+      const cx = (q1.x + q2.x + q3.x) / 3, cy = (q1.y + q2.y + q3.y) / 3, ins = 0.66;
+      drawTriangle({
+        p1: vec2(cx + (q1.x - cx) * ins, cy + (q1.y - cy) * ins),
+        p2: vec2(cx + (q2.x - cx) * ins, cy + (q2.y - cy) * ins),
+        p3: vec2(cx + (q3.x - cx) * ins, cy + (q3.y - cy) * ins),
+        color: warm(),
+      });
+      // 4) anneau de pleine charge (pret a partir au max de portee)
+      if (pw >= 0.999) {
+        const gr = 13 + Math.sin(tn * 8) * 3;
+        drawCircle({ pos: vec2(sx, sy), radius: gr, fill: false, outline: { width: 2, color: rgb(255, 240, 190) }, opacity: 0.5 });
+      }
+    });
+
     onKeys(C.controls.jump, () => {
       const p = PLAYER;
+      if (aimingLob(p)) return;                            // HAUT sert a VISER la cloche, pas a sauter
+      if (p.catCharge > 0 || get('cat').length) return;   // immobile pendant la charge / chat dehors
       const eq = p.equipped && C.equipment && C.equipment[p.equipped];
       const jf = C.player.jumpForce * ((eq && eq.jumpMul) || 1);   // rollers/velo : saute plus haut
       if (p.isGrounded()) { p.jump(jf); p.jumpsLeft = C.player.maxJumps - 1; sfx('jump'); }
@@ -1310,9 +1460,20 @@
       let moving = false;
       const eqv = p.equipped && C.equipment && C.equipment[p.equipped];
       const spd = C.player.speed * ((eqv && eqv.speedMul) || 1);   // rollers = plus rapide
-      const crouching = p.isGrounded() && keysDown(C.controls.crouch);   // accroupi (au sol)
+      const aiming = aimingLob(p);                                 // vise une cloche : HAUT/BAS reglent l'angle
+      p.aiming = aiming;
+      if (aiming) {                                                // incline la cloche pendant la charge
+        if (keysDown(C.controls.aimUp))   p.aimAngle = Math.min(C.shot.aimMax, p.aimAngle + C.shot.aimSpeed * dt());
+        if (keysDown(C.controls.aimDown)) p.aimAngle = Math.max(C.shot.aimMin, p.aimAngle - C.shot.aimSpeed * dt());
+      }
+      const crouching = p.isGrounded() && keysDown(C.controls.crouch) && !aiming;   // accroupi (au sol ; BAS sert a viser pendant la charge)
+      // CHAT : Laura est IMMOBILE pendant la charge ET tant que le chat n'est pas
+      //  revenu (il faut etre immobile pour le lancer, on ne bouge pas pendant la charge).
+      const catOut = get('cat').length > 0;
+      const catCharging = keysDown(C.controls.cat) && p.catCharges > 0 && !catOut && !p.catLock && !eqv;
+      const catBusy = catOut || catCharging;
       if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }       // recul : pas de controle
-      else if (!crouching) {
+      else if (!crouching && !catBusy) {
         if (keysDown(C.controls.left)) { p.move(-spd, 0); p.facing = -1; moving = true; }
         if (keysDown(C.controls.right)) { p.move(spd, 0); p.facing = 1; moving = true; }
       }
@@ -1323,7 +1484,9 @@
       const ammoNow = C.ammoTypes[p.ammoKey];
       const cost = ammoNow.cost || 0;
       p.fireCd -= dt();
-      if (ammoNow.traj === 'arc') {
+      if (eqv) {                                        // velo/rollers : on ne peut QUE se deplacer
+        p.shootCharge = 0;
+      } else if (ammoNow.traj === 'arc') {
         if (keysDown(C.controls.shoot)) {
           p.shootCharge = Math.min(C.shot.chargeTime, p.shootCharge + dt());
         } else if (p.shootCharge > 0) {                 // relache -> on lance
@@ -1345,7 +1508,7 @@
       }
 
       // CHAT : se charge en MAINTENANT la touche (anti-spam), part une fois plein
-      const canCat = p.catCharges > 0 && !get('cat').length;
+      const canCat = p.catCharges > 0 && !get('cat').length && !eqv;
       if (canCat && keysDown(C.controls.cat) && !p.catLock) {
         p.catCharge += dt();
         if (p.catCharge >= C.cat.chargeTime) { deployCat(); p.catCharge = 0; p.catLock = true; }
@@ -1383,7 +1546,7 @@
         : Math.max(0, (p.duckProg || 0) - dt() / dUp);
       const duckSpr = p.isGrounded() && p.duckProg > 0 && hasSprite('hero_duck');
       if (p.catInT > 0) { p.catInT -= dt(); heroAnim(p, 'hero_cat_in', 'cat'); }
-      else if (p.catOutT > 0) { p.catOutT -= dt(); heroAnim(p, 'hero_cat_out', 'cat'); }
+      else if (catOut) { heroAnim(p, 'hero_cat_out', 'cat'); }   // figee, sac vide, jusqu'au retour
       else if (p.throwT > 0) {
         p.throwT -= dt();
         const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
@@ -1518,29 +1681,44 @@
     setCam(C.width / 2, C.height / 2);
     if (hasSprite('bg_save')) add([sprite('bg_save', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(120, 196, 232), z(-10)]);
-    bigText(C.story.slots, 60, 36, [42, 29, 24]);
-    bigText('Fleches choisir   ESPACE valider   E effacer', C.height - 40, 16, [40, 40, 60]);
-    if (!SAVEAPI.persistent) bigText('(sauvegarde non persistante en file:// : sers via http pour garder)', C.height - 16, 12, [120, 40, 40]);
+    // Les cadres (bandeau + 3 panneaux) sont PEINTS dans bg_save : on ne dessine
+    // plus de rectangles, on cale juste le texte dedans. Coords mesurees sur l'image.
+    const PANEL_CX = [223, 480, 736];   // centre X des 3 panneaux peints
+    const PANEL_TOP = 146;              // bord interieur haut (creme)
+    const PANEL_CY = 282;               // centre vertical du panneau
+
+    // --- titre cale dans le bandeau peint du haut ----------------------
+    add([text(C.story.slots, { size: 27, align: 'center', width: 440 }), pos(481, 61), anchor('center'), color(74, 44, 24), z(6)]);
+
+    // --- bandeau d'aide en bas (pastille sombre pour lisibilite sur l'herbe) ---
+    add([rect(652, 46, { radius: 14 }), pos(480, C.height - 26), anchor('center'), color(28, 18, 12), opacity(0.42), z(3)]);
+    add([text('Fleches : choisir     ESPACE : valider     E : effacer', { size: 15, align: 'center' }), pos(480, C.height - 33), anchor('center'), color(255, 244, 222), z(6)]);
+    if (!SAVEAPI.persistent) add([text('(sauvegarde non persistante en file:// : sers via http pour garder)', { size: 11, align: 'center' }), pos(480, C.height - 14), anchor('center'), color(255, 200, 178), z(6)]);
 
     let cur = 0;
-    const cardW = 270, cardH = 280, gap = 20;
-    const totalW = 3 * cardW + 2 * gap;
-    const x0 = (C.width - totalW) / 2;
     const cards = [];
+    let selGlow = null, selArrow = null;
 
     function render() {
       cards.forEach((c) => c.forEach((o) => destroy(o)));
       cards.length = 0;
+      selGlow = null; selArrow = null;
       const data = SAVEAPI.list();
       for (let i = 0; i < 3; i++) {
-        const x = x0 + i * (cardW + gap), y = 120;
+        const cx = PANEL_CX[i];
         const sel = i === cur;
         const objs = [];
-        objs.push(add([rect(cardW, cardH, { radius: 14 }), pos(x, y), color(255, 255, 255), opacity(sel ? 1 : 0.8), outline(sel ? 6 : 3, rgb(226, 59, 80)), z(5)]));
-        objs.push(add([text('SLOT ' + String.fromCharCode(65 + i), { size: 24 }), pos(x + cardW / 2, y + 28), anchor('center'), color(42, 29, 24), z(6)]));
+        if (sel) {
+          // selection : halo dore pulsant sur le panneau + fleche dodelinante
+          selGlow = add([rect(208, 262, { radius: 14 }), pos(cx, PANEL_CY), anchor('center'), color(255, 206, 96), opacity(0.16), z(4)]);
+          selArrow = add([polygon([vec2(-10, 0), vec2(10, 0), vec2(0, 13)]), pos(cx, PANEL_TOP - 22), anchor('center'), color(231, 74, 60), outline(3, rgb(120, 32, 26)), z(6)]);
+          objs.push(selGlow, selArrow);
+        }
+        const hc = sel ? [201, 44, 54] : [120, 78, 54];
+        objs.push(add([text('SLOT ' + String.fromCharCode(65 + i), { size: 23 }), pos(cx, PANEL_TOP + 26), anchor('center'), color(hc[0], hc[1], hc[2]), z(6)]));
         const d = data[i];
         if (!d) {
-          objs.push(add([text('Nouvelle\npartie', { size: 22, align: 'center' }), pos(x + cardW / 2, y + 140), anchor('center'), color(90, 100, 120), z(6)]));
+          objs.push(add([text('Nouvelle\npartie', { size: 21, align: 'center', lineSpacing: 4 }), pos(cx, PANEL_CY + 8), anchor('center'), color(122, 96, 70), opacity(sel ? 1 : 0.7), z(6)]));
         } else {
           const chap = d.levelsDone.filter(Boolean).length;
           const pub = d.publis.filter(Boolean).length;
@@ -1553,12 +1731,19 @@
             'Complete : ' + comp + '%',
             'Best : ' + d.bestScore,
           ];
-          objs.push(add([text(lines.join('\n'), { size: 17, align: 'center', lineSpacing: 6 }), pos(x + cardW / 2, y + 150), anchor('center'), color(42, 29, 24), z(6)]));
+          objs.push(add([text(lines.join('\n'), { size: 16, align: 'center', lineSpacing: 6 }), pos(cx, PANEL_CY + 16), anchor('center'), color(58, 38, 26), opacity(sel ? 1 : 0.72), z(6)]));
         }
         cards.push(objs);
       }
     }
     render();
+
+    let t = 0;
+    onUpdate(() => {
+      t += dt();
+      if (selGlow) selGlow.opacity = 0.12 + 0.12 * (0.5 + 0.5 * Math.sin(t * 5));
+      if (selArrow) selArrow.pos.y = (PANEL_TOP - 22) + Math.sin(t * 6) * 3;
+    });
 
     const pick = () => {
       SLOT = cur;
@@ -1576,50 +1761,127 @@
   scene('overworld', () => {
     if (!SAVE) { go('title'); return; }
     setCam(C.width / 2, C.height / 2);
-    // fond de carte (placeholder bg_map) + nuages/soleil par dessus
+
+    // --- palette + helpers (carte-tresor) ------------------------------
+    const INK = [52, 32, 20];          // brun encre (contours)
+    const GOLD = [255, 206, 71];
+    const CREAM = [255, 244, 219];
+    const RED = [226, 74, 60];
+    // texte a contour 8-directions : lisible par-dessus la carte chargee
+    function inkText(str, x, y, size, fill, opts) {
+      opts = opts || {};
+      const ow = opts.outline == null ? 2 : opts.outline;
+      const zz = opts.z == null ? 6 : opts.z;
+      const mk = (dx, dy, c, zi) => add([
+        text(str, { size, align: 'center', width: opts.width }),
+        pos(x + dx, y + dy), anchor('center'), color(c[0], c[1], c[2]), z(zi),
+      ]);
+      if (opts.shadow) mk(0, ow + 2, [16, 10, 6], zz - 1).use(opacity(0.4));
+      if (ow > 0) for (let a = 0; a < 8; a++)
+        mk(Math.round(Math.cos(a * Math.PI / 4) * ow), Math.round(Math.sin(a * Math.PI / 4) * ow), opts.ink || INK, zz);
+      return mk(0, 0, fill, zz + 1);
+    }
+    const pill = (x, y, w, h, col, op, r, zz) => add([
+      rect(w, h, { radius: r == null ? h / 2 : r }), pos(x, y), anchor('center'),
+      color(col[0], col[1], col[2]), opacity(op == null ? 1 : op), z(zz == null ? 4 : zz),
+    ]);
+    const starPts = (R, r) => {
+      const p = [];
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, rr = (i % 2) ? r : R;
+        p.push(vec2(Math.cos(a) * rr, Math.sin(a) * rr));
+      }
+      return p;
+    };
+
+    // --- fond de carte (vue de dessus) ---------------------------------
     if (hasSprite('bg_map')) add([sprite('bg_map'), pos(0, 0), anchor('topleft'), artScale(1), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(143, 208, 240), z(-10)]);
-    [[140, 80], [470, 110], [760, 70], [900, 120]].forEach(([cx, cy]) => add([sprite('bg_cloud'), artScale(), pos(cx, cy), anchor('center'), z(-4)]));
-    add([sprite('sun_goal'), artScale(0.7), pos(70, 80), anchor('center'), z(-4)]);
+    // cadre facon vieille carte (dessine en outline-only, au-dessus de tout)
+    add([pos(0, 0), z(7), {
+      draw() {
+        drawRect({ pos: vec2(7, 7), width: C.width - 14, height: C.height - 14, radius: 12, fill: false, outline: { width: 6, color: rgb(52, 32, 20) } });
+        drawRect({ pos: vec2(13, 13), width: C.width - 26, height: C.height - 26, radius: 8, fill: false, outline: { width: 2, color: rgb(255, 244, 219) }, opacity: 0.6 });
+      },
+    }]);
 
     const nodes = C.world.nodes;
-    // chemin reliant les noeuds
-    for (let i = 0; i < nodes.length - 1; i++) {
-      const a = nodes[i], b = nodes[i + 1];
-      const steps = 8;
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        add([circle(4), pos(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t), anchor('center'), color(255, 255, 255), opacity(0.7), z(1)]);
-      }
-    }
-    // noeuds
+
+    // --- chemin : route en terre lissee (Catmull-Rom) reliant les noeuds ---
+    const cr = (p0, p1, p2, p3, t) => {
+      const t2 = t * t, t3 = t2 * t;
+      return vec2(
+        0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+      );
+    };
+    const pts = nodes.map((n) => vec2(n.x, n.y));
+    const at = (i) => pts[Math.max(0, Math.min(pts.length - 1, i))];
+    const path = [];
+    const SEG = 24;
+    for (let i = 0; i < pts.length - 1; i++)
+      for (let s = 0; s < SEG; s++) path.push(cr(at(i - 1), at(i), at(i + 1), at(i + 2), s / SEG));
+    path.push(pts[pts.length - 1]);
+    add([pos(0, 0), z(0.6), {
+      draw() {
+        for (const p of path) drawCircle({ pos: p, radius: 13, color: rgb(60, 40, 26) });   // liseré
+        for (const p of path) drawCircle({ pos: p, radius: 9, color: rgb(214, 180, 126) });  // terre
+        let acc = 0;
+        for (let i = 1; i < path.length; i++) {
+          acc += path[i].dist(path[i - 1]);
+          if (acc >= 24) { acc = 0; drawCircle({ pos: path[i], radius: 3, color: rgb(255, 246, 224) }); } // pointillés
+        }
+      },
+    }]);
+
+    // --- noeuds : medaillons stylises ----------------------------------
     nodes.forEach((n, i) => {
+      const isJury = i === nodes.length - 1;
       const unlocked = i <= SAVE.unlockedMax;
       const done = (i < SAVEAPI.N_LEVELS) ? SAVE.levelsDone[i] : SAVE.juryDone;
-      const col = !unlocked ? rgb(120, 130, 140) : (done ? rgb(92, 191, 74) : rgb(226, 59, 80));
-      add([circle(20), pos(n.x, n.y), anchor('center'), color(col.r, col.g, col.b), outline(4, rgb(42, 29, 24)), z(2)]);
-      add([text(n.label, { size: 13 }), pos(n.x, n.y - 34), anchor('center'), color(42, 29, 24), z(3)]);
-      add([text(n.boss, { size: 11 }), pos(n.x, n.y + 30), anchor('center'), color(40, 40, 60), z(3)]);
-      if (done) add([text('*', { size: 22 }), pos(n.x, n.y - 2), anchor('center'), color(255, 255, 255), z(3)]);
+      const R = isJury ? 25 : 21;
+      const disc = !unlocked ? [110, 122, 134] : done ? [92, 191, 74] : (isJury ? GOLD : RED);
+      add([circle(R), pos(n.x, n.y + 7), anchor('center'), color(16, 10, 6), opacity(0.26), z(1.4)]);            // ombre portee
+      add([circle(R), pos(n.x, n.y), anchor('center'), color(disc[0], disc[1], disc[2]), outline(4, rgb(INK[0], INK[1], INK[2])), z(2)]); // disque
+      add([circle(R * 0.4), pos(n.x - R * 0.28, n.y - R * 0.34), anchor('center'), color(255, 255, 255), opacity(0.3), z(2.1)]);          // reflet
+      // icone centrale : etoile (fini ou jury debloque) sinon numero / cadenas
+      if (done || (isJury && unlocked)) {
+        add([polygon(starPts(R * 0.55, R * 0.24)), pos(n.x, n.y), anchor('center'), color(255, 255, 255), outline(2, rgb(INK[0], INK[1], INK[2])), z(2.3)]);
+      } else if (unlocked) {
+        inkText(String(i + 1), n.x, n.y + 1, 18, CREAM, { outline: 2.5, z: 2.2 });
+      } else {
+        inkText('?', n.x, n.y + 1, 18, [225, 232, 238], { outline: 0, z: 2.2 });
+      }
+      // banniere du chapitre (au-dessus)
+      const lw = Math.max(48, n.label.length * 9 + 18);
+      pill(n.x, n.y - R - 16, lw, 21, INK, 0.92, 10, 3);
+      add([text(n.label, { size: 13, align: 'center' }), pos(n.x, n.y - R - 16), anchor('center'), color(CREAM[0], CREAM[1], CREAM[2]), z(3.1)]);
+      // nom du boss (sous le noeud) — masque si verrouille
+      inkText(unlocked ? n.boss : '? ? ?', n.x, n.y + R + 12, 11, unlocked ? [255, 236, 206] : [210, 216, 222], { outline: 2, z: 3 });
     });
 
-    bigText('CARTE - ' + SAVEAPI.completion(SAVE) + '% complete', 30, 24, [42, 29, 24]);
-    bigText(C.story.overworld, C.height - 28, 16, [40, 40, 60]);
+    // --- bandeaux titre + aide -----------------------------------------
+    pill(C.width / 2, 28, 376, 36, [40, 26, 16], 0.66, 18, 6);
+    inkText('CARTE  -  ' + SAVEAPI.completion(SAVE) + '% complete', C.width / 2, 28, 22, GOLD, { outline: 3, shadow: true, z: 7 });
+    pill(C.width / 2, C.height - 24, 540, 34, [26, 18, 12], 0.62, 17, 6);
+    inkText(C.story.overworld, C.width / 2, C.height - 24, 16, CREAM, { outline: 2, z: 7 });
 
-    // Laura sur la carte (se deplace vers le noeud selectionne)
+    // --- Laura sur la carte (se deplace vers le noeud selectionne) ------
     let cur = Math.min(SAVE.cursor, SAVE.unlockedMax);
+    const ringR = (i) => (i === nodes.length - 1 ? 25 : 21) + 8;
+    const cursorRing = add([circle(ringR(cur)), pos(nodes[cur].x, nodes[cur].y), anchor('center'), color(GOLD[0], GOLD[1], GOLD[2]), outline(3, rgb(120, 78, 20)), opacity(0.85), z(1.6), { t: 0 }]);
+    cursorRing.onUpdate(() => { cursorRing.t += dt(); cursorRing.scale = vec2(1 + Math.sin(cursorRing.t * 3.2) * 0.09); });
     const laura = add([sprite('hero_idle'), pos(nodes[cur].x, nodes[cur].y - 24), anchor('bot'), artScale(0.9), z(10)]);
     laura._spr = 'hero_idle'; laura._anim = null;
-    const cursorRing = add([circle(26), pos(nodes[cur].x, nodes[cur].y), anchor('center'), outline(4, rgb(255, 210, 63)), opacity(0.9), z(1), { t: 0 }]);
-    cursorRing.onUpdate(() => { cursorRing.t += dt(); cursorRing.scale = vec2(1 + Math.sin(cursorRing.t * 3) * 0.08); });
 
     laura.onUpdate(() => {
-      const tx = nodes[cur].x, ty = nodes[cur].y - 24;
+      const tx = nodes[cur].x, ty = nodes[cur].y - 26;
       const dx = tx - laura.pos.x;
       if (Math.abs(dx) > 3) { laura.pos.x += Math.sign(dx) * Math.min(Math.abs(dx), 220 * dt()); laura.flipX = dx < 0; setAnim(laura, 'hero_run', 'run'); }
       else { laura.pos.x = tx; setAnim(laura, 'hero_idle', 'idle'); }
       laura.pos.y += (ty - laura.pos.y) * Math.min(1, 6 * dt());
       cursorRing.pos = vec2(nodes[cur].x, nodes[cur].y);
+      cursorRing.radius = ringR(cur);
     });
 
     const move = (d) => { const n = cur + d; if (n >= 0 && n <= SAVE.unlockedMax && n < nodes.length) { cur = n; SAVE.cursor = cur; persist(); } };

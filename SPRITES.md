@@ -50,19 +50,22 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 | `cat_run` | Chat angora | 6 | 56×40 | 112×80 | run (18) | bot | → |
 | `enemy_corbeau` | Corbeau (vole) | 2 | 52×44 | 104×88 | fly (8) | bot | → |
 | `enemy_criquet` | Criquet (bondit) | 2 | 44×40 | 88×80 | hop (6) | bot | → |
-| `boss_*_move` (6) | Boss — **déplacement** | 4 | 124×140 | 248×280 | idle 0–2 (loop) / hurt 3 | bot | ← |
-| `boss_*_atk` (6) | Boss — **attaque** | 4 | 124×140 | 248×280 | attack 0–3 (loop) | bot | ← |
+| `boss_*_move` (6) | Boss — **déplacement** | 6 | 124×140 | 248×280 (feuille 1488×280) | idle 0–4 (loop) / hurt 5 | bot | ← |
+| `boss_*_atk` (6) | Boss — **attaque** | 6 | 124×140 | 248×280 (feuille 1488×280) | attack 0–5 (loop) | bot | ← |
 
 > **Deux feuilles par boss** (`boss_proprietaire`, `boss_agriculteur`, `boss_michael`,
 > `boss_rstudio`, `boss_cendrine`, `boss_jury`) :
-> - `boss_X_move` = DÉPLACEMENT : frames 0-1-2 = cycle de marche (anim `idle`), frame 3 = touché (`hurt`).
-> - `boss_X_atk` = ATTAQUE : frames 0→3 = charge → frappe → retour (anim `attack`).
+> - `boss_X_move` = DÉPLACEMENT : 6 frames, 0→4 = cycle d'idle/menace (anim `idle`), frame 5 = touché (`hurt`).
+> - `boss_X_atk` = ATTAQUE : 6 frames, 0→5 = charge → frappe → retour (anim `attack`).
 >
 > `game.js` bascule sur la feuille `_atk` **uniquement** quand l'IA pose `animWant = 'attack'`
 > (cf. `bossAnim` / `js/bosses.js`) ; sinon il reste sur `_move`. Si une feuille `_atk`
 > manque, le boss reste sur `_move` (pas de crash). Les boss sont dessinés **tournés à
 > gauche** (le jeu les retourne via `flipX`) → l'attaque s'étend vers la gauche.
-> Placeholders générés par `python3 tools/gen_boss_sheets.py` (puis `gen_assets_data.py`).
+> Sprites **pixel-art** générés par l'IA (Codex `image_gen`) puis recoupés en grille par
+> `_bossgen/` (cf. `_bossgen/regrid.py`) ; le jury (`boss_jury_*`) est un panel de **3
+> chercheurs** rendu plus grand (`CONFIG.bosses.jury.scale`). Réembarquer : `gen_assets_data.py`.
+> (L'ancien générateur de placeholders `tools/gen_boss_sheets.py` est obsolète : il produisait 4 frames.)
 
 ### Placeholders animés — objets, munitions, ennemis « fixes », FX, décor
 
@@ -217,8 +220,8 @@ direction opposée (pas de contrôle pendant ~0,2 s) et joue l'anim **`hurt`** d
 | `cat_run` | 6 | run |
 | `enemy_corbeau` / `enemy_criquet` | 2 | fly / hop |
 | `enemy_caillou/camion/assureur/ademe` | 2 | idle |
-| `boss_*_move` (6) | 4 | idle(0-2) / hurt(3) — DÉPLACEMENT |
-| `boss_*_atk` (6) | 4 | attack(0-3) — ATTAQUE |
+| `boss_*_move` (6) | 6 | idle(0-4) / hurt(5) — DÉPLACEMENT |
+| `boss_*_atk` (6) | 6 | attack(0-5) — ATTAQUE |
 | `pickup_*` (8) · `sun_goal` · `ammo_*` (4) | 4 | idle / spin |
 | `fx_grumble` | 3 | idle |
 | `heart` | 2 | idle |

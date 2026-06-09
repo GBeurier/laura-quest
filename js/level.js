@@ -48,7 +48,7 @@
  * ===================================================================== */
 window.LEVELS = {
 
-  // --- CH.1 : Le proprietaire terrien — RIZIERES DE CAMARGUE, plein jour
+  // --- INTRODUCTION : Le proprietaire terrien — RIZIERES DE CAMARGUE, plein jour
   //  Le niveau le PLUS FACILE : densite d'ennemis allegee, beaucoup d'air.
   //  Collectible 'd' = GRAINES (pickup_graine). Ciel bleu clair lumineux,
   //  tint chaude/verte de Camargue (decor parallax par defaut).
@@ -74,7 +74,7 @@ window.LEVELS = {
     ],
   },
 
-  // --- CH.2 : L'agriculteur fou — RIZIERES EN PLEIN CHAMP -------------
+  // --- CHAPITRE 1 : L'agriculteur fou — RIZIERES EN PLEIN CHAMP -------------
   //  Collectible 'd' = PLANS DE RIZ (pickup_plant). Meme base parallax que
   //  niveau1, tint plus doree/verte pour varier (midi au champ).
   niveau2: {
@@ -95,7 +95,7 @@ window.LEVELS = {
     ],
   },
 
-  // --- CH.3 : Michael Dingkhun — SERRE DE CULTURE (interieur verre) ---
+  // --- CHAPITRE 2 : Michael Dingkhun — SERRE DE CULTURE (interieur verre) ---
   //  Collectible 'd' = COURBES/CHARTS (pickup_chart). Decor INTERIEUR :
   //  ciel vert pale (verre), bandeau bg_serre + une couche legere devant.
   //  tint verdatre lumineuse.
@@ -105,7 +105,7 @@ window.LEVELS = {
       sky: [196, 226, 200],
       tint: [206, 236, 200],
       layers: [
-        { sprite: 'bg_serre', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', tileW: 480, z: -22 },
+        { sprite: 'bg_serre', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       pickups: { data: 'pickup_chart' },
     },
@@ -124,7 +124,7 @@ window.LEVELS = {
     ],
   },
 
-  // --- CH.4 : RStudio — LABORATOIRE (interieur paillasses/ordis) ------
+  // --- CHAPITRE 3 : RStudio — LABORATOIRE (interieur paillasses/ordis) ------
   //  Collectible 'd' = HISTOGRAMMES (pickup_barchart). Decor INTERIEUR :
   //  ambiance froide, bandeau bg_labo. Exemple de theme avec variantes de
   //  tuiles/monstres ('...2' pris si le PNG existe, sinon retour au defaut).
@@ -134,7 +134,7 @@ window.LEVELS = {
       sky: [170, 184, 200],
       tint: [200, 212, 230],
       layers: [
-        { sprite: 'bg_labo', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', tileW: 480, z: -22 },
+        { sprite: 'bg_labo', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       tiles:   { '=': ['tile_soil', 'tile_soil2'], '-': ['tile_panel', 'tile_panel2'], 'x': ['tile_panel', 'tile_panel2'] }, // obstacles multi-variantes
       enemies: { criquet: ['enemy_criquet', 'enemy_criquet2'], camion: ['enemy_camion', 'enemy_camion2'] },                 // monstres multi-variantes
@@ -155,7 +155,7 @@ window.LEVELS = {
     ],
   },
 
-  // --- CH.5 : Cendrine — COULOIRS DE L'UNIVERSITE (interieur) ---------
+  // --- CONCLUSION : Cendrine — COULOIRS DE L'UNIVERSITE (interieur) ---------
   //  Le niveau le PLUS DUR des 5 (densite max). Collectible 'd' = FEUILLES
   //  (pickup_sheet). Decor INTERIEUR : beige/creme institutionnel, bandeau
   //  bg_couloir, tint neutre.
@@ -165,7 +165,7 @@ window.LEVELS = {
       sky: [228, 220, 198],
       tint: [232, 226, 210],
       layers: [
-        { sprite: 'bg_couloir', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', tileW: 480, z: -22 },
+        { sprite: 'bg_couloir', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       pickups: { data: 'pickup_sheet' },
     },

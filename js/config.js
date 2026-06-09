@@ -15,6 +15,12 @@ window.CONFIG = {
   height: 528,
   background: [143, 208, 240],
   tileSize: 48,
+  // Decalage VERTICAL du monde, en PIXELS : on descend tout le jeu de
+  //  `groundDrop` px (sol + bas, + de ciel, collines/montagnes du parallax
+  //  remontees avec l'horizon). 0 = monde centre comme a l'origine.
+  //  ATTENTION : trop grand -> Laura passe derriere la barre HUD du bas
+  //  (qui commence a y = height-58 = 470). 8 px reste bien au-dessus.
+  groundDrop: 8,
 
   // --- Art / haute definition -----------------------------------------
   //  scale : les sprites sont generes a (scale)x la resolution. CETTE VALEUR
@@ -45,10 +51,10 @@ window.CONFIG = {
   theme: {
     sky: [143, 208, 240],
     layers: [
-      { sprite: 'bg_mountains', band: true,  parallax: 0.18, anchor: 'bot', y: 'ground', tileW: 480, z: -26, opacity: 0.95 },
+      { sprite: 'bg_mountains', band: true,  parallax: 0.18, anchor: 'bot', y: 'ground', z: -26, opacity: 0.95 },
       { sprite: 'bg_cloud',     scatter: true, parallax: 0.30, count: 7, yMin: 30, yMax: 140, z: -25 },
-      { sprite: 'bg_hills',     band: true,  parallax: 0.45, anchor: 'bot', y: 'ground', tileW: 384, z: -24 },
-      { sprite: 'bg_field',     band: true,  parallax: 0.65, anchor: 'bot', y: 'ground', tileW: 320, z: -20, opacity: 0.95 },
+      { sprite: 'bg_hills',     band: true,  parallax: 0.45, anchor: 'bot', y: 'ground', z: -24 },
+      { sprite: 'bg_field',     band: true,  parallax: 0.65, anchor: 'bot', y: 'ground', z: -20, opacity: 0.95 },
     ],
     tiles:   { '=': ['tile_soil'], '-': ['tile_panel'], 'x': ['tile_panel'] },
     // vide => le systeme de variantes numerotees global (enemy_xxx2) s'applique
@@ -80,10 +86,17 @@ window.CONFIG = {
 
   // --- Tir ------------------------------------------------------------
   //  arcGravity = gravite des projectiles "en cloche" (cookie/gateau).
-  //  Les armes en cloche se CHARGENT : maintenir X plus longtemps -> ca part
+  //  Les armes en cloche se CHARGENT : maintenir ESPACE plus longtemps -> ca part
   //  plus loin. chargeTime = duree pour charge pleine ; arcMin/arcMax =
   //  multiplicateur de puissance (donc de portee) de 0 a 100% de charge.
-  shot: { rate: 0.26, arcGravity: 1500, chargeTime: 0.9, arcMin: 0.6, arcMax: 1.6 },
+  //  VISEE : pendant la charge, HAUT/BAS inclinent la cloche (une fleche +
+  //  une trajectoire pointillee + un reticule d'impact s'affichent). aimMin/Max
+  //  = bornes de l'angle (degres au-dessus de l'horizontale), aimDefault =
+  //  angle de depart, aimSpeed = vitesse de reglage (deg/s).
+  shot: {
+    rate: 0.26, arcGravity: 1500, chargeTime: 0.9, arcMin: 0.6, arcMax: 1.6,
+    aimMin: 16, aimMax: 80, aimDefault: 52, aimSpeed: 80,
+  },
 
   // Armes lancees (4) : 2 familles. graine/pied_riz tout droit, cookie/gateau
   // en cloche. On change d'arme avec MAJ (cf. ammoOrder).
@@ -96,7 +109,9 @@ window.CONFIG = {
     graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
     pied_riz: { sprite: 'ammo_riz',    label: 'PIEDS DE RIZ', damage: 2, speed: 520, cost: 14, traj: 'straight', throwSprite: 'hero_throw_rice'   },
     cookie:   { sprite: 'ammo_cookie', label: 'COOKIES',      damage: 2, speed: 540, cost: 10, traj: 'arc',      throwSprite: 'hero_throw_cookie' },
-    gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX',      damage: 3, speed: 500, cost: 20, traj: 'arc',      throwSprite: 'hero_throw_cake'   },
+    //  GATEAU = cloche EXPLOSIVE : a l'impact, eclate en AoE (degats a tout ce
+    //  qui est dans aoe.radius). C'est l'arme lourde "zone".
+    gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX',      damage: 3, speed: 500, cost: 20, traj: 'arc',      throwSprite: 'hero_throw_cake', aoe: { radius: 94, damage: 3 } },
   },
   ammoOrder: ['graine', 'pied_riz', 'cookie', 'gateau'],
 
@@ -122,7 +137,7 @@ window.CONFIG = {
     cleanRadius: 46,  // rayon de nettoyage des tirs ennemis
     maxCharges: 3,    // reserve de chats (arcade)
     startCharges: 2,
-    chargeTime: 2.0,  // duree de maintien de la touche AVANT que le chat parte (anti-spam)
+    chargeTime: 1.0,  // duree de maintien (Laura immobile) AVANT que le chat parte
   },
 
   // --- Jauge "Soleil" = ENERGIE = MUNITIONS lourdes -------------------
@@ -147,7 +162,7 @@ window.CONFIG = {
     assureur: { sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 80,  range: 110, aggro: 380, score: 150 },
     ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200 },
     // nouveaux archetypes (variete / difficulte)
-    corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180 },
+    corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180, scale: 0.32 },
     criquet:  { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'jump',    speed: 150, jumpForce: 560, jumpEvery: 1.1, aggro: 520, anim: 'hop', score: 140 },
     // minions de boss (reutilisent des sprites existants)
     bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60 },
@@ -178,7 +193,7 @@ window.CONFIG = {
     cendrine:     { sprite: 'boss_cendrine_move',     attackSprite: 'boss_cendrine_atk',     behavior: 'paperasse', hp: 46, maxHp: 46, touchDamage: 2, shotEvery: 0.9, shotSpeed: 330, speed: 90, range: 320, dashSpeed: 0,   score: 2600, name: 'CENDRINE',
                     shot: 'shot_form', preTime: 0.4, throwTime: 0.3, windowTime: 1.2 },
     // FINAL — megaboss multi-phases
-    jury:         { sprite: 'boss_jury_move',         attackSprite: 'boss_jury_atk',         behavior: 'jury',      hp: 64, maxHp: 64, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, dashSpeed: 0,   score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel' },
+    jury:         { sprite: 'boss_jury_move',         attackSprite: 'boss_jury_atk',         behavior: 'jury',      hp: 64, maxHp: 64, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, dashSpeed: 0,   score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32 },
   },
 
   // --- Collectibles ---------------------------------------------------
@@ -203,13 +218,15 @@ window.CONFIG = {
   equipment: {
     // override = remplace le sprite ENTIER de Laura par "Laura sur l'engin"
     // (pas d'overlay separe : le sprite contient deja l'engin).
+    //  ROLLERS : saute + haut, vitesse NORMALE.   VELO : + rapide, saut NORMAL.
+    //  Dans les deux cas on ne peut QUE se deplacer (pas de tir / sorts / chat).
     rollers: {
       override: { idle: 'hero_roll', run: 'hero_roll', jump: 'hero_roll' },
-      speedMul: 1.6, jumpMul: 1.3, msg: 'ROLLERS !  + rapide, saute + haut',
+      speedMul: 1.0, jumpMul: 1.5, msg: 'ROLLERS !  saute + haut (pas de tir)',
     },
     velo: {
       override: { idle: 'hero_bike', run: 'hero_bike', jump: 'hero_bike' },
-      speedMul: 2.0, jumpMul: 1.35, msg: 'VELO !  + rapide, saute + haut',
+      speedMul: 2.0, jumpMul: 1.0, msg: 'VELO !  + rapide (pas de tir)',
     },
   },
 
@@ -223,7 +240,7 @@ window.CONFIG = {
     hero_hurt:        { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 10 } } },
     hero_duck:        { sliceX: 7, sliceY: 1, anims: { duck:  { from: 0, to: 6, loop: true,  speed: 8  } } },
     // lancer du chat : sortie (depart) / entree (retour au sac)
-    hero_cat_out:     { sliceX: 4, sliceY: 1, anims: { cat:   { from: 0, to: 3, loop: false, speed: 12 } } },
+    hero_cat_out:     { sliceX: 5, sliceY: 1, anims: { cat:   { from: 0, to: 4, loop: false, speed: 12 } } },
     hero_cat_in:      { sliceX: 4, sliceY: 1, anims: { cat:   { from: 0, to: 3, loop: false, speed: 12 } } },
     // une anim de lancer par arme (mappee depuis ammoTypes[].throwSprite)
     hero_throw:       { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
@@ -235,24 +252,24 @@ window.CONFIG = {
     hero_bike:        { sliceX: 7, sliceY: 1, anims: { idle: { from: 0, to: 6, loop: true, speed: 6 }, run: { from: 0, to: 6, loop: true, speed: 14 }, jump: { from: 3, to: 3 } } },
     hero_roll:        { sliceX: 8, sliceY: 1, anims: { idle: { from: 0, to: 7, loop: true, speed: 6 }, run: { from: 0, to: 7, loop: true, speed: 16 }, jump: { from: 4, to: 4 } } },
     cat_run:          { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 16 } } },
-    enemy_corbeau:    { sliceX: 2, sliceY: 1, anims: { fly:   { from: 0, to: 1, loop: true,  speed: 8  } } },
+    enemy_corbeau:    { sliceX: 6, sliceY: 1, anims: { fly:   { from: 0, to: 5, loop: true,  speed: 8  } } },
     enemy_criquet:    { sliceX: 2, sliceY: 1, anims: { hop:   { from: 0, to: 1, loop: true,  speed: 6  } } },
     // --- Boss : DEUX feuilles par boss (cf. tools/gen_boss_sheets.py) ---
     //  _move : DEPLACEMENT — frames 0-2 = cycle de marche (idle), frame 3 = touche (hurt)
     //  _atk  : ATTAQUE     — frames 0-3 = charge -> frappe -> retour (attack)
     //  game.js bascule sur la feuille _atk uniquement quand animWant === 'attack'.
-    boss_proprietaire_move: { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_proprietaire_atk:  { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
-    boss_agriculteur_move:  { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_agriculteur_atk:   { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
-    boss_michael_move:      { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_michael_atk:       { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
-    boss_rstudio_move:      { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_rstudio_atk:       { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
-    boss_cendrine_move:     { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_cendrine_atk:      { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
-    boss_jury_move:         { sliceX: 4, sliceY: 1, anims: { idle: { from: 0, to: 2, loop: true, speed: 5 }, hurt: { from: 3, to: 3 } } },
-    boss_jury_atk:          { sliceX: 4, sliceY: 1, anims: { attack: { from: 0, to: 3, loop: true, speed: 8 } } },
+    boss_proprietaire_move: { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_proprietaire_atk:  { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    boss_agriculteur_move:  { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_agriculteur_atk:   { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    boss_michael_move:      { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_michael_atk:       { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    boss_rstudio_move:      { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_rstudio_atk:       { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    boss_cendrine_move:     { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_cendrine_atk:      { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    boss_jury_move:         { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
+    boss_jury_atk:          { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
 
     // --- Collectibles (4 frames : flottent/pulsent) ---
     pickup_sunray:    { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
@@ -293,9 +310,9 @@ window.CONFIG = {
   controls: {
     left:       ['left', 'q', 'a'],
     right:      ['right', 'd'],
-    jump:       ['up', 'z', 'w'],   // saute avec HAUT
-    aimUp:      [],              // viser vers le haut : feature gardee, plus de touche
-    aimDown:    [],             // viser vers le bas : feature gardee, plus de touche
+    jump:       ['up', 'z', 'w'],   // saute avec HAUT (HAUT sert a VISER pendant la charge d'une cloche)
+    aimUp:      ['up'],          // incliner la cloche vers le haut (pendant la charge)
+    aimDown:    ['down'],        // incliner la cloche vers le bas (pendant la charge)
     crouch:     ['down'],        // s'accroupir (au sol) : Laura se baisse, hitbox reduite
     shoot:      ['space'],       // tire avec ESPACE
     pleurer:    ['x'],
@@ -319,11 +336,11 @@ window.CONFIG = {
   //  Un noeud par niveau. y = altitude du noeud sur la carte.
   world: {
     nodes: [
-      { key: 'niveau1', x: 130, y: 360, label: 'CH.1', boss: 'PROPRIO' },
-      { key: 'niveau2', x: 290, y: 300, label: 'CH.2', boss: 'AGRI' },
-      { key: 'niveau3', x: 450, y: 360, label: 'CH.3', boss: 'MICHAEL' },
-      { key: 'niveau4', x: 610, y: 290, label: 'CH.4', boss: 'RSTUDIO' },
-      { key: 'niveau5', x: 770, y: 350, label: 'CH.5', boss: 'CENDRINE' },
+      { key: 'niveau1', x: 130, y: 360, label: 'INTRODUCTION', boss: 'PROPRIO' },
+      { key: 'niveau2', x: 290, y: 300, label: 'CHAPITRE 1', boss: 'AGRI' },
+      { key: 'niveau3', x: 450, y: 360, label: 'CHAPITRE 2', boss: 'MICHAEL' },
+      { key: 'niveau4', x: 610, y: 290, label: 'CHAPITRE 3', boss: 'RSTUDIO' },
+      { key: 'niveau5', x: 770, y: 350, label: 'CONCLUSION', boss: 'CENDRINE' },
       { key: 'jury',    x: 880, y: 250, label: 'JURY', boss: 'JURY' },
     ],
   },
@@ -336,6 +353,7 @@ window.CONFIG = {
               'Des rizieres de Camargue a la serre, du labo a la redaction,\n' +
               'jusqu a la soutenance : bats chaque boss pour ecrire ta these !',
     hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter   ESPACE lancer\n' +
+              'Cloche (cookie/gateau) : maintiens ESPACE + HAUT/BAS pour viser\n' +
               'X pleurer   V raler   C (maintenir 2s) chat   MAJ changer d arme   ESC quitter',
     start:    'Appuie sur ESPACE pour commencer',
     slots:    'CHOISIS TA SAUVEGARDE',
@@ -348,13 +366,13 @@ window.CONFIG = {
     catEmpty: 'Plus de chat ! (ramasse des croquettes)',
     publi:    'PUBLICATION TROUVEE ! +100%',
     // texte affiche a l'ecran "Chapitre gagne" (sans accents).
-    //  Ordre = LEVELS niveau1..niveau5 (proprio, agri, michael, rstudio, cendrine).
+    //  Ordre = LEVELS niveau1..niveau5 (intro, ch.1, ch.2, ch.3, conclusion).
     chapters: [
-      'CHAPITRE 1 : Etat de l art.\nRizieres de Camargue : le proprietaire cede le terrain, les parcelles sont installees !',
-      'CHAPITRE 2 : Materiel & methodes.\nAu champ, l agriculteur fou se calme : les experiences sur le riz tournent !',
-      'CHAPITRE 3 : Resultats.\nEn serre, Michael le chercheur est convaincu : les donnees sont recoltees !',
-      'CHAPITRE 4 : Analyse.\nAu labo, RStudio cesse de planter : les donnees sont saisies et analysees !',
-      'CHAPITRE 5 : Redaction & soumission.\nDans les couloirs, Cendrine tamponne le depot : la these est soumise !',
+      'INTRODUCTION : Etat de l art.\nRizieres de Camargue : le proprietaire cede le terrain, les parcelles sont installees !',
+      'CHAPITRE 1 : Materiel & methodes.\nAu champ, l agriculteur fou se calme : les experiences sur le riz tournent !',
+      'CHAPITRE 2 : Resultats.\nEn serre, Michael le chercheur est convaincu : les donnees sont recoltees !',
+      'CHAPITRE 3 : Analyse.\nAu labo, RStudio cesse de planter : les donnees sont saisies et analysees !',
+      'CONCLUSION : Redaction & soumission.\nDans les couloirs, Cendrine tamponne le depot : la these est soumise !',
     ],
   },
 };
