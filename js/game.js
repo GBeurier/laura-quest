@@ -516,6 +516,24 @@
     return r;
   }
 
+  // --- SOL PIEGE ('%') : hazard plat au ras du sol, NON solide. On court au
+  //  travers mais ca pique : degat au contact (CONFIG.hazards.touchDamage) gate
+  //  par l'invuln (un coup propre, pas un drain). Le DASH (i-frames) le traverse.
+  //  Skin par biome via LEVEL.theme.hazard ; fallback visible tant que le PNG manque.
+  function spawnHazard(cx, groundY) {
+    const th = (LEVEL && LEVEL.theme) || {};
+    const sname = pickSkin(th.hazard, 'hazard');
+    if (sname && hasSprite(sname)) {
+      const o = add([sprite(sname), artScale(), pos(cx, groundY), anchor('bot'), area(), z(-0.5), 'hazard']);
+      playIfAnim(o, sname);
+      return o;
+    }
+    return add([                                  // bouche-trou : bande de "danger" au sol
+      rect(TS * 0.86, TS * 0.3), pos(cx, groundY), anchor('bot'), area(),
+      color(150, 40, 40), opacity(0.92), z(-0.5), 'hazard',
+    ]);
+  }
+
   // --- PANNEAUX SOLAIRES (plateformes) en perspective + pieds au sol -------
   //  La COLLISION reste une tuile invisible 48x48 (surface marchable = haut de
   //  tuile). Le VISUEL est decoratif : un "cap" en perspective (penche vers le
@@ -1333,6 +1351,7 @@
           case 'L': spawnPickup('rollers', cx, y + TS / 2); break;
           case 'Y': spawnPickup('velo', cx, y + TS / 2); break;
           case '^': addRock(cx, groundY); break;
+          case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
           case 'T': spawnEnemy('camion', cx, groundY); break;
           case 'A': spawnEnemy('assureur', cx, groundY); break;
           case 'R': spawnEnemy('ademe', cx, groundY); break;
@@ -1875,6 +1894,7 @@
     PLAYER.onCollide('enemy', (e) => damagePlayer(e.def ? e.def.touchDamage : 1, e.pos.x));
     PLAYER.onCollide('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x));
     PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
+    PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
     PLAYER.onCollide('sun', () => tryReachSun());
 

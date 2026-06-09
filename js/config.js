@@ -203,6 +203,11 @@ window.CONFIG = {
   //  avec le tier (damage = tier, plafonne a max). cf. game.js.
   tier: { max: 3, start: 1 },
 
+  // --- Sols pieges ('%') : hazard plat au sol, blesse au contact -------
+  //  Skin par biome via LEVELS[x].theme.hazard (clous/acide/tessons...). Le DASH
+  //  (i-frames) permet de traverser. Dans les maps : le caractere '%'.
+  hazards: { touchDamage: 1 },
+
   // --- Ennemis (modeles) ----------------------------------------------
   //  move: 'static' | 'patrol' | 'chase' | 'shooter' | 'fly' | 'jump'
   enemies: {
