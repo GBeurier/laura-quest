@@ -137,6 +137,11 @@ window.CONFIG = {
   shot: {
     rate: 0.26, arcGravity: 1500, chargeTime: 0.9, arcMin: 0.6, arcMax: 1.6,
     aimMin: 16, aimMax: 80, aimDefault: 52, aimSpeed: 80,
+    // throwHold = duree de la pose de lancer apres CHAQUE tir. DOIT etre > rate
+    //  sinon, en rafale (maintien), la pose retombe 1 frame sur course/saut entre
+    //  deux tirs (clignotement). L'anim est rejouee a chaque tir (cf. playerShoot)
+    //  pour qu'elle reste vivante au lieu de geler sur sa derniere frame.
+    throwHold: 0.32,
   },
 
   // Armes lancees (4) : 2 familles. graine/pied_riz tout droit, cookie/gateau
@@ -511,5 +516,12 @@ window.CONFIG = {
 ['h', 'f'].forEach((sexe) => {
   window.CONFIG.anims['head_npc_' + sexe + '_'] = {
     sliceX: 3, sliceY: 1, anims: { blink: { from: 0, to: 2, loop: true, speed: 2 } },
+  };
+});
+// Corps APPLAUDISSEURS du cortege de victoire (meme grille 4 frames que les
+//  passants ; habits gris recolores a la volee). Cf. _clapgen/ et scene('win').
+['h', 'f'].forEach((sexe) => {
+  window.CONFIG.anims['body_clap_' + sexe] = {
+    sliceX: 4, sliceY: 1, anims: { clap: { from: 0, to: 3, loop: true, speed: 9 } },
   };
 });

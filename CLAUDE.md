@@ -50,6 +50,7 @@ Les vrais sprites/fonds sont du **pixel-art généré par l'`image_gen` de Codex
 | `_bossgen/` | feuilles de boss (move + atk, 6 frames) — *gitignoré* | `boss_<nom>_move`/`_atk` |
 | `_monstgen/` | ennemis | `enemy_*` |
 | `_bodygen/` | corps de figurants (feuille de marche) | `body_<biome>_<sexe>` |
+| `_clapgen/` | corps applaudisseurs du cortège de victoire (feuille d'applaudissement, habits gris recolorés) | `body_clap_<sexe>` |
 | `_headgen/` | têtes "South Park" partagées | `head_npc_<sexe>_<n>` |
 | `_levelgen/` | fonds intérieurs pleine hauteur + tuiles de sol | `bg_*`, `sol_*` |
 | `_bggen/` | fonds de narration (chapitre / écran de victoire) | écrans `chapter`/`win` |

@@ -300,7 +300,12 @@
       b.onCollide('boss', (e) => hitBoss(e, b));
       b.onCollide('solid', () => destroy(b));
     }
-    p.throwT = 0.26;   // = cadence de tir : la pose de lancer tient pendant la rafale
+    // Pose de lancer : tient un peu PLUS longtemps que la cadence (throwHold > rate)
+    //  pour ne pas clignoter entre deux tirs en rafale, et on FORCE le rejeu de
+    //  l'anim a chaque tir (throwReplay) -> elle reste vivante au lieu de geler sur
+    //  sa derniere frame quand on maintient le tir (au sol comme en l'air).
+    p.throwT = (C.shot && C.shot.throwHold) || 0.32;
+    p.throwReplay = true;
     sfx('shoot');
   }
 
@@ -380,7 +385,7 @@
       'player',
       {
         hp: C.player.maxHp, maxHp: C.player.maxHp,
-        facing: 1, invuln: 0, shielded: 0, throwT: 0, catOutT: 0, catInT: 0,
+        facing: 1, invuln: 0, shielded: 0, throwT: 0, throwReplay: false, catOutT: 0, catInT: 0,
         aimAngle: C.shot.aimDefault, aiming: false,   // angle de la cloche (deg) regle par HAUT/BAS
         jumpsLeft: C.player.maxJumps,
         ammoKey: C.player.startAmmo,
@@ -1996,9 +2001,10 @@
       const duckSpr = p.isGrounded() && p.duckProg > 0 && hasSprite('hero_duck');
       if (p.catInT > 0) { p.catInT -= dt(); heroAnim(p, 'hero_cat_in', 'cat'); }
       else if (catOut) { heroAnim(p, 'hero_cat_out', 'cat'); }   // figee, sac vide, jusqu'au retour
-      else if (p.throwT > 0) {
+      else if (p.throwT > 0) {                          // PRIORITE sur le saut : on tire meme en l'air
         p.throwT -= dt();
         const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
+        if (p.throwReplay) { p._anim = null; p.throwReplay = false; }   // rejoue depuis la 1re frame (sinon l'anim gele sur sa derniere frame en rafale)
         heroAnim(p, (ts && hasSprite(ts)) ? ts : 'hero_throw', 'throw');
       }
       else if (duckSpr) {                               // scrub manuel : frame = progression
@@ -2507,6 +2513,53 @@
 
     uiBg('bg_win', [255, 206, 110]);
     uiConfetti([UI.GOLD, UI.RED, UI.CREAM, [120, 200, 255], UI.GREEN], 0.05, {});  // pluie de confettis
+
+    // --- Cortege d'applaudissements ------------------------------------
+    //  Au bout de quelques secondes, un defile de collegues traverse le BAS
+    //  de l'ecran en applaudissant Laura : corps generique body_clap_<sexe>
+    //  (teinte au hasard -> habits varies) surmonte d'une tete du pool
+    //  partage (visages varies, de face, non teintee). Defilent de la droite
+    //  vers la gauche, MAX 10 a l'ecran. Au premier plan (z 2/3) MAIS sous
+    //  les pastilles/texte (z>=4) -> score et consigne restent lisibles.
+    const PARADE_MAX = 10, PARADE_DELAY = 3, PARADE_GAP = 1.0;
+    const pc = (C.theme && C.theme.passant) || {};
+    const CLAP_TINTS = [
+      [255, 138, 120], [120, 190, 255], [150, 220, 150], [255, 214, 120],
+      [210, 150, 235], [255, 180, 210], [140, 222, 232], [240, 232, 170],
+      [255, 170, 110], [186, 196, 255], [120, 210, 180], [236, 150, 150],
+    ];
+    let clapSeq = 0;
+    const spawnClapper = () => {
+      const sex = rand(0, 1) < (pc.femaleRatio != null ? pc.femaleRatio : 0.5) ? 'f' : 'h';
+      const bodyName = hasSprite('body_clap_' + sex) ? 'body_clap_' + sex
+        : ((pc.bodies && pc.bodies[sex] && pc.bodies[sex][0]) || ('body_champ_' + sex));
+      if (!hasSprite(bodyName)) return;
+      // TAILLE = celle des passants ingame (sizeScale tire selon la tete).
+      const headName = pickHead(pc.heads && pc.heads[sex]);
+      const vs = passantSize(headName, pc).scale;
+      const tint = CLAP_TINTS[(clapSeq++) % CLAP_TINTS.length];
+      const e = add([
+        sprite(bodyName), artScale(vs),
+        pos(C.width + rand(20, 90), 528), anchor('bot'), z(2),
+        color(tint[0], tint[1], tint[2]),
+        'parade', { phase: rand(0, Math.PI * 2), spd: rand(64, 104) },
+      ]);
+      try { e.play('clap'); } catch (er) { playIfAnim(e, bodyName); }
+      e.onUpdate(() => { e.pos.x -= e.spd * dt(); if (e.pos.x < -90) destroy(e); });
+      // tete : MEME attache que l'ingame (attachHead -> meme stitch du cou,
+      //  meme headLocal/headScale/dodelinement) ; on remonte juste son z au-
+      //  dessus du corps (z2) pour le rendu de premier plan du cortege.
+      const h = attachHead(e, pc, sex, headName);
+      if (h) h.use(z(3));
+      return e;
+    };
+    const parade = add([pos(0, 0), { t: 0, acc: PARADE_GAP }]);
+    parade.onUpdate(() => {
+      parade.t += dt();
+      if (parade.t < PARADE_DELAY) return;
+      parade.acc += dt();
+      if (parade.acc >= PARADE_GAP && get('parade').length < PARADE_MAX) { parade.acc = 0; spawnClapper(); }
+    });
 
     // plaque-diplome en bas : tout le texte pose sur un fond sombre borde d'or
     // (l'art de Laura diplomee reste entierement degage au-dessus)
