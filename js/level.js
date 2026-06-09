@@ -84,6 +84,11 @@ const PASSANT_ALL = (biomes) => {
 };
 const BIOMES_ALL = ['champ', 'pote', 'horti', 'labo', 'bureau'];
 
+// Les GRILLES de niveaux vivent dans levels/*.txt -> embarquees par
+//  gen_levels_data.py dans js/levels_data.js (window.LEVEL_MAPS), charge
+//  AVANT ce fichier dans index.html. Ici on ne garde que boss/theme.
+const LEVEL_MAPS = window.LEVEL_MAPS || {};
+
 window.LEVELS = {
 
   // --- INTRODUCTION : L'agriculteur fou — RIZIERES DE CAMARGUE, plein jour ----
@@ -99,19 +104,7 @@ window.LEVELS = {
       pickups: { data: 'pickup_graine', page: 'pickup_plant' },
       passant: PASSANT('champ'),   // habits des champs (Camargue)
     },
-    map: [
-      '                                                                                                ',
-      '                              P                                                                 ',
-      '                            xxxx                                                                ',
-      '                  o     ----                                                                    ',
-      '              ----                      o            d                    xxx                   ',
-      '          ----              d                    ----              d                            ',
-      '     d                            p         ----            p              c                    ',
-      '                                               xx                                               ',
-      '   @  N   ^N   TVN R  N  TJVN    N  TNRV    NJT dN V   NRT  NpVJ N T   N  VRN T  JN  V    B   * ',
-      '================================================================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.niveau1,
   },
 
   // --- CHAPITRE 1 : Francois le proprio — L'APPART / LA COLLOC (interieur) ---
@@ -134,19 +127,7 @@ window.LEVELS = {
       pickups: { data: 'pickup_pilule', page: 'pickup_page' },
       passant: PASSANT('pote'),
     },
-    map: [
-      '',
-      '                                                                            P',
-      '                                                                ---        ----',
-      '                       d                      o               --',
-      '             o        ---        p           ---                      M',
-      '            ---                 ---                        --',
-      '',
-      '                                                     Y  --',
-      '   @  N       NAM SH   N    MSANHK     MSN  A  HN  SM d  NAKHSM  N      SAMHN   p NS  MA KHN  S  M    B   * ',
-      '============================================================================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.niveau2,
   },
 
   // --- CHAPITRE 2 : RStudio — SERRE DE CULTURE (interieur verre) ------------
@@ -167,19 +148,7 @@ window.LEVELS = {
       pickups: { data: 'pickup_plant', page: 'pickup_chart' },
       passant: PASSANT('horti'),   // serre -> tenue d'horticulteur
     },
-    map: [
-      '',
-      '                                                                       P',
-      '',
-      '                         d                         o                                     d',
-      '             o          ---          p            ---                         M         ---          o',
-      '            ---                     ---                                                             ---',
-      '',
-      '                                                                       L',
-      '   @  N       NW FMU  N   F WN U MF  N    WFJUNM   F N dW U FNM     NFWU   NMF    WNUpF   MNJ F W UN   F M    B   * ',
-      '====================================================================================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.niveau3,
   },
 
   // --- CHAPITRE 3 : Michael le directeur — LABORATOIRE (interieur) ----------
@@ -202,19 +171,7 @@ window.LEVELS = {
       pickups: { data: 'pickup_data', page: 'pickup_sheet' },
       passant: PASSANT('labo'),    // labo -> blouse blanche
     },
-    map: [
-      '',
-      '                                                                                     P',
-      '                                                                ---       ---       ----',
-      '                         d                       o            --',
-      '             o          ---          p          ---                   E          E',
-      '            ---                     ---                    --',
-      '',
-      '                                                     Y  --',
-      '   @  N      N G  FEIN     NGF  E   IN F G N  EK FN   GI  NEF   dN G  FI EN    NGF    NEI  F GpN   K FEN  GI  N F  E    B   * ',
-      '==============================================================================================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.niveau4,
   },
 
   // --- CONCLUSION : Cendrine la responsable — UNIVERSITE (couloirs) ---------
@@ -237,22 +194,7 @@ window.LEVELS = {
       pickups: { data: 'pickup_page', page: 'pickup_data' },
       passant: PASSANT('bureau'),  // couloirs/admin -> tenue de bureau
     },
-    map: [
-      '',
-      '',
-      '                                                                                        P',
-      '',
-      '',
-      '',
-      '                           d                       o                       p',
-      '               o          ---          p          ---          d          ---',
-      '              ---                     ---                     ---               M',
-      '',
-      '                                                                                        L',
-      '   @  N       NCIMD    N   DC MIN   D   CNI M D NK  C  DIdMN    DCNI  M   DN C  I NDM   p CNDI   M  N DCIK  N MD  C NI  D  M    B   * ',
-      '======================================================================================================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.niveau5,
   },
 
   // --- FINAL : Le jury de these (megaboss multi-phases) — ARENE, nuit ---------
@@ -261,18 +203,6 @@ window.LEVELS = {
   jury: {
     boss: 'jury',
     theme: { sky: [70, 86, 140], tint: [150, 162, 205], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL) },   // nuit ; randoms de tous les biomes
-    map: [
-      '                                                            ',
-      '                                                            ',
-      '                  o                       o                 ',
-      '              ----                    ----                  ',
-      '         k              c        d              k           ',
-      '                  ----      ----        ----                ',
-      '      d                                            p        ',
-      '                                                            ',
-      '  @  N N N^ dNN N  N NcN N N  N NpN N  N N NcN  N    B    * ',
-      '============================================================',
-      ''
-    ],
+    map: LEVEL_MAPS.jury,
   },
 };

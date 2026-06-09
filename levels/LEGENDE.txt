@@ -1,0 +1,86 @@
+=====================================================================
+  LEGENDE DES NIVEAUX — dictionnaire des symboles ASCII
+=====================================================================
+
+Un niveau = un fichier texte levels/<cle>.txt (niveau1..niveau5, jury).
+Chaque caractere = 1 case de 48 px. Le haut du fichier = haut de l'ecran ;
+la camera ne defile QU'EN X. Pose ennemis/objets sur la ligne JUSTE
+AU-DESSUS du sol.
+
+Apres edition d'un .txt :   python3 gen_levels_data.py
+(ré-embarque les maps dans js/levels_data.js, lu par le jeu en file://).
+
+
+DECOR / TERRAIN
+  (espace)  vide
+  =         sol                                    -> solide
+  -         plateforme (panneau solaire / etagere) -> solide
+  x         panneau/etagere CASSABLE (explose apres un saut dessus -> 1 saut)
+  ^         caillou (OBSTACLE solide : bloque monstres/camions, 0 degat ;
+            Laura saute par-dessus. Un caillou est AUSSI auto-pose a chaque bord.)
+
+DEPART / SORTIE / BOSS
+  @         depart de Laura
+  B         boss (defini par .boss du niveau, dans js/level.js)
+  *         sortie = chapitre (apparait apres la mort du boss)
+
+OBJETS A RAMASSER
+  o         rayon de soleil (recharge energie)
+  c         cafe (soin)
+  d         collectible THEMATIQUE du niveau (skin via theme.pickups.data :
+            graines / plans de riz / courbes / histogrammes / feuilles)
+  p         page de these (collectible)
+  P         PUBLICATION cachee (1 par niveau -> 100%) ; en haut d'un escalier
+            de panneaux '-' (double saut requis)
+  k         croquette (recharge le chat)
+
+EQUIPEMENT (+ rapide, saute + haut ; perdu si touchee)
+  L         rollers
+  Y         velo
+
+MONSTRES — sol / poursuite
+  A         assureur/huissier (te poursuit)
+  J         criquet (saute vers toi)
+  K         cafard (SOL : rampe vite vers toi)
+
+MONSTRES — volants (auto-eleve)
+  V         corbeau (vole en patrouille)
+  M         moustique
+  E         abeille
+
+MONSTRES — vehicules (va-et-vient, gros degats)
+  T         camion/tracteur
+  W         transpalette
+  G         livreur d'eau
+  C         coursier
+
+MONSTRES — tireurs (TIR)
+  R         rapport ADEME (paperasse)
+  I         imprimante
+  H         paquet de chips
+  U         tuyau d'arrosage
+
+MONSTRES — immobiles
+  S         sac a dos
+  F         recharge fontaine
+  D         tas de dossiers
+
+FIGURANT
+  N         passant (corps "biome" + tete South Park au hasard ; fait les
+            cent pas. Habits/tetes via theme.passant, cf. js/level.js.)
+
+
+-----------------------------------------------------------------------
+  REGLES D'EDITION (a savoir pour ne rien casser)
+-----------------------------------------------------------------------
+* Le NOMBRE de lignes compte : la hauteur du niveau = nb de lignes x 48,
+  et ca cale la position verticale de la camera. Garde les lignes vides
+  du HAUT et du BAS comme elles sont (sauf si tu veux justement decaler).
+* Les colonnes sont reperees par position : aligne-toi a la grille. Un
+  caractere mal place = un objet decale.
+* Les espaces en FIN de ligne n'ont aucun effet (cases vides) ; ton
+  editeur peut les retirer sans risque.
+* Les lignes peuvent etre de longueurs differentes (la ligne du boss
+  depasse souvent celle du sol) : c'est normal.
+* Caracteres autorises : voir la legende ci-dessus. Tout autre caractere
+  est traite comme du vide.
