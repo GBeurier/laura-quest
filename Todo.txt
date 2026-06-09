@@ -1,19 +1,37 @@
 - Fixe Boss: assets, gameplay
 - Level design
 - Fix Animation laura chat et animation tir
-- Intégrer laura victoire dans la page de fin
-- Ajouter des level "hors ecran"
+- Ajouter des level "hors ecran" - un niveau doit avoir quelques epaisseurs invisibles
+- Bounding box cailloux et trop gros. Verifier toutes les bounding boxes des trucs sur lesquels on marche.
+- Criquets marchent à l'envers et sont trop gros ou de taille variable. Complètement stuck derriere RStudio et manquand dans le niveau 1
+- monstres spawnés derrière boss.
+- NPC disparaissent quand on revient (tester, fixé normalement)
+- Maison Start and End level.
 
 
-- Ecran victoire avec défilé de tous les persos random (corps random, têtes qui défilent toutes) et animation de laura dans le décor. (je ferais plus tard).
 
 
 
-Bounding box cailloux et trop gros
-NPC disparaissent quand on revient
 
-NPC doivent être derriere en Z ORDER
-Criquets marchent à l'envers et sont trop gros ou de taille variable. Complètement stuck derriere RStudio et manquand dans le niveau 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

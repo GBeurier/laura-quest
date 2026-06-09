@@ -33,6 +33,7 @@ Files prefixed with `_` in `assets/sprites/` are skipped by the generator.
    - *monstre* → `theme.enemies.criquet: ['enemy_criquet','enemy_criquet2']`.
    - *nouveau type d'ennemi* → ajoute-le à `CONFIG.enemies` + un caractère dans le switch de `buildLevel` (`js/game.js`) + la légende de `js/level.js`.
    - *figurant* (`N`) → un **passant** : corps `body_<biome>_<sexe>` (habits du décor, 8 biomes : `champ`/`pote`/`horti`/`labo`/`bureau`) surmonté d'une **tête** "South Park" de face tirée **au hasard** dans un **pool partagé biome-indépendant** `head_npc_h_<n>` (21) / `head_npc_f_<n>` (17). Le moteur tire un sexe → le corps `body_<biome>_<sexe>` correspondant + une tête du pool. Par niveau via `theme.passant` (helper `PASSANT(biome)` dans `js/level.js`, ou `PASSANT_ALL([biomes])` pour mélanger les tenues — utilisé par le jury). **Spec complète des assets : `SPRITES.md` §5bis.** Mockups : `python3 tools/gen_passant_mockups.py`.
+     - *cadavre* : un passant **abattu ne disparaît plus** — `corpsify()` (`js/game.js`) le laisse en **cadavre inerte** sur la carte (plus d'IA/gravité/collision). Le corps prend le sprite affalé `body_<biome>_<sexe>_dead` s'il existe (sinon bascule au sol en repli), et sa tête vivante est remplacée par la **tête zombie** `head_npc_<sexe>_<n>_dead` avec un **léger tilt aléatoire** (cadavres pas tous droits). Debug : `LQ.kill(i)` abat le i-ème passant à l'écran (tous si sans arg).
 
 Tout sprite cité mais absent est ignoré (retour au défaut) — rien ne casse si tu oublies le PNG.
 
@@ -49,9 +50,9 @@ Les vrais sprites/fonds sont du **pixel-art généré par l'`image_gen` de Codex
 |---|---|---|
 | `_bossgen/` | feuilles de boss (move + atk, 6 frames) — *gitignoré* | `boss_<nom>_move`/`_atk` |
 | `_monstgen/` | ennemis | `enemy_*` |
-| `_bodygen/` | corps de figurants (feuille de marche) | `body_<biome>_<sexe>` |
+| `_bodygen/` | corps de figurants (feuille de marche) **+ corps affalés "cadavre"** (`make_dead_prompts.py` → 1 frame slumpée à cou droit, post-traitée par `regrid_dead.py`) | `body_<biome>_<sexe>` **+ `body_<biome>_<sexe>_dead`** |
 | `_clapgen/` | corps applaudisseurs du cortège de victoire (feuille d'applaudissement, habits gris recolorés) | `body_clap_<sexe>` |
-| `_headgen/` | têtes "South Park" partagées | `head_npc_<sexe>_<n>` |
+| `_headgen/` | têtes "South Park" partagées **+ leurs versions zombie** (`extract_zombies.py` découpe `raw/zombies.png`, 1 tête morte / case, même ordre que `export_open_grid.py`) | `head_npc_<sexe>_<n>` **+ `head_npc_<sexe>_<n>_dead`** |
 | `_levelgen/` | fonds intérieurs pleine hauteur + tuiles de sol | `bg_*`, `sol_*` |
 | `_bggen/` | fonds de narration (chapitre / écran de victoire) | écrans `chapter`/`win` |
 | `_icongen/` | pickups, munitions, projectiles | `pickup_*`, `ammo_*`, tirs |

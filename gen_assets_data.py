@@ -17,10 +17,13 @@ def datauri(path, mime):
         return "data:%s;base64,%s" % (mime, base64.b64encode(f.read()).decode())
 
 
+# PNG = sprites/transparence ; JPG = fonds plein-cadre sans alpha (bien plus leger).
+IMG_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 sprites, sounds = {}, {}
 for fn in sorted(os.listdir(SPR)):
-    if fn.endswith(".png") and not fn.startswith("_"):
-        sprites[fn[:-4]] = datauri(os.path.join(SPR, fn), "image/png")
+    name, ext = os.path.splitext(fn)
+    if ext.lower() in IMG_MIME and not fn.startswith("_"):
+        sprites[name] = datauri(os.path.join(SPR, fn), IMG_MIME[ext.lower()])
 for fn in sorted(os.listdir(SND)):
     if fn.endswith(".wav"):
         sounds[fn[:-4]] = datauri(os.path.join(SND, fn), "audio/wav")

@@ -122,6 +122,9 @@ window.CONFIG = {
     startAmmo: 'graine',  // tir de base
     knockback: 300,       // recul quand Laura touche un monstre / un tir
     knockTime: 0.22,      // duree du recul
+    // DASH : ruee horizontale courte avec i-frames (esquive). Coute de l'energie
+    //  (jauge soleil) et a un cooldown. Direction = sens courant de Laura.
+    dash: { speed: 560, duration: 0.16, cooldown: 0.5, cost: 25, iframes: 0.22 },
     // Accroupissement : la planche hero_duck est "scrubbee" selon la progression.
     //  duckDown = temps pour se baisser a fond (rapide, anim jouee a l'endroit) ;
     //  duckUp   = temps pour rejouer l'anim a l'envers et se relever.
@@ -155,6 +158,8 @@ window.CONFIG = {
     //  GATEAU = cloche EXPLOSIVE : a l'impact, eclate en AoE (degats a tout ce
     //  qui est dans aoe.radius). C'est le lob lourd "zone".
     gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX',      damage: 3, speed: 500, cost: 20, traj: 'arc',      throwSprite: 'hero_throw_cake', aoe: { radius: 94, damage: 3 } },
+    //  BOMBE = tir de base EXPLOSIF droit (famille de powerup 'bombe'). Gratuit, petite AoE.
+    bombe:    { sprite: 'ammo_gateau', label: 'BOMBES',       damage: 2, speed: 460, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed', aoe: { radius: 58, damage: 2 } },
   },
 
   // --- Chat angora (allie deploye) ------------------------------------
@@ -176,13 +181,11 @@ window.CONFIG = {
     chargeTime: 0,    // chat INSTANTANE (plus de maintien) : deploiement a la pression de C
   },
 
-  // --- Jauge "Soleil" = ENERGIE = MUNITIONS lourdes -------------------
+  // --- Jauge "Soleil" = ENERGIE / STAMINA -----------------------------
   //  Laura EST un panneau solaire : la jauge se RECHARGE toute seule au
   //  soleil (regen), mais PAS a l'ombre d'un panneau (regenShade). Tirer
-  //  COUTE de l'energie (un peu pour la graine, beaucoup pour les armes
-  //  lourdes). MEURTRES : abattre un passant inoffensif BAISSE le plafond
-  //  d'energie (sunMax) de killPenalty, jusqu'au plancher minMax -> jouer
-  //  "sans tuer" preserve sa puissance de feu. Les rayons 'o' = bonus instant.
+  //  le lob lourd COUTE de l'energie. Les rayons 'o' = bonus instant.
+  //  (La MORALITE ne touche plus cette jauge : elle est passee sur le TIER.)
   sun: {
     enabled: true,
     max: 100,
@@ -190,12 +193,15 @@ window.CONFIG = {
     regenShade: 0,        // recharge/s A L'OMBRE sous un panneau ('-'/'x') -> 0 = aucune
     rayGain: 28,          // bonus instantane d'un rayon de soleil ramasse
     bossDropEvery: 9,     // rayons plus RARES pendant un boss (le passif fait le gros)
-    // MEURTRES : chaque passant tue retire killPenalty au plafond d'energie,
-    //  jusqu'a minMax (jamais 0 -> la graine reste tirable). Etat par-niveau
-    //  (repart du max au niveau suivant). cf. registerKill dans game.js.
-    killPenalty: 8,
-    minMax: 20,
   },
+
+  // --- TIER (pips de "niveau") = conscience / puissance ----------------
+  //  3 pastilles discretes, DECOUPLEES de l'energie. +1 en ramassant une
+  //  data ('d'). -1 a chaque coup recu (tier 2/3 = bouclier) ET a chaque
+  //  passant tue (la conscience). Au tier 1 il n'y a plus de bouclier ->
+  //  le coup coute un coeur. Le tir de base (graine) gagne en puissance
+  //  avec le tier (damage = tier, plafonne a max). cf. game.js.
+  tier: { max: 3, start: 1 },
 
   // --- Ennemis (modeles) ----------------------------------------------
   //  move: 'static' | 'patrol' | 'chase' | 'shooter' | 'fly' | 'jump'
@@ -237,8 +243,8 @@ window.CONFIG = {
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120 },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
-    //  FONDRE le plafond d'energie (cf. sun.killPenalty / registerKill) -> on
-    //  est cense les laisser tranquilles.
+    //  PERDRE un TIER (cf. registerKill dans game.js) -> on est cense les
+    //  laisser tranquilles.
     //  persona:true -> spawnEnemy (game.js) compose un CORPS (selon le biome +
     //  un sexe tire au hasard, cf. theme.passant.bodies) + une TETE "South Park"
     //  de face, choisie AU HASARD dans le pool du biome (theme.passant.heads),
@@ -288,6 +294,11 @@ window.CONFIG = {
     croquette: { sprite: 'pickup_croquette', score: 20 },             // recharge le chat
     rollers:   { sprite: 'pickup_rollers',   score: 40, equip: 'rollers' }, // equipement rollers
     velo:      { sprite: 'pickup_velo',      score: 60, equip: 'velo' },     // equipement velo
+    // POWERUPS D'ARME : changent le tir de base (p.weapon). Placement dans les maps
+    //  + sprites pickup_* a venir (passe level design / art) ; fallback propre si absent.
+    arme_spread: { sprite: 'pickup_spread', score: 60, weapon: 'spread' },   // tir en eventail
+    arme_pierce: { sprite: 'pickup_pierce', score: 60, weapon: 'pierce' },   // tir percant
+    arme_bombe:  { sprite: 'pickup_bombe',  score: 60, weapon: 'bombe'  },   // tir explosif
   },
 
   // --- Equipements (objets a ramasser qui changent Laura) -------------
@@ -415,6 +426,7 @@ window.CONFIG = {
     shoot:      ['space'],       // tir de base (graine) avec ESPACE
     lob:        ['x'],           // lob lourd (gateau) auto-vise
     cat:        ['c'],           // chat (instantane)
+    dash:       ['shift'],       // dash (ruee + i-frames), libere par le retrait du switch d'arme
     quit:       ['escape'],      // quitter le niveau -> carte
   },
 
@@ -459,7 +471,7 @@ window.CONFIG = {
               'Des rizières à la colloc, de la serre au labo puis à la fac,\n' +
               'jusqu à la soutenance : bats chaque boss pour écrire ta thèse !',
     hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter (relache tot = petit saut)\n' +
-              'ESPACE tir de base   X lob lourd   C chat   ESC quitter',
+              'ESPACE tir de base   X lob lourd   MAJ dash   C chat   ESC quitter',
     start:    'Appuie sur ESPACE pour commencer',
     slots:    'CHOISIS TA SAUVEGARDE',
     overworld:'Choisis un chapitre (ESPACE pour entrer)',

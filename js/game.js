@@ -254,7 +254,7 @@
     return { facing, aimAngle: ang, power };
   }
 
-  function playerShoot(ammoKey, power) {
+  function playerShoot(ammoKey, power, opts) {
     const p = PLAYER;
     const ammo = C.ammoTypes[ammoKey] || C.ammoTypes.graine;
     const sname = hasSprite(ammo.sprite) ? ammo.sprite : 'ammo_graine';   // garde-fou si PNG absent
@@ -262,20 +262,24 @@
     const traj = ammo.traj || 'straight';
     const aoe = ammo.aoe || null;
     const pw = (power == null) ? 1 : Math.max(0, Math.min(1, power));   // charge 0..1 (cloche)
+    // TIR DE BASE (graine) : la puissance monte avec le TIER (1->3). Le lob (gateau) garde son damage.
+    const dmg = (opts && opts.damage != null) ? opts.damage
+              : ((ammoKey === 'graine') ? Math.max(1, Math.min(3, p.tier || 1)) : ammo.damage);
     const b = add([
       sprite(sname), artScale(),
       pos(p.pos.x + fx * 22, p.pos.y - TS * 0.6),
       anchor('center'), area(),
       offscreen({ distance: 220, destroy: true }),
       'pbullet',
-      { dmg: ammo.damage, vx: 0, vy: 0, traj, aoe },
+      { dmg: dmg, vx: 0, vy: 0, traj, aoe },
     ]);
     playIfAnim(b, sname);
     if (traj === 'arc') {                       // en cloche (lob lourd) : puissance auto-visee -> portee
       const v = arcLaunch(p, pw, ammo);
       b.vx = v.vx; b.vy = v.vy;
-    } else {                                    // tout droit, horizontal
-      b.vx = fx * ammo.speed; b.vy = 0;
+    } else {                                    // tout droit (angle eventuel pour l'eventail)
+      const off = (opts && opts.angleOffset) || 0;
+      b.vx = fx * ammo.speed * Math.cos(off); b.vy = ammo.speed * Math.sin(off);
     }
     b.onUpdate(() => {
       if (b.traj === 'arc') b.vy += C.shot.arcGravity * dt();
@@ -288,6 +292,13 @@
       b.onCollide('passant', boom);   // figurant : encaisse les balles (mais rien d'autre)
       b.onCollide('boss', boom);
       b.onCollide('solid', boom);
+    } else if (opts && opts.pierce) {           // PERCANT : traverse plusieurs ennemis sans se detruire
+      b.pierce = opts.pierce; b._hit = new Set();
+      const through = (e, fn) => { if (b._hit.has(e)) return; b._hit.add(e); fn(e, { dmg: b.dmg }); b.pierce--; if (b.pierce <= 0 && b.exists()) destroy(b); };
+      b.onCollide('enemy', (e) => through(e, hitEnemy));
+      b.onCollide('passant', (e) => through(e, hitEnemy));
+      b.onCollide('boss', (e) => through(e, hitBoss));
+      b.onCollide('solid', () => destroy(b));
     } else {
       b.onCollide('enemy', (e) => hitEnemy(e, b));
       b.onCollide('passant', (e) => hitEnemy(e, b));   // figurant : seule interaction = prendre une balle
@@ -301,6 +312,24 @@
     p.throwT = (C.shot && C.shot.throwHold) || 0.32;
     p.throwReplay = true;
     sfx('shoot');
+  }
+
+  // TIR DE BASE selon l'ARME courante (p.weapon, posee par les powerups) + le TIER.
+  //  graine = 1 tir droit (degats = tier). spread = eventail (3, 5 au tier 3).
+  //  pierce = traverse (1+tier ennemis). bombe = tir droit explosif (petite AoE).
+  function fireBase(p) {
+    const tier = Math.max(1, Math.min(3, p.tier || 1));
+    const w = p.weapon || 'graine';
+    if (w === 'spread') {
+      const offs = tier >= 3 ? [-0.26, -0.13, 0, 0.13, 0.26] : [-0.16, 0, 0.16];
+      offs.forEach((o) => playerShoot('graine', 1, { angleOffset: o, damage: 1 }));
+    } else if (w === 'pierce') {
+      playerShoot('graine', 1, { pierce: 1 + tier, damage: tier });
+    } else if (w === 'bombe') {
+      playerShoot('bombe', 1, { damage: 1 + tier });
+    } else {
+      playerShoot('graine', 1);
+    }
   }
 
   // LOB LOURD (X) : lance un gateau en cloche, auto-vise sur la cible la plus
@@ -401,8 +430,10 @@
         aimAngle: C.shot.aimDefault,           // angle de lancer du lob (resolu par autoAimArc)
         jumpsLeft: C.player.maxJumps,
         ammoKey: C.player.startAmmo,
+        weapon: 'graine',                     // famille de tir de base (changee par les powerups)
         fireCd: 0, lobCd: 0,
-        sun: C.sun.max, sunMax: C.sun.max,    // sunMax FOND a chaque passant tue (cf. registerKill)
+        sun: C.sun.max, sunMax: C.sun.max,    // jauge energie/stamina (sunMax constant = C.sun.max)
+        tier: (C.tier && C.tier.start) || 1, tierFlash: 0,   // TIER (pips) : moralite + puissance du tir de base
         score: 0, kills: 0,                    // kills = passants abattus (stat de "meurtre")
         data: 0, pages: 0, gotPubli: false,
         catCharges: C.cat.startCharges,
@@ -410,6 +441,7 @@
         _sunCharging: false, _sunShaded: false, sunFlash: 0,   // etat de recharge solaire (HUD glow)
         killFlash: 0,                                          // pulse du compteur tete-de-mort a chaque meurtre
         knockX: 0, knockT: 0,
+        dashT: 0, dashCd: 0, dashVx: 0,   // dash (ruee + i-frames)
         equipped: null, _overlay: null,
         _spr: 'hero_idle', _anim: null,
       },
@@ -432,6 +464,14 @@
       loseEquip();
       p.invuln = C.player.invulnTime;
       safeShake(8); sfx('hit');
+      return;
+    }
+    if (p.tier > 1) {                       // TIER 2/3 = BOUCLIER : le coup coute un tier, pas un coeur
+      p.tier--; p.tierFlash = 0.6;
+      flashMsg('TIER -1');
+      p.invuln = C.player.invulnTime;
+      knockPlayer(srcX);
+      safeShake(6); sfx('hit');
       return;
     }
     p.hp -= dmg;
@@ -692,6 +732,7 @@
     ]);
     playIfAnim(h, name);
     h.onUpdate(() => {
+      if (h.dead) return;          // CADAVRE : tete zombie figee (cf. corpsify)
       h.t += dt();
       h.pos.y = h.baseY + Math.sin(h.t * 3) * amp;   // dodelinement vertical
       h.angle = Math.sin(h.t * 2) * rotA;            // balancement (nod) autour du cou
@@ -726,6 +767,7 @@
   }
 
   function enemyBehavior(e) {
+    if (e.dead) return;            // CADAVRE : inerte, ne bouge plus (cf. corpsify)
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if (e.stun > 0) { e.stun -= dt(); e.t = 0; return; }
@@ -811,9 +853,9 @@
     e.hp -= (bullet ? bullet.dmg : 1);
     if (e.hp <= 0) {
       PLAYER.score += e.def.score || 0;
-      if (e.def.persona) registerKill();   // passant inoffensif abattu -> malus d'energie max
       addPoof(e.pos.x, e.pos.y - TS * 0.5);
-      destroy(e);
+      if (e.def.persona) { registerKill(); corpsify(e); }   // passant abattu -> reste en CADAVRE sur la carte (ne disparait pas)
+      else destroy(e);
     } else {
       e.hurtT = 0.2;                 // declenche la frame 'hurt' (cf. enemyAnim)
       e.opacity = 0.5;
@@ -822,21 +864,56 @@
   }
 
   // PASSANTS = figurants INOFFENSIFS. Les abattre ne rapporte rien et fait
-  //  FONDRE le plafond d'energie (sunMax) de C.sun.killPenalty, jusqu'au
-  //  plancher C.sun.minMax -> plus on tue, moins on peut tirer (la graine elle
-  //  -meme coute un peu). Incite a traverser sans toucher aux passants. Le
-  //  compteur p.kills (stat de "meurtre") s'affiche dans le HUD. Etat par
-  //  niveau : repart du max au niveau suivant (PLAYER recree par scene).
+  //  PERDRE un TIER (la conscience) tant qu'on en a -> plus on tue, moins on
+  //  est puissant. Incite a traverser sans toucher aux passants. Le compteur
+  //  p.kills (stat de "meurtre") s'affiche dans le HUD. Etat par niveau :
+  //  repart de C.tier.start au niveau suivant (PLAYER recree par scene).
   function registerKill() {
     const p = PLAYER; if (!p) return;
     p.kills = (p.kills || 0) + 1;
     p.killFlash = 0.6;                       // declenche le pulse du compteur HUD
-    const pen = C.sun.killPenalty || 0;
-    if (pen > 0) {
-      const floor = C.sun.minMax || 0;
-      p.sunMax = Math.max(floor, (p.sunMax != null ? p.sunMax : C.sun.max) - pen);
-      p.sun = Math.min(p.sun, p.sunMax);     // le stock ne depasse jamais le nouveau plafond
-      flashMsg('PASSANT ABATTU  -' + pen + ' ENERGIE MAX');
+    if (p.tier > 1) {
+      p.tier--; p.tierFlash = 0.6;
+      flashMsg('PASSANT ABATTU  TIER -1');
+    } else {
+      flashMsg('PASSANT ABATTU');
+    }
+  }
+
+  // PASSANT abattu -> CADAVRE permanent. Le figurant ne disparait plus : il
+  //  devient un decor inerte qui RESTE sur la carte. On le rend immobile (plus
+  //  d'IA ni de gravite), intraversable des balles (area retiree -> les tirs le
+  //  traversent), on le sort des systemes passant (untag) et on remplace sa
+  //  tete vivante par la version ZOMBIE (head_npc_..._dead, figee). Le corps
+  //  prend une pose affalee : sprite dedie <body>_dead (1 frame) s'il existe,
+  //  sinon on bascule le corps debout au sol (repli en attendant le sprite).
+  //  offscreen(hide/pause) recycle les cadavres hors-cadre -> ils s'accumulent
+  //  sans cout CPU et reapparaissent quand on revient.
+  function corpsify(e) {
+    if (!e || !e.exists() || e.dead) return;
+    e.dead = true;
+    try { e.stop(); } catch (_) {}            // fige l'anim de marche
+    try { e.unuse('body'); } catch (_) {}     // plus de gravite
+    try { e.unuse('area'); } catch (_) {}     // inerte : les balles le traversent
+    e.untag('passant');                       // hors IA / souffle de zone passant
+    e.tag('corpse');
+    e.z = -0.6;                               // toujours sous les vivants
+
+    const deadBody = (e._spr || '') + '_dead';
+    if (hasSprite(deadBody)) {                 // corps affale dedie (1 sprite)
+      e.use(sprite(deadBody));
+      playIfAnim(e, deadBody);
+    } else {                                   // repli : bascule au sol (pivot = pieds)
+      e.angle = (e.facing >= 0 ? 90 : -90);
+    }
+
+    const h = e.head;                          // tete vivante -> tete zombie
+    if (h && h.exists()) {
+      h.dead = true;
+      h.pos.y = h.baseY;
+      h.angle = rand(-8, 8);                    // petit tilt aleatoire : les cadavres ne sont pas tous parfaitement droits
+      const dn = (e.passantHead || '') + '_dead';
+      if (hasSprite(dn)) { try { h.stop(); } catch (_) {} h.use(sprite(dn)); }
     }
   }
 
@@ -1040,11 +1117,20 @@
     switch (it.kind) {
       case 'sunray': p.sun = Math.min(p.sunMax, p.sun + C.sun.rayGain); break;
       case 'cafe':   p.hp = Math.min(p.maxHp, p.hp + (it.def.heal || 1)); break;
-      case 'data':   p.data++; break;
+      case 'data':   p.data++;
+        if (p.tier < ((C.tier && C.tier.max) || 3)) {   // une data fait monter le TIER (puissance + bouclier)
+          p.tier++; p.tierFlash = 0.6;
+          flashMsg('TIER ' + p.tier + ' !');
+        }
+        break;
       case 'page':   p.pages++; break;
       case 'publi':  p.gotPubli = true; flashMsg(C.story.publi); break;
       case 'croquette': p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); break;
       default: break;
+    }
+    if (it.def.weapon) {                          // powerup d'arme : change le tir de base (p.weapon)
+      p.weapon = it.def.weapon;
+      flashMsg('ARME : ' + (it.def.weapon === 'spread' ? 'EVENTAIL' : it.def.weapon === 'pierce' ? 'PERCANT' : 'BOMBE'));
     }
     if (it.def.equip) equip(it.def.equip);       // equipement (rollers, etc.)
     p.score += it.def.score || 0;
@@ -1443,8 +1529,7 @@
       const sy = vy + 47;
       const sbx = vx + 38, sbw = vw - 38 - 16, sbh = 13;
       const absMax = C.sun.max || 1;
-      const sf = p.sun / absMax;                                          // remplissage RELATIF a la capacite d'origine
-      const capFrac = Math.max(0, Math.min(1, (p.sunMax != null ? p.sunMax : absMax) / absMax));  // plafond actuel
+      const sf = p.sun / absMax;                                          // remplissage RELATIF a la capacite (constante)
       const fw = Math.max(sbh, sbw * sf);
       const charging = p._sunCharging || p.sunFlash > 0;
       const pulse = 0.5 + 0.5 * Math.sin(t * 6);
@@ -1467,14 +1552,6 @@
         const bandX = sbx + sweep * fw, bandW = 18;
         const x0 = Math.max(sbx, bandX - bandW / 2), x1 = Math.min(sbx + fw, bandX + bandW / 2);
         if (x1 > x0) R(x0, sy + 1, x1 - x0, sbh - 2, { radius: (sbh - 2) / 2, color: COL.cream, opacity: 0.9 });
-      }
-      // CAPACITE CONDAMNEE par les meurtres : la portion au-dela du plafond
-      //  actuel est verrouillee (zone sombre + trait rouge) -> on VOIT le max
-      //  fondre a chaque passant abattu.
-      if (capFrac < 0.999) {
-        const lx = sbx + sbw * capFrac;
-        R(lx, sy, sbx + sbw - lx, sbh, { radius: sbh / 2, color: COL.redDk, opacity: 0.6 });
-        R(lx - 1, sy - 2, 2, sbh + 4, { color: COL.red });               // marque le plafond restant
       }
       // icone soleil : pulse quand ca recharge, ternie a l'ombre
       const sunPulse = p._sunCharging ? (1 + Math.sin(t * 6) * 0.16) : 1;
@@ -1503,11 +1580,23 @@
       // ===== ARME (bas-gauche) : tir de base (graine) =====
       const aw = 196, ah = 44, axx = 14, ayy = H - 14 - ah;
       panel(axx, ayy, aw, ah);
-      const am = C.ammoTypes.graine;
-      icon(hasSprite(am.sprite) ? am.sprite : 'ammo_graine', axx + 26, ayy + ah / 2, 30);
-      T(am.label, axx + 48, ayy + 16, 15, COL.ink);
+      const wname = p.weapon === 'spread' ? 'EVENTAIL' : p.weapon === 'pierce' ? 'PERCANT' : p.weapon === 'bombe' ? 'BOMBE' : 'GRAINES';
+      const wspr = p.weapon === 'bombe' ? 'ammo_gateau' : 'ammo_graine';
+      icon(hasSprite(wspr) ? wspr : 'ammo_graine', axx + 26, ayy + ah / 2, 30);
+      T(wname, axx + 48, ayy + 16, 15, COL.ink);
       T('GRATUIT', axx + 50, ayy + 31, 12, COL.leaf);   // tir de base : gratuit, jamais de blocage
-      keycap('ESPACE', axx + aw - 52, ayy + 7);
+      keycap('ESPACE', axx + aw - 52, ayy + 5);
+      // PIPS DE TIER ("NIVEAU") : moralite + puissance du tir de base. Remplis
+      //  jusqu'a p.tier, vides ensuite ; pulse legerement juste apres un changement.
+      const tierMax = (C.tier && C.tier.max) || 3;
+      const tpulse = (p.tierFlash || 0) > 0 ? 1 : 0;
+      T('NIVEAU', axx + aw - 50, ayy + 27, 10, COL.inkSoft);
+      for (let i = 0; i < tierMax; i++) {
+        const px = axx + aw - 44 + i * 16, py = ayy + 37;
+        const on = i < (p.tier || 0);
+        pip(px, py, on);
+        if (on && tpulse) drawCircle({ pos: vec2(px, py), radius: 6.5, color: COL.leaf, opacity: 0.5 });
+      }
 
       // ===== LOB LOURD (a droite de l'arme) : X, coute de l'energie =====
       const lw = 124, lxx = axx + aw + 8, lyy = ayy;
@@ -1744,6 +1833,20 @@
       if (!PLAYER.isGrounded() && PLAYER.vel && PLAYER.vel.y < 0) PLAYER.vel = vec2(PLAYER.vel.x, PLAYER.vel.y * 0.45);
     });
     onPlayKey(C.controls.lob, lobShoot);
+    // DASH (Maj) : ruee horizontale + i-frames (via p.invuln). Coute de l'energie, cooldown.
+    onPlayKey(C.controls.dash, () => {
+      const p = PLAYER; if (!p || !p.exists()) return;
+      const d = C.player.dash; if (!d) return;
+      if (p.dashT > 0 || (p.dashCd || 0) > 0 || p.knockT > 0) return;
+      const cost = d.cost || 0;
+      if (C.sun.enabled && p.sun < cost) return;
+      if (C.sun.enabled) p.sun = Math.max(0, p.sun - cost);
+      p.dashT = d.duration || 0.16;
+      p.dashVx = (p.facing || 1) * (d.speed || 540);
+      p.dashCd = d.cooldown || 0.5;
+      p.invuln = Math.max(p.invuln || 0, d.iframes || 0.2);
+      addPoof(p.pos.x, p.pos.y - TS * 0.4);
+    });
     onKeys(C.controls.quit, () => { quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
     onKeyPress('space', confirmQuit);                                        // ESPACE/ENTREE : confirme la sortie
     onKeyPress('enter', confirmQuit);
@@ -1765,6 +1868,7 @@
       onPlayPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
       onPlayPress('h', () => {                                                        // plein
         PLAYER.hp = PLAYER.maxHp; PLAYER.kills = 0; PLAYER.sunMax = C.sun.max; PLAYER.sun = C.sun.max;
+        PLAYER.tier = (C.tier && C.tier.max) || 3;
         PLAYER.catCharges = C.cat.maxCharges; flashMsg('PLEIN !');
       });
     }
@@ -1814,7 +1918,9 @@
       // CHAT INSTANTANE : Laura est IMMOBILE tant que le chat est dehors (il revient
       //  tout seul) ; plus de charge a maintenir.
       const catOut = get('cat').length > 0;
-      if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }       // recul : pas de controle
+      if (p.dashCd > 0) p.dashCd -= dt();
+      if (p.dashT > 0) { p.dashT -= dt(); if (p.vel) p.vel = vec2(p.dashVx, p.vel.y); }   // DASH : ruee horizontale, gravite conservee
+      else if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }  // recul : pas de controle
       else if (!crouching && !catOut) {
         if (keysDown(C.controls.left)) { p.move(-spd, 0); p.facing = -1; moving = true; }
         if (keysDown(C.controls.right)) { p.move(spd, 0); p.facing = 1; moving = true; }
@@ -1825,7 +1931,7 @@
       p.fireCd -= dt();
       if (p.lobCd > 0) p.lobCd -= dt();
       if (!eqv && keysDown(C.controls.shoot) && p.fireCd <= 0) {
-        playerShoot('graine', 1);
+        fireBase(p);
         p.fireCd = C.shot.rate;
       }
 
@@ -1856,6 +1962,7 @@
         if (p.throwReplay) { p._anim = null; p.throwReplay = false; }   // rejoue depuis la 1re frame (sinon l'anim gele sur sa derniere frame en rafale)
         heroAnim(p, (ts && hasSprite(ts)) ? ts : 'hero_throw', 'throw');
       }
+      else if (p.dashT > 0) heroAnim(p, hasSprite('hero_dash') ? 'hero_dash' : 'hero_run', hasSprite('hero_dash') ? 'dash' : 'run');
       else if (duckSpr) {                               // scrub manuel : frame = progression
         if (p._spr !== 'hero_duck') { p.use(sprite('hero_duck')); p._spr = 'hero_duck'; p._anim = null; }
         const lastF = ((C.anims.hero_duck && C.anims.hero_duck.sliceX) || 7) - 1;
@@ -1882,6 +1989,7 @@
       else p.opacity = 1;
       if (p.shielded > 0) { p.shielded -= dt(); p.opacity = 0.85; }
       p.killFlash = Math.max(0, (p.killFlash || 0) - dt());
+      p.tierFlash = Math.max(0, (p.tierFlash || 0) - dt());
 
       // RECHARGE SOLAIRE (photosynthese) : la jauge remonte toute seule au
       //  soleil, pas a l'ombre d'un panneau. Le front montant (reprise de
@@ -2079,7 +2187,7 @@
     // --- bandeau bas : controles -------------------------------------
     pill(C.width / 2, C.height - 22, C.width, 56, [26, 18, 12], 0.5, 0, 3);
     inkText('Q/D ou Fleches : bouger     HAUT : sauter     ESPACE : tir de base', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
-    inkText('X : lob lourd     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
+    inkText('X : lob lourd     MAJ : dash     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
 
     // --- invite "ESPACE pour commencer" : pastille doree clignotante ---
     const startPill = pill(C.width / 2, 430, 500, 44, [40, 26, 16], 0.78, 22, 5);
@@ -2471,7 +2579,11 @@
   });
 
   // debug handle
-  window.LQ = { get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; } };
+  window.LQ = {
+    get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; },
+    // debug : abat le i-eme passant a l'ecran (teste le cadavre) ; sans arg, tous
+    kill: (i) => { const l = get('passant'); (i == null ? l : [l[i]]).forEach((e) => e && e.exists() && hitEnemy(e, { dmg: 99 })); },
+  };
 
   // --- GO ! ------------------------------------------------------------
   if (typeof location !== 'undefined' && location.hash.indexOf('game') >= 0) {

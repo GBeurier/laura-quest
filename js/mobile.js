@@ -74,6 +74,7 @@
     crouch: pick('crouch'),
     cat: pick('cat'),
     lob: pick('lob'),                           // lob lourd (auto-vise) -> 'x'
+    dash: pick('dash'),                         // dash (ruee + i-frames) -> 'shift'
     quit: pick('quit'),
   };
 
@@ -137,15 +138,16 @@
     const bShoot = makeBtn('lq-big lq-shoot', '✸', 'TIR');  // ✸
     const bCat = makeBtn('lq-small lq-cat', '🐱');     // 🐱
     const bLob = makeBtn('lq-small lq-lob', '🎂', 'LOB');   // 🎂 lob lourd (auto-vise)
+    const bDash = makeBtn('lq-small lq-dash', '»', 'DASH'); // » dash (ruee + i-frames)
     bindHold(bJump, KEY.jump); bindHold(bShoot, KEY.shoot);
-    bindHold(bCat, KEY.cat); bindHold(bLob, KEY.lob);
+    bindHold(bCat, KEY.cat); bindHold(bLob, KEY.lob); bindHold(bDash, KEY.dash);
 
     // Coin : pause/quitter (HG)
     const bPause = makeBtn('lq-corner lq-pause', '❚❚');  // ❚❚
     bindHold(bPause, KEY.quit);
     const jumpLabel = bJump.querySelector('.lq-s');
 
-    root.append(bL, bR, bDown, bLob, bCat, bShoot, bJump, bPause);
+    root.append(bL, bR, bDown, bDash, bLob, bCat, bShoot, bJump, bPause);
     document.body.appendChild(root);
 
     // Astuce "tourne ton telephone" en portrait.
@@ -230,13 +232,14 @@ html.lq-mobile canvas{ width:100vw !important; height:100vh !important; height:1
 .lq-shoot{ right:calc(var(--lq-sr) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); bottom:calc(var(--lq-sb) + var(--lq-pad)); }
 .lq-cat{ right:calc(var(--lq-sr) + var(--lq-pad)); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
 .lq-lob{ right:calc(var(--lq-sr) + var(--lq-pad) + var(--lq-small) + var(--lq-gap)); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
+.lq-dash{ right:calc(var(--lq-sr) + var(--lq-pad) + (var(--lq-small) + var(--lq-gap))*2); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
 
 /* coins */
 .lq-pause{ left:calc(var(--lq-sl) + var(--lq-pad)); top:calc(var(--lq-st) + var(--lq-pad)); }
 
 /* en menu (hors jeu) : on masque les boutons "combat", on garde deplacement + OK + pause */
 #lq-touch.lq-menu .lq-shoot, #lq-touch.lq-menu .lq-cat, #lq-touch.lq-menu .lq-lob,
-#lq-touch.lq-menu .lq-crouch{ display:none; }
+#lq-touch.lq-menu .lq-dash, #lq-touch.lq-menu .lq-crouch{ display:none; }
 
 /* rotation conseillee en portrait */
 #lq-rotate{ position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
