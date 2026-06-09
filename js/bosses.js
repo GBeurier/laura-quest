@@ -86,6 +86,18 @@ window.BOSS_AI = (() => {
     api.add(kind, x, b.pos.y - api.TS);
   }
 
+  // TRIPLE-SHOOT : 3 bullets HORIZONTAUX vers le joueur a 3 hauteurs.
+  //  haut (passe au-dessus) / MILIEU (hauteur torse = DUCKABLE) / bas.
+  //  Le joueur se baisse pour esquiver le tir du milieu.
+  function tripleShoot(b, p, api, speed) {
+    const sp = speed || 255;
+    const dir = Math.sign(p.pos.x - b.pos.x) || -1;
+    const ys = [b.pos.y - TS * 1.3, b.pos.y - TS * 0.6, b.pos.y - TS * 0.12];
+    for (const y of ys) {
+      api.bullet(b.pos.x, y, { pos: vec2(b.pos.x + dir * 600, y) }, sp, 'boss');
+    }
+  }
+
   const AI = {};
 
   // --- defaut : tir en eventail + avance lente (filet de securite) -----
@@ -105,7 +117,7 @@ window.BOSS_AI = (() => {
    *  Apprend a Laura : "telegraphe -> esquive -> punition".
    * ===================================================================== */
   AI.charger = function (b, p, api) {
-    if (b.cs === undefined) { b.cs = 'pace'; b.ct = 0; b.dashDir = -1; }
+    if (b.cs === undefined) { b.cs = 'pace'; b.ct = 0; b.dashDir = -1; b.cyc = 0; b.shotDone = false; }
     b.ct += dt();
     const paceT = b.def.paceTime || 1.0;
     const windT = b.def.windTime || 0.7;
@@ -113,14 +125,22 @@ window.BOSS_AI = (() => {
     const stagT = b.def.staggerTime || 1.2;
     const throwT = b.def.throwTime || 0.5;
     const dashSpd = b.def.dashSpeed || 520;
+    const shotSpeed = b.def.shotSpeed || 255;
 
     if (b.cs === 'pace') {
-      // approche lente, regarde le joueur, prepare la charge
+      // approche lente, regarde le joueur, prepare la charge. 1 fois sur 2,
+      //  apres un court telegraphe, tire un TRIPLE missile (milieu = duckable).
       faceOnly(b, p);
-      b.animWant = 'idle';
       moveClamp(b, p, (b.def.speed || 90) * 0.6);
+      if (b.cyc % 2 === 1) {
+        // cycle de tir : breve pose 'attack' (~0.2s) puis triple horizontal
+        b.animWant = (b.ct < 0.2) ? 'attack' : 'idle';
+        if (!b.shotDone && b.ct >= 0.2) { tripleShoot(b, p, api, shotSpeed); b.shotDone = true; }
+      } else {
+        b.animWant = 'idle';
+      }
       if (b.ct > paceT) {
-        b.cs = 'wind'; b.ct = 0;
+        b.cs = 'wind'; b.ct = 0; b.cyc++; b.shotDone = false;
         b.dashDir = Math.sign(p.pos.x - b.pos.x) || -1;  // verrouille la cible
       }
     } else if (b.cs === 'wind') {
@@ -129,12 +149,17 @@ window.BOSS_AI = (() => {
       faceOnly(b, p);
       b.move(-b.dashDir * 70, 0);
       if (b.ct < 0.06) api.shake(2);
-      if (b.ct > windT) { b.cs = 'dash'; b.ct = 0; api.shake(4); }
+      if (b.ct > windT) {
+        b.cs = 'dash'; b.ct = 0; api.shake(4);
+        // SEISME LOCALISE : cracks au sol au depart du dash
+        api.poof(b.pos.x, b.pos.y); api.poof(b.pos.x - 22, b.pos.y); api.poof(b.pos.x + 22, b.pos.y);
+      }
     } else if (b.cs === 'dash') {
-      // ruee a pleine vitesse dans la direction verrouillee
+      // ruee a pleine vitesse dans la direction verrouillee : seisme localise
+      //  (shake continu) + contact (gere par le contact-damage normal du boss).
       b.animWant = 'attack';
       const edge = moveDirClamp(b, b.dashDir, dashSpd);
-      if (b.ct < 0.06 || (b.cyc = (b.cyc || 0) + 1) % 8 === 0) api.shake(1);
+      api.shake(1);
       if (edge || b.ct > dashT) { b.cs = 'stagger'; b.ct = 0; api.poof(b.pos.x, b.pos.y); }
     } else if (b.cs === 'stagger') {
       // ESSOUFFLE : totalement immobile -> FENETRE DE PUNITION
@@ -146,7 +171,7 @@ window.BOSS_AI = (() => {
       b.animWant = 'attack';
       faceOnly(b, p);
       if (b.ct < 0.06) [-0.22, 0, 0.22].forEach((s) => lob(b, p, api, s));
-      if (b.ct > throwT) { b.cs = 'pace'; b.ct = 0; }
+      if (b.ct > throwT) { b.cs = 'pace'; b.ct = 0; b.cyc++; b.shotDone = false; }
     }
     clampHome(b);
   };
@@ -157,15 +182,14 @@ window.BOSS_AI = (() => {
    *  semant fourches & chutes) -> stall (moteur cale = punition).
    * ===================================================================== */
   AI.tracteur = function (b, p, api) {
-    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.forkT = 0; b.skyT = 0; }
+    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.skyT = 0; }
     b.tt += dt();
     const revT = b.def.revTime || 0.5;
-    const stallT = b.def.stallTime || 1.5;
+    const stallT = b.def.stallTime || 1.8;
     const driveSpd = b.def.driveSpeed || (b.def.speed || 120) * 1.6;
-    const forkEvery = b.def.forkEvery || 0.45;
-    const skyEvery = b.def.skyEvery || 2.0;     // (B) cadence calmee (etait 1.1)
-    const skyDelay = b.def.skyDelay || 0.6;     // (A) fenetre de telegraphe lisible
-    const skyMinDist = b.def.skyMinDist || 150; // (B) chute SEULEMENT si joueur a distance
+    const skyEvery = b.def.skyEvery || 2.2;     // cadence des bombes en drive
+    const skyDelay = b.def.skyDelay || 0.8;     // fenetre de telegraphe (ombre qui grandit)
+    const skyMinDist = b.def.skyMinDist || 160; // bombe SEULEMENT si joueur a distance
 
     if (b.ts === 'rev') {
       // TELEGRAPHE : choisit la direction, fait vrombir (shake), reste sur place
@@ -178,31 +202,23 @@ window.BOSS_AI = (() => {
         b.dir = (Math.abs(b.pos.x - b.homeX) > b.def.range * 0.7) ? towardHome : towardP;
         api.shake(2);
       }
-      if (b.tt > revT) { b.ts = 'drive'; b.tt = 0; b.forkT = 0; b.skyT = 0; }
+      if (b.tt > revT) { b.ts = 'drive'; b.tt = 0; b.skyT = 0; }
     } else if (b.ts === 'drive') {
-      // traverse l'arene a fond, seme fourches + dangers du ciel telegraphes
+      // traverse l'arene a fond, lache des BOMBES verticales telegraphees
       b.animWant = 'attack';
       b.flipX = b.dir > 0;             // oriente le tracteur dans le sens de marche
       b.facing = b.dir;
       const edge = moveDirClamp(b, b.dir, driveSpd);
-      b.forkT += dt();
-      if (b.forkT >= forkEvery) { b.forkT = 0; lob(b, p, api, rand(-0.15, 0.15)); }
       b.skyT += dt();
       if (b.skyT >= skyEvery) {
+        b.skyT = 0;
         if (Math.abs(p.pos.x - b.pos.x) > skyMinDist) {
-          // (A) telegraphe : colonne ET sol VERROUILLES maintenant (plus de drift),
-          //  marqueur au sol au point d'impact, puis chute apres skyDelay.
-          b.skyT = -skyDelay;          // delai negatif = fenetre d'alerte avant la chute
-          b._skyX = p.pos.x;
-          b._skyY = p.pos.y;
-          api.marker(b._skyX, b._skyY, skyDelay);
-        } else {
-          b.skyT = 0;                  // (B) joueur au contact -> on reporte (pas de spam)
+          // bombe qui tombe sur la position du joueur : ombre qui grandit (telegraphe
+          //  skyDelay) puis explose. Esquive : dash/saut lateral sous la bombe.
+          api.dropBomb(p.pos.x, p.pos.y, skyDelay, 'shot_bomb');
         }
-      } else if (b.skyT >= 0 && b._skyX !== undefined) {
-        skyHazard(api, b._skyX, b._skyY); api.shake(2); b._skyX = undefined;
       }
-      if (edge) { b.ts = 'stall'; b.tt = 0; b._skyX = undefined; }
+      if (edge) { b.ts = 'stall'; b.tt = 0; }
     } else {
       // MOTEUR CALE : immobile, fume -> FENETRE DE PUNITION
       faceOnly(b, p);
@@ -221,52 +237,50 @@ window.BOSS_AI = (() => {
    *  Cycle : aim -> burst/wave -> recalc.
    * ===================================================================== */
   AI.modeles = function (b, p, api) {
-    if (b.ms === undefined) { b.ms = 'aim'; b.mt = 0; b.cyc = 0; b.shotN = 0; }
+    if (b.ms === undefined) { b.ms = 'aim'; b.mt = 0; b.cyc = 0; b.threw = false; }
     faceOnly(b, p);
     b.mt += dt();
-    const aimT = b.def.aimTime || 0.6;
+    const aimT = b.def.aimTime || 1.0;
     const recalcT = b.def.recalcTime || 1.0;
-    const burstGap = b.def.burstGap || 0.16;
-    const idealMin = b.def.keepMin || 200;   // distance mini avant de reculer
-    const idealMax = b.def.keepMax || 420;   // distance maxi avant d'avancer
+    const keepMin = b.def.keepMin || 220;    // distance mini avant de reculer
+    const keepMax = b.def.keepMax || 440;    // distance maxi avant d'avancer
     const sp = b.def.shotSpeed || 220;
 
     // REPOSITIONNEMENT permanent : garde la bonne distance (combat a distance)
     const dx = p.pos.x - b.pos.x;
     const dist = Math.abs(dx);
-    if (dist < idealMin) { moveDirClamp(b, -Math.sign(dx) || 1, (b.def.speed || 90) * 0.8); }
-    else if (dist > idealMax) { moveDirClamp(b, Math.sign(dx) || -1, (b.def.speed || 90) * 0.5); }
+    if (dist < keepMin) { moveDirClamp(b, -Math.sign(dx) || 1, (b.def.speed || 90) * 0.8); }
+    else if (dist > keepMax) { moveDirClamp(b, Math.sign(dx) || -1, (b.def.speed || 90) * 0.5); }
 
     if (b.ms === 'aim') {
       // verrouille la visee : pose idle marquee (telegraphe)
       b.animWant = 'idle';
       if (b.mt > aimT) {
-        b.mt = 0; b.shotN = 0;
+        b.mt = 0; b.threw = false;
         b.cyc++;
-        // une vague de bruit un cycle sur deux, sinon salve visee
-        b.ms = (b.cyc % 2 === 0) ? 'wave' : 'burst';
-        if (b.ms === 'wave') {
-          // large arc de 5-7 tirs LENTS a slalomer (le "bruit du modele")
-          const n = b.def.waveN || 6;
-          const half = (n - 1) / 2;
-          for (let i = 0; i < n; i++) shoot(b, p, api, sp * 0.6, (i - half) * 0.22);
-          api.shake(1);
-          b.ms = 'recalc'; b.mt = 0;
-        }
+        // 1 cycle sur 3 = OVERLOAD (eventail telegraphe), sinon BOMBE EN PAPIER.
+        b.ms = (b.cyc % 3 === 0) ? 'overload' : 'throw';
       }
-    } else if (b.ms === 'burst') {
-      // salve serree de 3 tirs VISES, espaces dans le temps
+    } else if (b.ms === 'throw') {
+      // BOMBE EN PAPIER : memo froisse qui tombe sur la position du joueur ->
+      //  le force a BOUGER lateralement (ombre qui grandit = telegraphe).
       b.animWant = 'attack';
-      const need = Math.floor(b.mt / burstGap);
-      while (b.shotN < need && b.shotN < 3) {
-        shoot(b, p, api, sp, rand(-0.05, 0.05));
-        b.shotN++;
+      if (!b.threw) { b.threw = true; api.dropBomb(p.pos.x, p.pos.y, 0.7, 'shot_paper'); }
+      if (b.mt > 0.5) { b.ms = 'recalc'; b.mt = 0; }
+    } else if (b.ms === 'overload') {
+      // OVERLOAD : telegraphe (shake) puis eventail de 3 tirs VISES (corrige le
+      //  bug "tire dans le sol" : shoot() vise bien le joueur depuis le torse).
+      b.animWant = 'attack';
+      if (!b.threw && b.mt < 0.06) { api.shake(4); }
+      if (!b.threw && b.mt > 0.3) {
+        b.threw = true;
+        [-0.2, 0, 0.2].forEach((s) => shoot(b, p, api, sp, s));
       }
-      if (b.shotN >= 3) { b.ms = 'recalc'; b.mt = 0; }
+      if (b.mt > 0.6) { b.ms = 'recalc'; b.mt = 0; }
     } else {
-      // RECALCUL : ne tire plus -> FENETRE DE PUNITION
+      // RECALCUL : ne tire plus -> FENETRE DE PUNITION (spawn occasionnel)
       b.animWant = 'idle';
-      if (b.mt < 0.06 && (b.cyc % 3 === 0)) api.add('chercheur', b.pos.x, b.pos.y - api.TS);
+      if (b.mt < 0.06 && (b.cyc % 3 === 1)) spawnEnFace(b, p, api, 'cafard');
       if (b.mt > recalcT) { b.ms = 'aim'; b.mt = 0; }
     }
     clampHome(b);
@@ -280,48 +294,37 @@ window.BOSS_AI = (() => {
    * ===================================================================== */
   AI.errors = function (b, p, api) {
     faceOnly(b, p);
-    if (b.state === undefined) { b.state = 'attack'; b.st = 0; b.t = 0; b.cyc = 0; b.wall = 0; }
+    if (b.state === undefined) { b.state = 'fire'; b.st = 0; b.t = 0; b.burst = 0; b.summoned = false; }
     b.st += dt();
-    const attackT = b.def.attackTime || 4;
-    const loadT = b.def.loadTime || 2;
-    const shotEvery = b.def.shotEvery || 0.7;
-    const sp = b.def.shotSpeed || 220;
+    const attackT = b.def.attackTime || 2.5;   // FIRE : 3 salves de tripleShoot
+    const summonT = b.def.summonTime || 2.0;   // SUMMON : cafards fragiles
+    const loadT = b.def.loadTime || 1.5;       // LOAD : punition
+    const burstGap = b.def.burstGap || 0.8;
+    const sp = b.def.shotSpeed || 255;
 
-    if (b.state === 'attack') {
+    if (b.state === 'fire') {
+      // 3 salves de tripleShoot horizontal espacees de burstGap (le joueur
+      //  esquive en se baissant sous le tir du milieu / dash lateral).
       b.animWant = 'attack';
-      moveClamp(b, p, (b.def.speed || 90) * 0.5);
-      b.t += dt();
-      if (b.t >= shotEvery) {
-        b.t = 0;
-        [-0.25, 0, 0.25].forEach((s) => shoot(b, p, api, sp, s));
-        b.cyc++;
-        if (b.cyc % 3 === 0) api.add('bug', b.pos.x, b.pos.y - api.TS);
+      const need = Math.min(3, Math.floor(b.st / burstGap) + 1);
+      while (b.burst < need && b.burst < 3) {
+        tripleShoot(b, p, api, sp);
+        b.burst++;
       }
-
-      // STACK TRACE : une fois par phase, vers le milieu de l'attaque
-      if (b.wall === 0 && b.st > attackT * 0.5) {
-        b.wall = 1;                  // telegraphe : on previent
-        api.shake(4); api.poof(b.pos.x, b.pos.y - api.TS);
-      } else if (b.wall === 1 && b.st > attackT * 0.5 + 0.4) {
-        b.wall = 2;                  // tir du mur (apres le delai de telegraphe)
-        // trou aligne du COTE OPPOSE au joueur -> Laura doit se replacer
-        const holeSide = (p.pos.x < b.pos.x) ? 1 : -1;
-        const holeX = b.homeX + holeSide * (b.def.range || 360) * 0.55;
-        const top = b.pos.y - 360, bot = b.pos.y + 60;
-        const step = 56;
-        for (let y = top; y <= bot; y += step) {
-          if (Math.abs((b.pos.x) - holeX) < 1) continue;
-          // mur vertical : projectiles partant du x du boss, descendant tout droit
-          api.bullet(holeX, y, { pos: vec2(holeX, y + 100) }, sp * 0.9, 'enemy');
-        }
-        // marque visuellement le trou (rien dedans = passage sur)
-        api.poof(holeX, p.pos.y - 8);
-      }
-      if (b.st > attackT) { b.state = 'load'; b.st = 0; b.wall = 0; }
-    } else {
-      // "loading..." : ne tire plus -> FENETRE DE PUNITION
+      if (b.st > attackT) { b.state = 'summon'; b.st = 0; b.summoned = false; }
+    } else if (b.state === 'summon') {
+      // invoque des cafards TRES fragiles (1 PV) en face du joueur ; +1 si bas HP.
       b.animWant = 'idle';
-      if (b.st > loadT) { b.state = 'attack'; b.st = 0; b.t = 0; }
+      if (!b.summoned && b.st < 0.06) {
+        b.summoned = true;
+        const n = (b.hp / b.maxHp < 0.5) ? 3 : 2;
+        for (let i = 0; i < n; i++) spawnEnFace(b, p, api, 'cafard');
+      }
+      if (b.st > summonT) { b.state = 'load'; b.st = 0; b.burst = 0; }
+    } else {
+      // LOAD ("loading...") : ne tire plus, immobile -> FENETRE DE PUNITION
+      b.animWant = 'idle';
+      if (b.st > loadT) { b.state = 'fire'; b.st = 0; b.burst = 0; }
     }
     clampHome(b);
   };
@@ -334,51 +337,66 @@ window.BOSS_AI = (() => {
    * ===================================================================== */
   AI.paperasse = function (b, p, api) {
     if (b.ps === undefined) { b.ps = 'pre'; b.pt = 0; b.destX = b.homeX; b.threw = false; }
+    if (b._baseScale === undefined) { b._baseScale = b.scale ? b.scale.clone() : vec2(1, 1); }
     b.pt += dt();
     const preT = b.def.preTime || 0.4;
+    const imploT = b.def.implodeTime || 0.18;   // duree de l'implosion spectaculaire
     const throwT = b.def.throwTime || 0.3;
     const windowT = b.def.windowTime || 1.2;
     const formN = b.def.formN || 4;
     const sp = b.def.shotSpeed || 220;
+    const range = b.def.range || 360;
 
     if (b.ps === 'pre') {
-      // choisit la destination et la TELEGRAPHE (poof a l'avance)
+      // choisit la destination (clampee a l'ecran, ELOIGNEE du joueur >=200px)
+      //  et la TELEGRAPHE (poof a l'avance).
       faceOnly(b, p);
       b.animWant = 'idle';
       if (b.pt < 0.06) {
-        b.destX = b.homeX + rand(-b.def.range, b.def.range);
+        let dx = b.homeX + rand(-range, range);
+        if (Math.abs(dx - p.pos.x) < 200) dx = p.pos.x + (dx >= p.pos.x ? 200 : -200);
+        b.destX = Math.max(b.homeX - range, Math.min(b.homeX + range, dx));
         api.poof(b.destX, b.pos.y - api.TS);   // fantome a la future place
       } else if (b.pt > preT * 0.5) {
         api.poof(b.destX, b.pos.y - api.TS);   // re-pulse pour appuyer le telegraphe
       }
-      if (b.pt > preT) { b.ps = 'tp'; b.pt = 0; }
-    } else if (b.ps === 'tp') {
-      // teleportation effective vers la destination annoncee
-      api.poof(b.pos.x, b.pos.y - api.TS);
-      b.pos.x = b.destX;
-      api.poof(b.pos.x, b.pos.y - api.TS);
+      if (b.pt > preT) { b.ps = 'implosion'; b.pt = 0; }
+    } else if (b.ps === 'implosion') {
+      // TELEPORT SPECTACULAIRE : le boss implose (scale->0 + clignote) sur place,
+      //  poof dense, puis reapparait a destX en flash, restaure scale/opacite.
       faceOnly(b, p);
-      b.ps = 'throw'; b.pt = 0; b.threw = false;
+      b.animWant = 'idle';
+      const k = Math.min(1, b.pt / imploT);
+      const s = 1 - k;
+      b.scale = b._baseScale.scale(s);
+      b.opacity = (Math.floor(b.pt * 40) % 2 === 0) ? 0.35 : 1;
+      if (b.pt < 0.04) { api.poof(b.pos.x, b.pos.y - api.TS); api.poof(b.pos.x - 16, b.pos.y - api.TS - 12); }
+      if (b.pt >= imploT) {
+        // TP effectif : flash a l'arrivee, restaure l'echelle/l'opacite.
+        b.pos.x = b.destX;
+        b.scale = b._baseScale.clone();
+        b.opacity = 1;
+        api.poof(b.pos.x, b.pos.y - api.TS); api.poof(b.pos.x + 16, b.pos.y - api.TS - 12);
+        faceOnly(b, p);
+        b.ps = 'throw'; b.pt = 0; b.threw = false;
+      }
     } else if (b.ps === 'throw') {
-      // eventail de formulaires + un tampon qui tombe sur le joueur
+      // eventail de formulaires + TAMPON-PIEGE au sol (zone interdite 2.5s,
+      //  telegraphe 0.5s) sur la position du joueur -> on dash a l'oppose.
       b.animWant = 'attack';
       faceOnly(b, p);
       if (!b.threw) {
         b.threw = true;
         const half = (formN - 1) / 2;
         for (let i = 0; i < formN; i++) shoot(b, p, api, sp, (i - half) * 0.16);
-        skyHazard(api, p.pos.x, p.pos.y);   // le "tampon" administratif tombe sur le joueur
+        api.hazard(p.pos.x, p.pos.y, 2.5, 0.5);
         api.shake(2);
       }
       if (b.pt > throwT) { b.ps = 'window'; b.pt = 0; }
     } else {
-      // FENETRE DE PUNITION : vulnerable, immobile, spawn occasionnel
+      // FENETRE DE PUNITION : vulnerable, immobile (plus d'huissiers)
       b.animWant = 'idle';
       faceOnly(b, p);
-      if (b.pt < 0.06) {
-        b.cyc = (b.cyc || 0) + 1;
-        if (b.cyc % 2 === 0) api.add('chercheur', b.pos.x, b.pos.y - api.TS);
-      }
       if (b.pt > windowT) { b.ps = 'pre'; b.pt = 0; }
     }
     clampHome(b);
@@ -399,6 +417,7 @@ window.BOSS_AI = (() => {
     const phase = frac > 0.66 ? 0 : (frac > 0.33 ? 1 : 2);
     const sp = b.def.shotSpeed || 220;
     const baseEvery = b.def.shotEvery || 1.4;
+    const range = b.def.range || 360;
 
     // --- detection de transition de phase : petite pose d'enrage ---
     if (phase !== b.jPhase) {
@@ -426,7 +445,7 @@ window.BOSS_AI = (() => {
         // Q&A calme : eventail vise de 3
         [-0.14, 0, 0.14].forEach((s) => shoot(b, p, api, sp, s));
       } else if (phase === 1) {
-        // debat : eventail de 5 + un anneau de 8 un coup sur deux + minion
+        // debat : eventail de 5 + un anneau de 8 un coup sur deux + minion fragile
         const half = 2;
         for (let i = 0; i < 5; i++) shoot(b, p, api, sp, (i - half) * 0.14);
         if (b.cyc % 2 === 0) {
@@ -437,15 +456,28 @@ window.BOSS_AI = (() => {
           }
           api.shake(2);
         }
-        if (b.cyc % 3 === 0) api.add('passant', b.pos.x, b.pos.y - api.TS);   // jury : invoque un random (tous biomes)
+        if (b.cyc % 3 === 0) spawnEnFace(b, p, api, 'bug');   // vrai minion fragile (pas de passant)
       } else {
-        // verdict / panique : large eventail rapide + pluie du ciel + shake
+        // verdict / panique : large eventail rapide + bombes + MUR A TROU a dasher.
         const n = b.def.panicN || 7;
         const half = (n - 1) / 2;
         for (let i = 0; i < n; i++) shoot(b, p, api, sp * 1.1, (i - half) * 0.16);
-        skyHazard(api, p.pos.x, p.pos.y);
-        if (b.cyc % 2 === 0) skyHazard(api, b.pos.x + rand(-b.def.range, b.def.range), p.pos.y);
-        if (b.cyc % 4 === 0) api.add('passant', b.pos.x, b.pos.y - api.TS);   // jury : invoque un random (tous biomes)
+        api.dropBomb(p.pos.x, p.pos.y, 0.6, 'shot_bomb');
+        if (b.cyc % 2 === 0) api.dropBomb(b.pos.x + rand(-range, range), p.pos.y, 0.6, 'shot_bomb');
+        // MUR A TROU (dash-pertinent) : colonne verticale de bullets avec UN trou
+        //  (~1.5 tile) annonce par poof -> Laura dash dans le trou.
+        if (b.cyc % 2 === 1) {
+          const wallX = b.pos.x - b.facing * (b.def.range || 360) * 0.5;
+          const gapY = p.pos.y - api.TS * (1 + rand(0, 1.5));   // hauteur du trou
+          api.poof(wallX, gapY);                                // annonce du trou
+          const top = b.pos.y - api.TS * 6, bot = b.pos.y + api.TS * 0.5, step = api.TS * 0.75;
+          for (let y = top; y <= bot; y += step) {
+            if (Math.abs(y - gapY) < api.TS * 0.75) continue;   // laisse le trou (~1.5 tile)
+            api.bullet(wallX, y, { pos: vec2(wallX + b.facing * 600, y) }, sp * 0.9, 'boss');
+          }
+          // tampon-piege au sol pour densifier l'area denial
+          api.hazard(p.pos.x, p.pos.y, 2.0, 0.5);
+        }
         api.shake(3);
       }
     }
