@@ -337,7 +337,6 @@
   function lobShoot() {
     const p = PLAYER;
     if (!p || !p.exists()) return;
-    if (p.equipped) return;            // equipement (rollers/velo) = deplacement seul (Phase 1)
     if ((p.lobCd || 0) > 0) return;
     const cost = C.ammoTypes.gateau.cost || 0;
     if (C.sun.enabled && p.sun < cost) { flashMsg('PAS ASSEZ D ENERGIE'); return; }
@@ -1930,13 +1929,13 @@
       //  (X) part via onPlayKey(C.controls.lob, lobShoot), pas ici.
       p.fireCd -= dt();
       if (p.lobCd > 0) p.lobCd -= dt();
-      if (!eqv && keysDown(C.controls.shoot) && p.fireCd <= 0) {
+      if (keysDown(C.controls.shoot) && p.fireCd <= 0) {   // rollers/velo = powerup positif : on garde le tir
         fireBase(p);
         p.fireCd = C.shot.rate;
       }
 
       // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
-      const canCat = p.catCharges > 0 && !get('cat').length && !eqv;
+      const canCat = p.catCharges > 0 && !get('cat').length;
       if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
       if (!keysDown(C.controls.cat)) p.catLock = false;
 
@@ -1958,9 +1957,13 @@
       else if (catOut) { heroAnim(p, 'hero_cat_out', 'cat'); }   // figee, sac vide, jusqu'au retour
       else if (p.throwT > 0) {                          // PRIORITE sur le saut : on tire meme en l'air
         p.throwT -= dt();
-        const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
-        if (p.throwReplay) { p._anim = null; p.throwReplay = false; }   // rejoue depuis la 1re frame (sinon l'anim gele sur sa derniere frame en rafale)
-        heroAnim(p, (ts && hasSprite(ts)) ? ts : 'hero_throw', 'throw');
+        if (p.equipped) {                               // monte (rollers/velo) : tire depuis la pose de roule (pas de frame de lancer dediee)
+          heroAnim(p, moving ? 'hero_run' : 'hero_idle', moving ? 'run' : 'idle');
+        } else {
+          const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
+          if (p.throwReplay) { p._anim = null; p.throwReplay = false; }   // rejoue depuis la 1re frame
+          heroAnim(p, (ts && hasSprite(ts)) ? ts : 'hero_throw', 'throw');
+        }
       }
       else if (p.dashT > 0) heroAnim(p, hasSprite('hero_dash') ? 'hero_dash' : 'hero_run', hasSprite('hero_dash') ? 'dash' : 'run');
       else if (duckSpr) {                               // scrub manuel : frame = progression

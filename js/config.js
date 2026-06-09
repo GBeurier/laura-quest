@@ -312,14 +312,16 @@ window.CONFIG = {
     // override = remplace le sprite ENTIER de Laura par "Laura sur l'engin"
     // (pas d'overlay separe : le sprite contient deja l'engin).
     //  ROLLERS : saute + haut, vitesse NORMALE.   VELO : + rapide, saut NORMAL.
-    //  Dans les deux cas on ne peut QUE se deplacer (pas de tir / sorts / chat).
+    //  POWERUP POSITIF : on GARDE le tir / lob / dash / chat ; perdu si Laura est
+    //  touchee (l'equipement encaisse le coup a la place d'un coeur). Le tir se
+    //  joue depuis la pose de roule (pas de frame de lancer dediee -> fallback).
     rollers: {
       override: { idle: 'hero_roll', run: 'hero_roll', jump: 'hero_roll' },
-      speedMul: 1.0, jumpMul: 1.4, msg: 'ROLLERS !  saute + haut (pas de tir)',
+      speedMul: 1.0, jumpMul: 1.4, msg: 'ROLLERS !  saute + haut',
     },
     velo: {
       override: { idle: 'hero_bike', run: 'hero_bike', jump: 'hero_bike' },
-      speedMul: 1.7, jumpMul: 1.0, msg: 'VELO !  + rapide (pas de tir)',
+      speedMul: 1.7, jumpMul: 1.0, msg: 'VELO !  + rapide',
     },
   },
 
