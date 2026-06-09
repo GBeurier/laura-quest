@@ -545,17 +545,23 @@
     const psex = isPersona
       ? (rand(0, 1) < (pcfg.femaleRatio != null ? pcfg.femaleRatio : 0.5) ? 'f' : 'h')
       : null;
+    const phead = isPersona ? pickHead(pcfg.heads && pcfg.heads[psex]) : null;
+    const psize = isPersona ? passantSize(phead, pcfg) : { key: 'moyen', scale: 1 };
     const sname = isPersona
       ? pickSkin(pcfg.bodies && pcfg.bodies[psex], def.sprite + '_' + psex)
       : pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
+    const visualScale = (def.scale || 1) * psize.scale;
     const comps = [
       sprite(sname),
-      artScale(def.scale),
+      artScale(visualScale),
       pos(x, y),
       anchor('bot'),
       // collisionIgnore 'enemy' -> les monstres ne se bloquent/poussent jamais
       //  entre eux (ils se traversent), mais collisionnent toujours le sol.
-      area({ scale: vec2(0.85, 0.9), collisionIgnore: ['enemy'] }),
+      area({
+        scale: isPersona ? vec2(0.85 / psize.scale, 0.9 / psize.scale) : vec2(0.85, 0.9),
+        collisionIgnore: ['enemy'],
+      }),
       // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
       //  collision : la grille saute les objets pauses). Seuls les monstres a
       //  l'ecran consomment du CPU -> un niveau large ne ralentit plus.
@@ -565,6 +571,7 @@
       'enemy', kind,
       {
         kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: y, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
+        passantHead: phead, passantSize: psize.key, passantScale: psize.scale,
         // ANIM facon boss (UNE feuille) : hurtT/atkT pilotent l'etat hurt/attack ;
         //  _spr/_anim memorisent la frame courante (cf. enemyAnim / setAnim).
         hurtT: 0, atkT: 0, animWant: 'walk', _spr: sname, _anim: null,
@@ -582,7 +589,7 @@
     const e = add(comps);
     if (def.anim) { try { e.play(def.anim); } catch (er) {} }
     else playIfAnim(e, sname);
-    if (isPersona) attachHead(e, pcfg, psex);   // tete South Park (enfant) au-dessus du corps
+    if (isPersona) attachHead(e, pcfg, psex, phead);   // tete South Park (enfant) au-dessus du corps
     return e;
   }
 
@@ -597,15 +604,37 @@
     return ok.length > 1 ? ok[Math.floor(rand(0, ok.length))] : ok[0];
   }
 
-  function attachHead(e, pcfg, sex) {
-    const name = pickHead(pcfg.heads && pcfg.heads[sex]);
+  function passantSize(headName, pcfg) {
+    const sizes = (pcfg && pcfg.sizeScale) || {};
+    const groups = (pcfg && pcfg.headSizes) || {};
+    const m = /^head_npc_([fh])_([0-9]+)$/.exec(headName || '');
+    const sex = m && m[1];
+    const num = m ? Number(m[2]) : null;
+    const bySex = (sex && groups[sex]) || {};
+    const order = ['petit', 'moyen', 'grand', 'tresGrand'];
+    let key = bySex.default || 'moyen';
+    if (num != null) {
+      for (let i = 0; i < order.length; i++) {
+        const k = order[i];
+        if ((bySex[k] || []).indexOf(num) !== -1) { key = k; break; }
+      }
+    }
+    return { key, scale: sizes[key] || 1 };
+  }
+
+  function attachHead(e, pcfg, sex, headName) {
+    const name = headName || pickHead(pcfg.heads && pcfg.heads[sex]);
     if (!name) return null;                        // pas de tete dispo -> corps seul (OK)
-    const off = pcfg.headLocal || [0, -104];       // point du COU (repere corps, px @ART)
+    // headLocal reste dans le repere du corps : le scale du parent l'adapte aux
+    //  quatre tailles de NPC, et headScale ajuste seulement la taille de la tete.
+    const off = pcfg.headLocal || [0, -90];        // point du COU (repere corps, px @ART)
+    const headScale = (pcfg.headScale != null ? pcfg.headScale : 1);
     const amp = (pcfg.headBob != null ? pcfg.headBob : 4) * ART;   // bob (px ecran -> px @ART)
     const rotA = (pcfg.headRot != null ? pcfg.headRot : 3);
     const h = e.add([
       sprite(name),
       pos(off[0], off[1]),
+      scale(headScale),
       anchor('bot'),         // chin/cou pose au point `off` -> la tete pousse vers le haut
       rotate(0),
       z(1),                  // au-dessus du corps (meme parent)

@@ -9,7 +9,8 @@ assets/other_assets/
 assets/sprites_bench/
 assets/sprites_cut/
 assets/sprites_sheets/
-_bossgen/
+# Generation scratch dirs (Codex image_gen pipelines) ~285MB — local only, game reads embedded assets
+_*gen/
 
 # Junk
 *Zone.Identifier

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Laura l'exploratrice" — a 100% client-side run-and-gun platformer (KAPLAY engine), built as a birthday gift. Laura does a PhD on agrivoltaics: 5 levels each with a unique boss, then a multi-phase jury megaboss. There is **no build system, no backend, no package manager, no test suite** — it is plain `<script>` tags and static assets.
 
+> `AGENTS.md` (sibling, for Codex) covers the same ground more briefly; this file is the authoritative one. Keep them roughly in sync if you change project-wide conventions.
+
 ## Running & validating
 
 - **Run locally**: open `index.html` directly (works in `file://`). Assets are embedded as base64 in `js/assets_data.js`, so no server is needed.
@@ -30,11 +32,31 @@ Files prefixed with `_` in `assets/sprites/` are skipped by the generator.
    - *obstacle* → `theme.tiles['=']: ['tile_soil','tile_soil2']` (liste = variantes au hasard).
    - *monstre* → `theme.enemies.criquet: ['enemy_criquet','enemy_criquet2']`.
    - *nouveau type d'ennemi* → ajoute-le à `CONFIG.enemies` + un caractère dans le switch de `buildLevel` (`js/game.js`) + la légende de `js/level.js`.
-   - *figurant* (`N`) → un **passant** : corps `body_<biome>_<sexe>` (habits du décor) surmonté d'une **tête** `head_<biome>_<sexe>_<n>` choisie **au hasard** (enfant qui dodeline, toujours de face). Habits/têtes par niveau via `theme.passant` (helper `PASSANT(biome,nH,nF)` dans `js/level.js`). **Spec complète des assets : `SPRITES.md` §5bis.** Mockups : `python3 tools/gen_passant_mockups.py`.
+   - *figurant* (`N`) → un **passant** : corps `body_<biome>_<sexe>` (habits du décor, 8 biomes : `champ`/`pote`/`horti`/`labo`/`bureau`) surmonté d'une **tête** "South Park" de face tirée **au hasard** dans un **pool partagé biome-indépendant** `head_npc_h_<n>` (21) / `head_npc_f_<n>` (17). Le moteur tire un sexe → le corps `body_<biome>_<sexe>` correspondant + une tête du pool. Par niveau via `theme.passant` (helper `PASSANT(biome)` dans `js/level.js`, ou `PASSANT_ALL([biomes])` pour mélanger les tenues — utilisé par le jury). **Spec complète des assets : `SPRITES.md` §5bis.** Mockups : `python3 tools/gen_passant_mockups.py`.
 
 Tout sprite cité mais absent est ignoré (retour au défaut) — rien ne casse si tu oublies le PNG.
 
 **Placeholders** : `python3 tools/gen_placeholders.py` (puis `gen_assets_data.py`) génère des assets bouche-trou — couches de parallax tileables (`bg_mountains`, `bg_hills`), fonds plein-écran (`bg_title` écran-titre, `bg_map` carte), le panneau en perspective (`tile_panel` = le "cap" + `panel_leg` = les pieds) et des variantes de monstres/tuiles (`enemy_*2`, `tile_*2`, décalage de teinte). Remplace-les par tes vrais PNG (mêmes noms/tailles) quand tu les as.
+
+### Pipelines d'art IA (`_*gen/`) — comment les vrais assets sont produits
+Les vrais sprites/fonds sont du **pixel-art généré par l'`image_gen` de Codex** (pas procédural — `tools/gen_placeholders.py` ne sert qu'au bouche-trou). Chaque domaine d'asset a son répertoire de travail `_*gen/`, tous bâtis sur le **même schéma** (voir `_bossgen/SPEC.md` pour le contrat détaillé) :
+1. `make_prompts.py` émet un prompt par asset dans `prompts/`. Style imposé : pixel-art 16-bit SNES, contour sombre, palette limitée, **fond plat magenta `#ff00ff`** (chroma-key — jamais de magenta sur le sujet), sujet face/profil **à gauche** (le jeu mirroir).
+2. Une session Codex appelle `image_gen` par asset (trace dans `gen_*.log`) et dépose les planches brutes dans `raw/`.
+3. Un script de post-traitement découpe la grille / enlève le chroma / normalise l'échelle et l'alpha → `final/` (ou `cut/`, `out/`, `heads/`). Selon le dossier : `regrid.py` (re-grille en N frames égales), `assemble.py`/`montage.py` (compose les feuilles), `postprocess.py` (`_levelgen` : `fit_cover` + `SOIL_LIFT` pour caler le bois sur la collision), `fit.py`, `build.py` (`_icongen`).
+4. On **copie les PNG `final/` dans `assets/sprites/`** (mêmes noms que les sprites du jeu) puis **`python3 gen_assets_data.py`** ré-embarque tout.
+
+| Dossier | Produit | Sprites cibles |
+|---|---|---|
+| `_bossgen/` | feuilles de boss (move + atk, 6 frames) — *gitignoré* | `boss_<nom>_move`/`_atk` |
+| `_monstgen/` | ennemis | `enemy_*` |
+| `_bodygen/` | corps de figurants (feuille de marche) | `body_<biome>_<sexe>` |
+| `_headgen/` | têtes "South Park" partagées | `head_npc_<sexe>_<n>` |
+| `_levelgen/` | fonds intérieurs pleine hauteur + tuiles de sol | `bg_*`, `sol_*` |
+| `_bggen/` | fonds de narration (chapitre / écran de victoire) | écrans `chapter`/`win` |
+| `_icongen/` | pickups, munitions, projectiles | `pickup_*`, `ammo_*`, tirs |
+| `_shelfgen/` | décor d'étagères | étagères du labo |
+
+**Piège connu** (cf. mémoire *Indoor bg pipeline*) : lancer plusieurs `image_gen` en parallèle pour les fonds fait fuiter des éléments d'un prompt dans un autre (têtes parasites) → générer **séquentiellement** et valider chaque `raw/` (`_levelgen/validate_raws.py`).
 
 **Panneaux solaires (plateformes `-`/`x`) en perspective** : la *collision* reste une tuile invisible 48×48 (on marche sur le haut). Le *visuel* (`addPanel`/`addPanelDeco` dans `game.js`) = un `tile_panel` (cap penché vers le soleil haut-gauche, son bord avant aligné sur le haut de tuile) + `panel_leg` étiré en Y jusqu'au sol de la colonne → hauteur des pieds variable selon l'altitude. Penché pour rester colinéaire à l'ombre (cf. `SHADE_SLOPE`). `bg_title`/`bg_map` sont des PNG plein-écran (1920×1056 = 960×528 ×2) posés en `z(-10)` dans les scènes `title`/`overworld`.
 

@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Laura l'exploratrice</title>
   <style>
     html, body {
@@ -28,6 +28,9 @@
   <!-- Sauvegardes (3 slots) + IA des boss -->
   <script src="js/save.js"></script>
   <script src="js/bosses.js"></script>
+  <!-- Manette tactile (web mobile) : detection + overlay. AVANT game.js car il
+       pose window.LQ_TOUCH que kaplay() lit pour activer le letterbox mobile. -->
+  <script src="js/mobile.js"></script>
   <!-- Jeu -->
   <script src="js/game.js"></script>
   <div id="note">Laura l'exploratrice — le PhD agrivoltaique</div>

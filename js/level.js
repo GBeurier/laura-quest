@@ -57,30 +57,29 @@
  * ===================================================================== */
 
 // --- PASSANTS par biome (figurants 'N', cf. theme.passant / SPRITES.md) ------
-//  Un biome = un jeu d'habits (corps body_<biome>_<h|f>) + un POOL de tetes
-//  triees par sexe (head_<biome>_<h|f>_<n>). Le moteur tire UN sexe + UN corps
-//  + UNE tete au hasard par 'N' au build du niveau. Helper DRY : PASSANT(biome,
-//  nH, nF) construit les listes pour nH tetes homme + nF tetes femme. Ajoute/
-//  retire des numeros quand tu generes tes vrais assets (un sprite absent est
-//  simplement ignore -> pas de crash).
-const PASSANT = (biome, nH, nF) => ({
+//  Un biome = un jeu d'habits (corps body_<biome>_<h|f>) + le pool partage de
+//  tetes de collegues head_npc_<h|f>_<n>. Le moteur tire UN sexe + UN corps + UNE
+//  tete au hasard par 'N' au build du niveau. Un sprite absent est simplement
+//  ignore -> pas de crash pendant une generation partielle.
+const PASSANT_HEADS = {
+  h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
+  f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)),
+};
+const PASSANT = (biome) => ({
+  femaleRatio: PASSANT_HEADS.f.length / (PASSANT_HEADS.f.length + PASSANT_HEADS.h.length),
   bodies: { h: ['body_' + biome + '_h'], f: ['body_' + biome + '_f'] },
-  heads: {
-    h: Array.from({ length: nH }, (_, i) => 'head_' + biome + '_h_' + (i + 1)),
-    f: Array.from({ length: nF }, (_, i) => 'head_' + biome + '_f_' + (i + 1)),
-  },
+  heads: PASSANT_HEADS,
 });
 
 // ARENE FINALE : le jury invoque des randoms de TOUS les biomes. Pool FUSIONNE
-//  -> chaque passant tire un corps + une tete au hasard parmi tous les biomes
-//  (cf. spawnEnemy/pickHead ; un corps/tete absent est simplement ignore).
-const PASSANT_ALL = (biomes, nH, nF) => {
+//  -> chaque passant tire un corps au hasard parmi tous les biomes + une tete dans
+//  le meme pool partage de collegues.
+const PASSANT_ALL = (biomes) => {
   const bodies = (sex) => biomes.map((b) => 'body_' + b + '_' + sex);
-  const heads = (sex, n) => biomes.flatMap((b) =>
-    Array.from({ length: n }, (_, i) => 'head_' + b + '_' + sex + '_' + (i + 1)));
   return {
+    femaleRatio: PASSANT_HEADS.f.length / (PASSANT_HEADS.f.length + PASSANT_HEADS.h.length),
     bodies: { h: bodies('h'), f: bodies('f') },
-    heads: { h: heads('h', nH), f: heads('f', nF) },
+    heads: PASSANT_HEADS,
   };
 };
 const BIOMES_ALL = ['champ', 'pote', 'horti', 'labo', 'bureau'];
@@ -98,7 +97,7 @@ window.LEVELS = {
       sky: [150, 212, 246],
       tint: [228, 246, 214],
       pickups: { data: 'pickup_graine', page: 'pickup_plant' },
-      passant: PASSANT('champ', 3, 3),   // habits des champs (Camargue)
+      passant: PASSANT('champ'),   // habits des champs (Camargue)
     },
     map: [
       '                                                                                                ',
@@ -129,11 +128,11 @@ window.LEVELS = {
       layers: [
         { sprite: 'bg_appart', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      tiles: { '-': ['tile_shelf_biblo'], 'x': ['tile_shelf_biblo'] },
+      tiles: { '=': ['tile_sol_appart'], '-': ['tile_shelf_biblo'], 'x': ['tile_shelf_biblo'] },
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_pilule', page: 'pickup_page' },
-      passant: PASSANT('pote', 3, 3),
+      passant: PASSANT('pote'),
     },
     map: [
       '',
@@ -163,9 +162,10 @@ window.LEVELS = {
       layers: [
         { sprite: 'bg_serre', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
+      tiles: { '=': ['tile_sol_serre'] },
       indoor: true,
       pickups: { data: 'pickup_plant', page: 'pickup_chart' },
-      passant: PASSANT('horti', 3, 3),   // serre -> tenue d'horticulteur
+      passant: PASSANT('horti'),   // serre -> tenue d'horticulteur
     },
     map: [
       '',
@@ -196,11 +196,11 @@ window.LEVELS = {
       layers: [
         { sprite: 'bg_labo', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      tiles: { '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
+      tiles: { '=': ['tile_sol_labo'], '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_data', page: 'pickup_sheet' },
-      passant: PASSANT('labo', 3, 3),    // labo -> blouse blanche
+      passant: PASSANT('labo'),    // labo -> blouse blanche
     },
     map: [
       '',
@@ -231,11 +231,11 @@ window.LEVELS = {
       layers: [
         { sprite: 'bg_couloir', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
-      tiles: { '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
+      tiles: { '=': ['tile_sol_couloir'], '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_page', page: 'pickup_data' },
-      passant: PASSANT('bureau', 3, 3),  // couloirs/admin -> tenue de bureau
+      passant: PASSANT('bureau'),  // couloirs/admin -> tenue de bureau
     },
     map: [
       '',
@@ -260,7 +260,7 @@ window.LEVELS = {
   //  les biomes, cf. bosses.js jury). Pickups 'd'=pilules, 'p'=champignons.
   jury: {
     boss: 'jury',
-    theme: { sky: [70, 86, 140], tint: [150, 162, 205], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL, 3, 3) },   // nuit ; randoms de tous les biomes
+    theme: { sky: [70, 86, 140], tint: [150, 162, 205], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL) },   // nuit ; randoms de tous les biomes
     map: [
       '                                                            ',
       '                                                            ',

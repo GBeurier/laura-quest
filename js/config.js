@@ -73,17 +73,30 @@ window.CONFIG = {
     //  - heads  : tetes "South Park" de face, par sexe ; UNE choisie AU HASARD
     //             par exemplaire au moment du spawn (a la creation du niveau).
     //  - femaleRatio : proba de tirer un corps/tete 'f' (0..1).
+    //  - sizeScale / headSizes : taille visuelle du passant selon la tete tiree.
+    //  - headScale   : taille relative de la tete par rapport au corps.
     //  - headLocal   : position de la tete dans le repere du CORPS (px @ART,
     //             ancre tete = 'bot' -> c'est le point du COU ; la tete pousse
     //             vers le haut). headBob = amplitude du dodelinement (px ecran),
     //             headRot = amplitude du balancement (degres).
     //  Tout asset absent est ignore -> retombe sur la base / pas de tete.
     passant: {
-      femaleRatio: 0.5,
-      headLocal: [0, -104], headBob: 4, headRot: 3,
+      femaleRatio: 17 / 38,
+      headScale: 0.9,
+      headLocal: [0, -90], headBob: 1, headRot: 3,
       bodies: { h: ['body_champ_h'], f: ['body_champ_f'] },
-      heads:  { h: ['head_champ_h_1', 'head_champ_h_2', 'head_champ_h_3'],
-                f: ['head_champ_f_1', 'head_champ_f_2', 'head_champ_f_3'] },
+      heads:  { h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
+                f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)) },
+      sizeScale: { petit: 1, moyen: 1.14, grand: 1.28, tresGrand: 1.42 },
+      headSizes: {
+        f: { default: 'petit', moyen: [1, 3, 4, 7, 8, 10, 16, 17] },
+        h: {
+          petit: [4, 10, 12, 6, 19],
+          moyen: [1, 2, 3, 5, 11, 13, 15, 17, 20, 21],
+          grand: [8, 9, 16, 18],
+          tresGrand: [7, 14],
+        },
+      },
     },
   },
 
@@ -472,14 +485,20 @@ window.CONFIG = {
   },
 };
 
-// --- Anims des CORPS de passant (genere) ----------------------------------
+// --- Anims des PASSANTS generes --------------------------------------------
 //  Les 8 corps body_<biome>_<sexe> partagent la MEME grille (feuille de marche
 //  de 4 frames). On injecte l'anim 'walk' pour les 8 d'un coup (DRY) plutot que
-//  8 blocs identiques dans CONFIG.anims. Les TETES (head_*) restent des PNG
-//  simples (1 frame) : leur mouvement est code (dodelinement), pas une feuille.
-//  Si tu veux une tete animee (clignement...), elargis son PNG + declare-la ici.
+//  8 blocs identiques dans CONFIG.anims. Les tetes head_npc_<sexe>_<n> sont des
+//  feuilles de 3 frames [yeux ouverts, blink, yeux ouverts] ; baseName() retire
+//  le numero final, donc head_npc_f_1..17 et head_npc_h_1..21 heritent des
+//  anims head_npc_f_ / head_npc_h_.
 ['champ', 'pote', 'horti', 'labo', 'bureau'].forEach((biome) => ['h', 'f'].forEach((sexe) => {
   window.CONFIG.anims['body_' + biome + '_' + sexe] = {
     sliceX: 4, sliceY: 1, anims: { walk: { from: 0, to: 3, loop: true, speed: 7 } },
   };
 }));
+['h', 'f'].forEach((sexe) => {
+  window.CONFIG.anims['head_npc_' + sexe + '_'] = {
+    sliceX: 3, sliceY: 1, anims: { blink: { from: 0, to: 2, loop: true, speed: 2 } },
+  };
+});
