@@ -69,13 +69,11 @@
   const KEY = {
     left: pick('left'),
     right: pick('right'),
-    jump: pick('jump', ['aimUp', 'aimDown']),   // surtout PAS 'up' (sert a viser) -> 'z'/'w'
+    jump: pick('jump'),                         // surtout PAS 'up' si possible -> 'z'/'w'
     shoot: pick('shoot'),
     crouch: pick('crouch'),
     cat: pick('cat'),
-    pleurer: pick('pleurer'),
-    raler: pick('raler'),
-    switch: pick('switchAmmo'),
+    lob: pick('lob'),                           // lob lourd (auto-vise) -> 'x'
     quit: pick('quit'),
   };
 
@@ -138,19 +136,16 @@
     const bJump = makeBtn('lq-big lq-jump', '▲', 'SAUT');   // ▲
     const bShoot = makeBtn('lq-big lq-shoot', '✸', 'TIR');  // ✸
     const bCat = makeBtn('lq-small lq-cat', '🐱');     // 🐱
-    const bCry = makeBtn('lq-small lq-cry', '💧');     // 💧 pleurer
-    const bRal = makeBtn('lq-small lq-ral', '💢');     // 💢 raler
+    const bLob = makeBtn('lq-small lq-lob', '🎂', 'LOB');   // 🎂 lob lourd (auto-vise)
     bindHold(bJump, KEY.jump); bindHold(bShoot, KEY.shoot);
-    bindHold(bCat, KEY.cat); bindHold(bCry, KEY.pleurer); bindHold(bRal, KEY.raler);
+    bindHold(bCat, KEY.cat); bindHold(bLob, KEY.lob);
 
-    // Coins : pause/quitter (HG) et changement d'arme (HD, montre l'arme courante)
+    // Coin : pause/quitter (HG)
     const bPause = makeBtn('lq-corner lq-pause', '❚❚');  // ❚❚
-    const bSwitch = makeBtn('lq-corner lq-switch', '🔁', 'ARME'); // 🔁
-    bindHold(bPause, KEY.quit); bindHold(bSwitch, KEY.switch);
-    const swLabel = bSwitch.querySelector('.lq-s');
+    bindHold(bPause, KEY.quit);
     const jumpLabel = bJump.querySelector('.lq-s');
 
-    root.append(bL, bR, bDown, bRal, bCry, bCat, bShoot, bJump, bPause, bSwitch);
+    root.append(bL, bR, bDown, bLob, bCat, bShoot, bJump, bPause);
     document.body.appendChild(root);
 
     // Astuce "tourne ton telephone" en portrait.
@@ -161,17 +156,12 @@
 
     armFullscreen();
 
-    // Boucle legere : visibilite selon la scene + libelle de l'arme courante.
+    // Boucle legere : visibilite selon la scene (gamepad complet en jeu, reduit en menu).
     const tick = () => {
       const sc = (typeof getSceneName === 'function') ? getSceneName() : null;
       const inGame = (sc === 'game' || sc == null);
       root.classList.toggle('lq-menu', !inGame);
       if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
-      const pl = window.LQ && window.LQ.player;
-      if (swLabel && pl && pl.ammoKey && C.ammoTypes && C.ammoTypes[pl.ammoKey]) {
-        const lbl = C.ammoTypes[pl.ammoKey].label || 'ARME';
-        if (swLabel.textContent !== lbl) swLabel.textContent = lbl;
-      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -239,16 +229,14 @@ html.lq-mobile canvas{ width:100vw !important; height:100vh !important; height:1
 .lq-jump{ right:calc(var(--lq-sr) + var(--lq-pad)); bottom:calc(var(--lq-sb) + var(--lq-pad)); }
 .lq-shoot{ right:calc(var(--lq-sr) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); bottom:calc(var(--lq-sb) + var(--lq-pad)); }
 .lq-cat{ right:calc(var(--lq-sr) + var(--lq-pad)); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
-.lq-cry{ right:calc(var(--lq-sr) + var(--lq-pad) + var(--lq-small) + var(--lq-gap)); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
-.lq-ral{ right:calc(var(--lq-sr) + var(--lq-pad) + (var(--lq-small) + var(--lq-gap))*2); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
+.lq-lob{ right:calc(var(--lq-sr) + var(--lq-pad) + var(--lq-small) + var(--lq-gap)); bottom:calc(var(--lq-sb) + var(--lq-pad) + var(--lq-big) + var(--lq-gap)); }
 
 /* coins */
 .lq-pause{ left:calc(var(--lq-sl) + var(--lq-pad)); top:calc(var(--lq-st) + var(--lq-pad)); }
-.lq-switch{ right:calc(var(--lq-sr) + var(--lq-pad)); top:calc(var(--lq-st) + var(--lq-pad)); }
 
 /* en menu (hors jeu) : on masque les boutons "combat", on garde deplacement + OK + pause */
-#lq-touch.lq-menu .lq-shoot, #lq-touch.lq-menu .lq-cat, #lq-touch.lq-menu .lq-cry,
-#lq-touch.lq-menu .lq-ral, #lq-touch.lq-menu .lq-crouch, #lq-touch.lq-menu .lq-switch{ display:none; }
+#lq-touch.lq-menu .lq-shoot, #lq-touch.lq-menu .lq-cat, #lq-touch.lq-menu .lq-lob,
+#lq-touch.lq-menu .lq-crouch{ display:none; }
 
 /* rotation conseillee en portrait */
 #lq-rotate{ position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;

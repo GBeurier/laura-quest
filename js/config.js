@@ -113,14 +113,13 @@ window.CONFIG = {
     speed: 250,
     jumpForce: 760,
     maxJumps: 2,
-    // SAUT MODULABLE : maintenir BAS pendant la MONTEE coupe la courbe (Laura
-    //  saute moins haut). jumpCutG = gravite SUPPLEMENTAIRE (px/s2) ajoutee tant
-    //  que BAS est tenu ET que Laura monte encore (vel.y < 0). 0 = desactive.
-    //  ~= gravite de base => en tenant BAS depuis le sol on perd ~la moitie de la hauteur.
-    jumpCutG: 2600,
+    // SAUT MODULABLE : desormais sur le RELACHEMENT de SAUT (cf. onKeysRelease
+    //  dans game.js) -> relacher tot = petit saut. jumpCutG (ancien systeme
+    //  "tenir BAS") laisse a 0 : BAS sert UNIQUEMENT a s'accroupir.
+    jumpCutG: 0,
     maxHp: 5,
     invulnTime: 1.1,
-    startAmmo: 'graine',  // 'graine' | 'riz'
+    startAmmo: 'graine',  // tir de base
     knockback: 300,       // recul quand Laura touche un monstre / un tir
     knockTime: 0.22,      // duree du recul
     // Accroupissement : la planche hero_duck est "scrubbee" selon la progression.
@@ -131,17 +130,14 @@ window.CONFIG = {
   },
 
   // --- Tir ------------------------------------------------------------
-  //  arcGravity = gravite des projectiles "en cloche" (cookie/gateau).
-  //  Les armes en cloche se CHARGENT : maintenir ESPACE plus longtemps -> ca part
-  //  plus loin. chargeTime = duree pour charge pleine ; arcMin/arcMax =
-  //  multiplicateur de puissance (donc de portee) de 0 a 100% de charge.
-  //  VISEE : pendant la charge, HAUT/BAS inclinent la cloche (une fleche +
-  //  une trajectoire pointillee + un reticule d'impact s'affichent). aimMin/Max
-  //  = bornes de l'angle (degres au-dessus de l'horizontale), aimDefault =
-  //  angle de depart, aimSpeed = vitesse de reglage (deg/s).
+  //  arcGravity = gravite des projectiles "en cloche" (gateau / lob lourd).
+  //  arcMin/arcMax = multiplicateur de puissance (donc de portee). aimDefault =
+  //  angle de lancer du lob (degres au-dessus de l'horizontale) ; l'auto-visee
+  //  (autoAimArc) resout la puissance pour atteindre la cible a cet angle.
+  //  lobCooldown = delai minimal entre deux lobs lourds (X).
   shot: {
-    rate: 0.26, arcGravity: 1500, chargeTime: 0.9, arcMin: 0.6, arcMax: 1.6,
-    aimMin: 16, aimMax: 80, aimDefault: 52, aimSpeed: 80,
+    rate: 0.26, arcGravity: 1500, arcMin: 0.6, arcMax: 1.6,
+    aimDefault: 52, lobCooldown: 0.6,
     // throwHold = duree de la pose de lancer apres CHAQUE tir. DOIT etre > rate
     //  sinon, en rafale (maintien), la pose retombe 1 frame sur course/saut entre
     //  deux tirs (clignotement). L'anim est rejouee a chaque tir (cf. playerShoot)
@@ -149,28 +145,16 @@ window.CONFIG = {
     throwHold: 0.32,
   },
 
-  // Armes lancees (4) : 2 familles. graine/pied_riz tout droit, cookie/gateau
-  // en cloche. On change d'arme avec MAJ (cf. ammoOrder).
+  // Armes lancees (2) : 2 roles. graine = TIR DE BASE droit GRATUIT (ESPACE) ;
+  // gateau = LOB LOURD en cloche AoE auto-vise (X), qui coute de l'energie.
   //  cost = energie consommee par tir (l'energie = la jauge "soleil").
-  //  GRAINE = arme de base, cout MINIME (la regen solaire la recharge plus
-  //  vite qu'on ne tire) -> on n'est jamais durablement bloque. Les armes
-  //  lourdes (riz/cookie/gateau) coutent bien plus cher.
-  //  traj : 'straight' (tout droit, oriente par HAUT/BAS) ou 'arc' (en cloche).
-  //  Deux familles ; dans chaque famille le 2e est plus fort ET plus cher.
+  //  GRAINE = tir de base, cout 0 -> jamais bloque.
+  //  traj : 'straight' (tout droit) ou 'arc' (en cloche).
   ammoTypes: {
-    graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 2,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
-    pied_riz: { sprite: 'ammo_riz',    label: 'PIEDS DE RIZ', damage: 2, speed: 520, cost: 14, traj: 'straight', throwSprite: 'hero_throw_rice'   },
-    cookie:   { sprite: 'ammo_cookie', label: 'COOKIES',      damage: 2, speed: 540, cost: 10, traj: 'arc',      throwSprite: 'hero_throw_cookie' },
+    graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
     //  GATEAU = cloche EXPLOSIVE : a l'impact, eclate en AoE (degats a tout ce
-    //  qui est dans aoe.radius). C'est l'arme lourde "zone".
+    //  qui est dans aoe.radius). C'est le lob lourd "zone".
     gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX',      damage: 3, speed: 500, cost: 20, traj: 'arc',      throwSprite: 'hero_throw_cake', aoe: { radius: 94, damage: 3 } },
-  },
-  ammoOrder: ['graine', 'pied_riz', 'cookie', 'gateau'],
-
-  // --- Sorts ----------------------------------------------------------
-  spells: {
-    pleurer: { cooldown: 6, radius: 210, knockback: 520, clearBullets: true },
-    raler:   { cooldown: 9, duration: 3, stunRadius: 230 },
   },
 
   // --- Chat angora (allie deploye) ------------------------------------
@@ -189,7 +173,7 @@ window.CONFIG = {
     cleanRadius: 46,  // rayon de nettoyage des tirs ennemis
     maxCharges: 3,    // reserve de chats (arcade)
     startCharges: 2,
-    chargeTime: 1.0,  // duree de maintien (Laura immobile) AVANT que le chat parte
+    chargeTime: 0,    // chat INSTANTANE (plus de maintien) : deploiement a la pression de C
   },
 
   // --- Jauge "Soleil" = ENERGIE = MUNITIONS lourdes -------------------
@@ -340,11 +324,10 @@ window.CONFIG = {
     // lancer du chat : sortie (depart) / entree (retour au sac)
     hero_cat_out:     { sliceX: 5, sliceY: 1, anims: { cat:   { from: 0, to: 4, loop: false, speed: 12 } } },
     hero_cat_in:      { sliceX: 4, sliceY: 1, anims: { cat:   { from: 0, to: 3, loop: false, speed: 12 } } },
-    // une anim de lancer par arme (mappee depuis ammoTypes[].throwSprite)
+    // une anim de lancer par arme (mappee depuis ammoTypes[].throwSprite) :
+    //  graine -> hero_throw_seed (tir de base) ; gateau -> hero_throw_cake (lob).
     hero_throw:       { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
     hero_throw_seed:  { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
-    hero_throw_rice:  { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
-    hero_throw_cookie:{ sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
     hero_throw_cake:  { sliceX: 8, sliceY: 1, anims: { throw: { from: 0, to: 7, loop: false, speed: 18 } } },
     // sprites complets "Laura sur l'engin" (remplacent le sprite via equipment.override)
     hero_bike:        { sliceX: 7, sliceY: 1, anims: { idle: { from: 0, to: 6, loop: true, speed: 6 }, run: { from: 0, to: 6, loop: true, speed: 14 }, jump: { from: 3, to: 3 } } },
@@ -388,8 +371,6 @@ window.CONFIG = {
     pickup_champignon:{ sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },   // skin 'p' (Arene)
     // --- Munitions (6 frames : tournent) ---
     ammo_graine:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
-    ammo_riz:         { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
-    ammo_cookie:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
     ammo_gateau:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
     // --- Monstres "historiques" REGENERES en feuille 6 frames (comme les neufs) :
     //  walk 0-2 / hurt 3 / attack 4-5. caillou est un OBSTACLE (addRock) : il joue
@@ -429,16 +410,12 @@ window.CONFIG = {
   controls: {
     left:       ['left', 'q', 'a'],
     right:      ['right', 'd'],
-    jump:       ['up', 'z', 'w'],   // saute avec HAUT (HAUT sert a VISER pendant la charge d'une cloche)
-    aimUp:      ['up'],          // incliner la cloche vers le haut (pendant la charge)
-    aimDown:    ['down'],        // incliner la cloche vers le bas (pendant la charge)
-    crouch:     ['down'],        // s'accroupir (au sol) : Laura se baisse, hitbox reduite
-    shoot:      ['space'],       // tire avec ESPACE
-    pleurer:    ['x'],
-    raler:      ['v'],
-    cat:        ['c'],
+    jump:       ['up', 'z', 'w'],   // saute (relacher tot = petit saut, cf. onKeysRelease)
+    crouch:     ['down'],        // s'accroupir (au sol) : SEUL usage de BAS, hitbox reduite
+    shoot:      ['space'],       // tir de base (graine) avec ESPACE
+    lob:        ['x'],           // lob lourd (gateau) auto-vise
+    cat:        ['c'],           // chat (instantane)
     quit:       ['escape'],      // quitter le niveau -> carte
-    switchAmmo: ['shift'],
   },
 
   // --- Audio ----------------------------------------------------------
@@ -448,8 +425,8 @@ window.CONFIG = {
   //  La manette tactile (js/mobile.js) s'active TOUTE SEULE sur ecran tactile
   //  (pointeur grossier). Override d'URL : ?touch=1 force / ?touch=0 desactive.
   //   enabled   : false => jamais de manette (clavier partout).
-  //   assistAim : armes en cloche (cookie/gateau) auto-visent l'ennemi le plus
-  //               proche (un seul bouton TIR, pas de visee manuelle au doigt).
+  //   assistAim : le lob lourd (gateau) auto-vise l'ennemi le plus proche
+  //               (bouton LOB, pas de visee manuelle au doigt).
   //   opacity   : opacite des boutons au repos (0..1).
   //   size      : diametre (px) du gros bouton ; les autres en derivent.
   mobile: { enabled: true, assistAim: true, opacity: 0.34, size: 74 },
@@ -481,9 +458,8 @@ window.CONFIG = {
     intro:    'Laura fait sa thèse sur le riz sous panneaux solaires.\n' +
               'Des rizières à la colloc, de la serre au labo puis à la fac,\n' +
               'jusqu à la soutenance : bats chaque boss pour écrire ta thèse !',
-    hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter   ESPACE lancer\n' +
-              'Cloche (cookie/gateau) : maintiens ESPACE + HAUT/BAS pour viser\n' +
-              'X pleurer   V râler   C (maintenir 2s) chat   MAJ changer d arme   ESC quitter',
+    hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter (relache tot = petit saut)\n' +
+              'ESPACE tir de base   X lob lourd   C chat   ESC quitter',
     start:    'Appuie sur ESPACE pour commencer',
     slots:    'CHOISIS TA SAUVEGARDE',
     overworld:'Choisis un chapitre (ESPACE pour entrer)',

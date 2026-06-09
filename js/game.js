@@ -91,7 +91,7 @@
   // (enemy_criquet2, ...) sont pris en compte automatiquement.
   const SPRITES_FALLBACK = [
     'hero_idle', 'hero_run', 'hero_jump', 'hero_hurt', 'hero_throw', 'cat_run',
-    'ammo_graine', 'ammo_riz', 'ammo_cookie', 'ammo_gateau',
+    'ammo_graine', 'ammo_gateau',
     'enemy_caillou', 'enemy_camion', 'enemy_assureur', 'enemy_ademe', 'enemy_corbeau', 'enemy_criquet',
     'boss_proprietaire_move', 'boss_proprietaire_atk', 'boss_agriculteur_move', 'boss_agriculteur_atk',
     'boss_michael_move', 'boss_michael_atk', 'boss_rstudio_move', 'boss_rstudio_atk',
@@ -206,21 +206,12 @@
   // ---------------------------------------------------------------------
   //  PROJECTILES
   // ---------------------------------------------------------------------
-  //  Laura est-elle en train de VISER une cloche ? (arme 'arc' + maintien du tir,
-  //  sans equipement). Pendant ce temps HAUT/BAS reglent l'angle (pas saut/accroupi)
-  //  et la fleche de visee s'affiche (cf. aimGuide dans la scene 'game').
-  function aimingLob(p) {
-    if (!p || p.equipped) return false;
-    if (assistAim()) return false;                 // mobile : visee auto, pas de charge manuelle
-    const a = C.ammoTypes[p.ammoKey];
-    return !!(a && a.traj === 'arc' && keysDown(C.controls.shoot));
-  }
-
   // Vitesse de lancer d'une cloche pour une puissance pw (0..1) et l'angle vise
   //  courant de Laura. Sert AU TIR et a l'apercu de trajectoire (meme physique).
-  function arcLaunch(p, pw) {
+  //  ammoOverride = munition utilisee (defaut = gateau, seule arme en cloche).
+  function arcLaunch(p, pw, ammoOverride) {
     const fx = p.facing >= 0 ? 1 : -1;
-    const ammo = C.ammoTypes[p.ammoKey];
+    const ammo = ammoOverride || C.ammoTypes.gateau;
     const mul = C.shot.arcMin + (C.shot.arcMax - C.shot.arcMin) * pw;
     const ang = ((p.aimAngle != null) ? p.aimAngle : C.shot.aimDefault) * Math.PI / 180;
     const spd = ammo.speed * mul;
@@ -243,8 +234,8 @@
   //  resout la PUISSANCE pour l'atteindre a l'angle par defaut (meme balistique
   //  que arcLaunch : v = ammo.speed*mul, mul in [arcMin..arcMax], g = arcGravity).
   //  Renvoie toujours { facing, aimAngle, power } utilisable (defauts si pas de cible).
-  function autoAimArc(p) {
-    const ammo = C.ammoTypes[p.ammoKey];
+  function autoAimArc(p, ammoOverride) {
+    const ammo = ammoOverride || C.ammoTypes[p.ammoKey];
     const ang = C.shot.aimDefault;
     const t = nearestTarget(p);
     if (!t) return { facing: p.facing, aimAngle: ang, power: 0.7 };
@@ -263,9 +254,9 @@
     return { facing, aimAngle: ang, power };
   }
 
-  function playerShoot(power) {
+  function playerShoot(ammoKey, power) {
     const p = PLAYER;
-    const ammo = C.ammoTypes[p.ammoKey];
+    const ammo = C.ammoTypes[ammoKey] || C.ammoTypes.graine;
     const sname = hasSprite(ammo.sprite) ? ammo.sprite : 'ammo_graine';   // garde-fou si PNG absent
     const fx = p.facing >= 0 ? 1 : -1;
     const traj = ammo.traj || 'straight';
@@ -280,8 +271,8 @@
       { dmg: ammo.damage, vx: 0, vy: 0, traj, aoe },
     ]);
     playIfAnim(b, sname);
-    if (traj === 'arc') {                       // en cloche : charge -> portee, HAUT/BAS -> angle
-      const v = arcLaunch(p, pw);
+    if (traj === 'arc') {                       // en cloche (lob lourd) : puissance auto-visee -> portee
+      const v = arcLaunch(p, pw, ammo);
       b.vx = v.vx; b.vy = v.vy;
     } else {                                    // tout droit, horizontal
       b.vx = fx * ammo.speed; b.vy = 0;
@@ -294,10 +285,12 @@
     if (aoe) {                                  // GATEAU : eclate en AoE a l'impact
       const boom = () => { if (!b.exists()) return; const bx = b.pos.x, by = b.pos.y; destroy(b); explodeAoe(bx, by, aoe.radius, aoe.damage || ammo.damage); };
       b.onCollide('enemy', boom);
+      b.onCollide('passant', boom);   // figurant : encaisse les balles (mais rien d'autre)
       b.onCollide('boss', boom);
       b.onCollide('solid', boom);
     } else {
       b.onCollide('enemy', (e) => hitEnemy(e, b));
+      b.onCollide('passant', (e) => hitEnemy(e, b));   // figurant : seule interaction = prendre une balle
       b.onCollide('boss', (e) => hitBoss(e, b));
       b.onCollide('solid', () => destroy(b));
     }
@@ -310,6 +303,23 @@
     sfx('shoot');
   }
 
+  // LOB LOURD (X) : lance un gateau en cloche, auto-vise sur la cible la plus
+  //  proche (autoAimArc). Coute de l'energie (jauge soleil) et a un cooldown.
+  function lobShoot() {
+    const p = PLAYER;
+    if (!p || !p.exists()) return;
+    if (p.equipped) return;            // equipement (rollers/velo) = deplacement seul (Phase 1)
+    if ((p.lobCd || 0) > 0) return;
+    const cost = C.ammoTypes.gateau.cost || 0;
+    if (C.sun.enabled && p.sun < cost) { flashMsg('PAS ASSEZ D ENERGIE'); return; }
+    if (C.sun.enabled) p.sun = Math.max(0, p.sun - cost);
+    const aim = autoAimArc(p, C.ammoTypes.gateau);
+    p.facing = aim.facing; p.aimAngle = aim.aimAngle;
+    playerShoot('gateau', aim.power);
+    p.lobCd = (C.shot && C.shot.lobCooldown) || 0.6;
+    p.throwT = 0.32;
+  }
+
   // Explosion de zone (gateau) : onde + miettes + degats a tout dans le rayon.
   function explodeAoe(x, y, radius, dmg) {
     addBoom(x, y);
@@ -317,6 +327,7 @@
     sfx('spell');
     const c = vec2(x, y);
     get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
+    get('passant').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });   // souffle = balle -> touche aussi les figurants
     get('boss').forEach((bo) => { if (bo.exists() && bo.pos.dist(c) < radius) hitBoss(bo, { dmg }); });
     get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });   // nettoie les tirs ennemis pris dans le souffle
   }
@@ -387,17 +398,15 @@
       {
         hp: C.player.maxHp, maxHp: C.player.maxHp,
         facing: 1, invuln: 0, shielded: 0, throwT: 0, throwReplay: false, catOutT: 0, catInT: 0,
-        aimAngle: C.shot.aimDefault, aiming: false,   // angle de la cloche (deg) regle par HAUT/BAS
+        aimAngle: C.shot.aimDefault,           // angle de lancer du lob (resolu par autoAimArc)
         jumpsLeft: C.player.maxJumps,
         ammoKey: C.player.startAmmo,
-        fireCd: 0,
-        spellCd: { pleurer: 0, raler: 0 },
+        fireCd: 0, lobCd: 0,
         sun: C.sun.max, sunMax: C.sun.max,    // sunMax FOND a chaque passant tue (cf. registerKill)
         score: 0, kills: 0,                    // kills = passants abattus (stat de "meurtre")
         data: 0, pages: 0, gotPubli: false,
         catCharges: C.cat.startCharges,
-        catCharge: 0, catLock: false,
-        shootCharge: 0,
+        catLock: false,
         _sunCharging: false, _sunShaded: false, sunFlash: 0,   // etat de recharge solaire (HUD glow)
         killFlash: 0,                                          // pulse du compteur tete-de-mort a chaque meurtre
         knockX: 0, knockT: 0,
@@ -564,19 +573,30 @@
       artScale(visualScale),
       pos(x, y),
       anchor('bot'),
-      // collisionIgnore 'enemy' -> les monstres ne se bloquent/poussent jamais
-      //  entre eux (ils se traversent), mais collisionnent toujours le sol.
+      // collisionIgnore -> les monstres ne se bloquent/poussent jamais entre eux
+      //  (ils se traversent), mais collisionnent toujours le sol. Le PASSANT
+      //  (figurant) ignore EN PLUS le joueur ET le boss : c'est un decor inerte
+      //  qui n'interagit avec rien -- il encaisse seulement les balles (cf. la
+      //  tag 'passant' ciblee par onCollide, plus bas).
       area({
         scale: isPersona ? vec2(0.85 / psize.scale, 0.9 / psize.scale) : vec2(0.85, 0.9),
-        collisionIgnore: ['enemy'],
+        collisionIgnore: isPersona ? ['enemy', 'boss', 'player'] : ['enemy'],
       }),
       // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
       //  collision : la grille saute les objets pauses). Seuls les monstres a
       //  l'ecran consomment du CPU -> un niveau large ne ralentit plus.
       //  distance = marge pour qu'ils se "reveillent" avant d'entrer dans le
       //  cadre (> max aggro/2 : ~720px du centre cam, couvre aggro 700).
-      offscreen({ hide: true, pause: true, distance: TS * 5 }),
-      'enemy', kind,
+      //  unpause:true => le check tourne au niveau SCENE (et pas via l'onUpdate
+      //  de l'objet, qui se FIGE une fois l'objet pause) -> l'objet se reveille
+      //  en rerentrant dans le cadre. SANS ca, un mob/passant pause hors-ecran
+      //  ne revenait JAMAIS (il restait hidden+paused -> disparition definitive).
+      offscreen({ hide: true, pause: true, unpause: true, distance: TS * 5 }),
+      // PASSANT : tague 'passant' (PAS 'enemy') -> exclu du contact joueur et de
+      //  l'auto-visee mobile ; seules les balles le touchent. z<0 -> il passe
+      //  TOUJOURS derriere les monstres et Laura (qui
+      //  sont a z=0). La tete (enfant) suit le corps, donc rien a regler dessus.
+      ...(isPersona ? [z(-0.5), kind] : ['enemy', kind]),
       {
         kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: y, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
         passantHead: phead, passantSize: psize.key, passantScale: psize.scale,
@@ -1077,50 +1097,6 @@
   }
 
   // ---------------------------------------------------------------------
-  //  SORTS
-  // ---------------------------------------------------------------------
-  function castPleurer() {
-    const p = PLAYER, sp = C.spells.pleurer;
-    if (p.equipped) return;                 // velo/rollers : on ne peut QUE se deplacer
-    if (p.spellCd.pleurer > 0) return;
-    p.spellCd.pleurer = sp.cooldown;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      add([
-        sprite('fx_tear'), artScale(), pos(p.pos.x, p.pos.y - TS * 0.6), anchor('center'),
-        move(vec2(Math.cos(a), Math.sin(a)), 320), opacity(1),
-        lifespan(0.5, { fade: 0.25 }), 'fx',
-      ]);
-    }
-    get('enemy').concat(get('boss')).forEach((e) => {
-      if (e.pos.dist(p.pos) < sp.radius) {
-        const dir = e.pos.x >= p.pos.x ? 1 : -1;
-        e.knockX = dir * sp.knockback; e.knockT = 0.3;
-      }
-    });
-    if (sp.clearBullets) get('ehot').forEach((h) => { if (h.pos.dist(p.pos) < sp.radius) destroy(h); });
-    sfx('spell');
-  }
-
-  function castRaler() {
-    const p = PLAYER, sp = C.spells.raler;
-    if (p.equipped) return;                 // velo/rollers : on ne peut QUE se deplacer
-    if (p.spellCd.raler > 0) return;
-    p.spellCd.raler = sp.cooldown;
-    p.shielded = sp.duration;
-    const bubble = add([
-      sprite('fx_grumble'), artScale(), pos(p.pos.x, p.pos.y - TS * 1.4), anchor('center'),
-      opacity(1), lifespan(sp.duration, { fade: 0.3 }), z(50), 'fx',
-    ]);
-    playIfAnim(bubble, 'fx_grumble');
-    bubble.onUpdate(() => { if (p.exists()) bubble.pos = vec2(p.pos.x, p.pos.y - TS * 1.4); });
-    get('enemy').concat(get('boss')).forEach((e) => {
-      if (e.pos.dist(p.pos) < sp.stunRadius) e.stun = Math.max(e.stun || 0, sp.duration);
-    });
-    sfx('spell');
-  }
-
-  // ---------------------------------------------------------------------
   //  DECOR DE FOND
   // ---------------------------------------------------------------------
   //  PARALLAX multi-couches, configurable par niveau (lit LEVEL.theme, qui
@@ -1374,7 +1350,7 @@
   // ---------------------------------------------------------------------
   const HUD_FRAME_W = {
     heart: 56, pickup_data: 64, pickup_page: 64, pickup_publi: 64,
-    pickup_croquette: 64, ammo_graine: 52, ammo_riz: 52, ammo_cookie: 30,
+    pickup_croquette: 64, ammo_graine: 52,
     ammo_gateau: 60, cat_run: 112, pickup_sunray: 64, pickup_cafe: 64,
     skull: 56,
   };
@@ -1524,47 +1500,32 @@
       T('SCORE', sxx + 14, syy + 15, 12, COL.inkSoft);
       T('' + p.score, sxx + sw - 14, syy + shh - 17, 23, COL.ink, 'right');
 
-      // ===== ARME (bas-gauche) =====
+      // ===== ARME (bas-gauche) : tir de base (graine) =====
       const aw = 196, ah = 44, axx = 14, ayy = H - 14 - ah;
       panel(axx, ayy, aw, ah);
-      const am = C.ammoTypes[p.ammoKey];
-      const cost = am.cost || 0;
-      const poor = C.sun.enabled && p.sun < cost;
+      const am = C.ammoTypes.graine;
       icon(hasSprite(am.sprite) ? am.sprite : 'ammo_graine', axx + 26, ayy + ah / 2, 30);
       T(am.label, axx + 48, ayy + 16, 15, COL.ink);
-      if (cost > 0) {                                  // armes lourdes : cout en energie
-        icon('pickup_sunray', axx + 52, ayy + 31, 14);
-        T('-' + cost, axx + 62, ayy + 31, 13, poor ? COL.red : COL.inkSoft);
-      } else {                                         // graine : gratuite, jamais de blocage
-        T('GRATUIT', axx + 50, ayy + 31, 12, COL.leaf);
-      }
-      keycap('MAJ', axx + aw - 42, ayy + 7);
+      T('GRATUIT', axx + 50, ayy + 31, 12, COL.leaf);   // tir de base : gratuit, jamais de blocage
+      keycap('ESPACE', axx + aw - 52, ayy + 7);
 
-      // ===== CHAT (a droite de l'arme) =====
-      const kw = 120, kxx = axx + aw + 8, kyy = ayy;
+      // ===== LOB LOURD (a droite de l'arme) : X, coute de l'energie =====
+      const lw = 124, lxx = axx + aw + 8, lyy = ayy;
+      panel(lxx, lyy, lw, ah);
+      const lam = C.ammoTypes.gateau, lcost = lam.cost || 0;
+      const lpoor = C.sun.enabled && p.sun < lcost;
+      icon(hasSprite(lam.sprite) ? lam.sprite : 'ammo_gateau', lxx + 24, lyy + ah / 2, 28);
+      T('LOB', lxx + 44, lyy + 16, 14, COL.ink);
+      icon('pickup_sunray', lxx + 48, lyy + 31, 13);
+      T('-' + lcost, lxx + 57, lyy + 31, 12, lpoor ? COL.red : COL.inkSoft);
+      keycap('X', lxx + lw - 26, lyy + 7);
+
+      // ===== CHAT (a droite du lob) =====
+      const kw = 120, kxx = lxx + lw + 8, kyy = ayy;
       panel(kxx, kyy, kw, ah);
       icon('cat_run', kxx + 28, kyy + ah / 2, 44, { frame: 0 });
       for (let i = 0; i < C.cat.maxCharges; i++) pip(kxx + 56 + i * 16, kyy + 15, i < p.catCharges);
       keycap('C', kxx + 50, kyy + 24);
-
-      // ===== SORTS (bas-droite) : Pleurer / Raler =====
-      const spw = 132, sph = 44, gap = 8;
-      const sp2 = W - 14 - spw, sp1 = sp2 - gap - spw, spy = H - 14 - sph;
-      spellPill('PLEURER', 'X', p.spellCd.pleurer, C.spells.pleurer.cooldown, COL.sky, sp1, spy, spw, sph);
-      spellPill('RALER', 'V', p.spellCd.raler, C.spells.raler.cooldown, COL.rose, sp2, spy, spw, sph);
-
-      function spellPill(name, key, cd, total, accent, x, y, w, h) {
-        panel(x, y, w, h);
-        const ready = cd <= 0;
-        const fillT = ready ? 1 : 1 - cd / total;
-        R(x + 3, y + 3, (w - 6) * Math.max(0, Math.min(1, fillT)), h - 6,
-          { radius: 9, color: accent, opacity: ready ? 0.28 : 0.16 });
-        drawCircle({ pos: vec2(x + 17, y + h / 2), radius: 7, color: ready ? accent : COL.track, opacity: ready ? 1 : 0.6 });
-        drawCircle({ pos: vec2(x + 17, y + h / 2), radius: 7, fill: false, outline: { width: 1.5, color: COL.edge } });
-        T(name, x + 32, y + 16, 14, COL.ink);
-        if (ready) keycap(key, x + 32, y + 24);
-        else T(Math.ceil(cd) + 's', x + 32, y + 30, 13, COL.inkSoft);
-      }
 
       // ===== BOSS (haut-centre) — seulement quand il est engage =====
       //  (a portee de l'ecran, ou des qu'on l'a touche) : sinon la barre
@@ -1649,75 +1610,6 @@
     //  du surplus de hauteur -> tout l'espace ajoute devient du HORS-CHAMP en haut
     //  (publi cachee a sauter en aveugle). Niveau standard (11 rangees) => 256.
     const camY = C.height / 2 - CAM_DROP + Math.max(0, LEVEL.height - C.height);
-
-    // jauges de charge (suivent Laura, visibles seulement pendant la charge)
-    const catBarBg = add([rect(48, 8, { radius: 4 }), pos(0, -999), anchor('center'), color(40, 40, 50), opacity(0), z(60)]);
-    const catBar = add([rect(44, 4, { radius: 2 }), pos(0, -999), anchor('left'), color(120, 210, 255), opacity(0), z(61)]);
-    const shotBarBg = add([rect(48, 8, { radius: 4 }), pos(0, -999), anchor('center'), color(40, 40, 50), opacity(0), z(60)]);
-    const shotBar = add([rect(44, 4, { radius: 2 }), pos(0, -999), anchor('left'), color(255, 170, 60), opacity(0), z(61)]);
-
-    // --- FLECHE DE VISEE (cloches) : trainee de miettes + reticule d'impact -----
-    //  Apercu de la VRAIE parabole (meme physique que le projectile), peint en
-    //  repere MONDE (objet non-fixed). Visible tant que Laura charge une cloche
-    //  (HAUT/BAS reglent l'angle). Le reticule montre ou ca retombe -> la cloche
-    //  devient enfin controlable. Palette creme/or/encre du jeu.
-    const aimGuide = add([pos(0, 0), z(56)]);
-    aimGuide.onDraw(() => {
-      const p = PLAYER;
-      if (!p || !p.exists() || !p.aiming) return;
-      const fx = p.facing >= 0 ? 1 : -1;
-      const pw = Math.min(1, p.shootCharge / C.shot.chargeTime);      // puissance courante (0..1)
-      const v = arcLaunch(p, pw);
-      const g = C.shot.arcGravity;
-      const sx = p.pos.x + fx * 22, sy = p.pos.y - TS * 0.6;          // depart = spawn du projectile
-      const dy = p.pos.y - sy;                                        // chute jusqu'au niveau des pieds
-      const tLand = (-v.vy + Math.sqrt(v.vy * v.vy + 2 * g * dy)) / g;
-      const tn = time();
-      const warm = () => rgb(255, Math.round(150 + 95 * pw), Math.round(40 + 150 * pw));   // ambre -> creme dore
-      const INKC = rgb(60, 40, 26);
-      // 1) trainee de miettes le long de la parabole (echantillonnee en temps)
-      const N = 13;
-      for (let i = 1; i <= N; i++) {
-        const f = i / (N + 1), t = f * tLand;
-        const x = sx + v.vx * t, y = sy + v.vy * t + 0.5 * g * t * t;
-        const shimmer = 0.55 + 0.45 * Math.sin(tn * 7 - i * 0.7);     // lumiere qui "coule" vers la cible
-        const op = Math.max(0, (0.85 - f * 0.5) * shimmer);
-        const r = 3.2 - f * 1.0;
-        drawCircle({ pos: vec2(x, y), radius: r + 1, color: INKC, opacity: op * 0.5 });
-        drawCircle({ pos: vec2(x, y), radius: r, color: warm(), opacity: op });
-      }
-      // 2) reticule au point d'impact predit
-      const lx = sx + v.vx * tLand, ly = p.pos.y;
-      const pulse = 1 + Math.sin(tn * 6) * 0.12, R = 11 * pulse;
-      drawCircle({ pos: vec2(lx, ly), radius: R, fill: false, outline: { width: 3, color: INKC }, opacity: 0.85 });
-      drawCircle({ pos: vec2(lx, ly), radius: R, fill: false, outline: { width: 1.5, color: warm() } });
-      drawCircle({ pos: vec2(lx, ly), radius: 2.4, color: warm() });
-      for (let k = 0; k < 4; k++) {
-        const a = k * Math.PI / 2 + tn * 0.8;
-        drawCircle({ pos: vec2(lx + Math.cos(a) * R, ly + Math.sin(a) * R), radius: 1.6, color: INKC, opacity: 0.8 });
-      }
-      // 3) pointe de fleche pixel au depart, orientee vers le lancer, pulsation
-      const head = Math.atan2(v.vy, v.vx);
-      const len = (16 + 11 * pw) * (1 + Math.sin(tn * 8) * 0.05);
-      const wdt = 9 + 3 * pw;
-      const bx = sx + Math.cos(head) * 12, by = sy + Math.sin(head) * 12;
-      const tip = vec2(bx + Math.cos(head) * len, by + Math.sin(head) * len);
-      const nx = Math.cos(head + Math.PI / 2), ny = Math.sin(head + Math.PI / 2);
-      const q1 = tip, q2 = vec2(bx + nx * wdt, by + ny * wdt), q3 = vec2(bx - nx * wdt, by - ny * wdt);
-      drawTriangle({ p1: q1, p2: q2, p3: q3, color: INKC });          // bord sombre (style pixel)
-      const cx = (q1.x + q2.x + q3.x) / 3, cy = (q1.y + q2.y + q3.y) / 3, ins = 0.66;
-      drawTriangle({
-        p1: vec2(cx + (q1.x - cx) * ins, cy + (q1.y - cy) * ins),
-        p2: vec2(cx + (q2.x - cx) * ins, cy + (q2.y - cy) * ins),
-        p3: vec2(cx + (q3.x - cx) * ins, cy + (q3.y - cy) * ins),
-        color: warm(),
-      });
-      // 4) anneau de pleine charge (pret a partir au max de portee)
-      if (pw >= 0.999) {
-        const gr = 13 + Math.sin(tn * 8) * 3;
-        drawCircle({ pos: vec2(sx, sy), radius: gr, fill: false, outline: { width: 2, color: rgb(255, 240, 190) }, opacity: 0.5 });
-      }
-    });
 
     // --- ESC : confirmation avant d'abandonner le niveau (gele le jeu) -----
     //  getTreeRoot().paused gele update + physique (le draw, lui, continue) ; les
@@ -1837,17 +1729,21 @@
     const closeQuit = () => { if (quitBox) { destroy(quitBox); quitBox = null; } setPaused(false); };
     const confirmQuit = () => { if (!quitBox) return; setPaused(false); go('overworld'); };
 
+    // SAUT MODULABLE : relacher SAUT en pleine montee coupe la courbe (petit saut).
+    const onKeysRelease = (arr, cb) => arr.forEach((k) => onKeyRelease(k, cb));
     onPlayKey(C.controls.jump, () => {
       const p = PLAYER;
-      if (aimingLob(p)) return;                            // HAUT sert a VISER la cloche, pas a sauter
-      if (p.catCharge > 0 || get('cat').length) return;   // immobile pendant la charge / chat dehors
+      if (get('cat').length) return;                       // immobile tant que le chat est dehors
       const eq = p.equipped && C.equipment && C.equipment[p.equipped];
       const jf = C.player.jumpForce * ((eq && eq.jumpMul) || 1);   // rollers/velo : saute plus haut
       if (p.isGrounded()) { p.jump(jf); p.jumpsLeft = C.player.maxJumps - 1; sfx('jump'); }
       else if (p.jumpsLeft > 0) { p.jump(jf); p.jumpsLeft--; sfx('jump'); }
     });
-    onPlayKey(C.controls.pleurer, castPleurer);
-    onPlayKey(C.controls.raler, castRaler);
+    onKeysRelease(C.controls.jump, () => {
+      if (!PLAYER || !PLAYER.exists()) return;
+      if (!PLAYER.isGrounded() && PLAYER.vel && PLAYER.vel.y < 0) PLAYER.vel = vec2(PLAYER.vel.x, PLAYER.vel.y * 0.45);
+    });
+    onPlayKey(C.controls.lob, lobShoot);
     onKeys(C.controls.quit, () => { quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
     onKeyPress('space', confirmQuit);                                        // ESPACE/ENTREE : confirme la sortie
     onKeyPress('enter', confirmQuit);
@@ -1860,11 +1756,6 @@
       if (Math.abs(m.x - cx) > 224) return;                       // hors des rangees
       if (Math.abs(m.y - (cy + 24)) <= 28) confirmQuit();         // rangee "Oui" -> carte
       else if (Math.abs(m.y - (cy + 82)) <= 28) closeQuit();      // rangee "Non" -> reprendre
-    });
-    onPlayKey(C.controls.switchAmmo, () => {
-      const order = C.ammoOrder;
-      const i = order.indexOf(PLAYER.ammoKey);
-      PLAYER.ammoKey = order[(i + 1) % order.length];
     });
 
     // --- CHEATS de test (CONFIG.cheats). Mets cheats:false pour le cadeau.
@@ -1885,6 +1776,7 @@
     PLAYER.onCollide('sun', () => tryReachSun());
 
     onUpdate('enemy', enemyBehavior);
+    onUpdate('passant', enemyBehavior);   // figurant : meme va-et-vient, mais tag a part (cf. spawnEnemy)
     onUpdate('boss', bossBehavior);
 
     // Pendant un combat de boss : des rayons de soleil (energie/munitions)
@@ -1906,9 +1798,8 @@
     if (typeof location !== 'undefined' && location.hash.indexOf('auto') >= 0) {
       PLAYER.onUpdate(() => { PLAYER.move(C.player.speed, 0); PLAYER.facing = 1; });
       try {
-        loop(0.25, () => { if (PLAYER.exists()) playerShoot(); });
-        loop(1.8, () => { if (PLAYER.exists()) castPleurer(); });
-        loop(2.3, () => { if (PLAYER.exists()) castRaler(); });
+        loop(0.25, () => { if (PLAYER.exists()) playerShoot('graine', 1); });
+        loop(2.0, () => { if (PLAYER.exists()) lobShoot(); });
         loop(3.0, () => { if (PLAYER.exists()) PLAYER.jump(C.player.jumpForce); });
         loop(4.0, () => { if (PLAYER.exists()) deployCat(); });
       } catch (e) {}
@@ -1919,94 +1810,29 @@
       let moving = false;
       const eqv = p.equipped && C.equipment && C.equipment[p.equipped];
       const spd = C.player.speed * ((eqv && eqv.speedMul) || 1);   // rollers = plus rapide
-      const aiming = aimingLob(p);                                 // vise une cloche : HAUT/BAS reglent l'angle
-      p.aiming = aiming;
-      if (aiming) {                                                // incline la cloche pendant la charge
-        if (keysDown(C.controls.aimUp))   p.aimAngle = Math.min(C.shot.aimMax, p.aimAngle + C.shot.aimSpeed * dt());
-        if (keysDown(C.controls.aimDown)) p.aimAngle = Math.max(C.shot.aimMin, p.aimAngle - C.shot.aimSpeed * dt());
-      }
-      const crouching = p.isGrounded() && keysDown(C.controls.crouch) && !aiming;   // accroupi (au sol ; BAS sert a viser pendant la charge)
-      // SAUT MODULABLE : tenir BAS pendant la MONTEE coupe la courbe (saute moins
-      //  haut). N'agit que sur la phase ascendante (vel.y<0), en l'air, et hors
-      //  visee de cloche (ou BAS regle l'angle). Marche aussi en rollers/velo.
-      if (!aiming && !p.isGrounded() && keysDown(C.controls.crouch) && p.vel && p.vel.y < 0) {
-        p.vel = vec2(p.vel.x, p.vel.y + (C.player.jumpCutG || 0) * dt());
-      }
-      // CHAT : Laura est IMMOBILE pendant la charge ET tant que le chat n'est pas
-      //  revenu (il faut etre immobile pour le lancer, on ne bouge pas pendant la charge).
+      const crouching = p.isGrounded() && keysDown(C.controls.crouch);   // accroupi (au sol ; BAS = SEUL usage)
+      // CHAT INSTANTANE : Laura est IMMOBILE tant que le chat est dehors (il revient
+      //  tout seul) ; plus de charge a maintenir.
       const catOut = get('cat').length > 0;
-      const catCharging = keysDown(C.controls.cat) && p.catCharges > 0 && !catOut && !p.catLock && !eqv;
-      const catBusy = catOut || catCharging;
       if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }       // recul : pas de controle
-      else if (!crouching && !catBusy) {
+      else if (!crouching && !catOut) {
         if (keysDown(C.controls.left)) { p.move(-spd, 0); p.facing = -1; moving = true; }
         if (keysDown(C.controls.right)) { p.move(spd, 0); p.facing = 1; moving = true; }
       }
 
-      // TIR (energie = munitions). Armes DROITES = rafale en maintenant.
-      // Armes EN CLOCHE = CHARGE : plus on maintient X, plus ca part loin ;
-      // lancer au relachement.
-      const ammoNow = C.ammoTypes[p.ammoKey];
-      const cost = ammoNow.cost || 0;
+      // TIR DE BASE (graine, gratuit) : rafale en maintenant ESPACE. Le lob lourd
+      //  (X) part via onPlayKey(C.controls.lob, lobShoot), pas ici.
       p.fireCd -= dt();
-      if (eqv) {                                        // velo/rollers : on ne peut QUE se deplacer
-        p.shootCharge = 0;
-      } else if (ammoNow.traj === 'arc' && assistAim()) {
-        // MOBILE assiste : la cloche s'auto-vise + part en tapotant (rafale lente).
-        p.shootCharge = 0;
-        if (keysDown(C.controls.shoot) && p.fireCd <= 0) {
-          if (!C.sun.enabled || p.sun >= cost) {
-            const aim = autoAimArc(p);
-            p.facing = aim.facing; p.aimAngle = aim.aimAngle;
-            p.sun = Math.max(0, p.sun - cost);
-            playerShoot(aim.power);
-            p.fireCd = C.shot.rate * 1.7;               // cadence cloche < tir droit
-          } else { p.fireCd = 0.2; }
-        }
-      } else if (ammoNow.traj === 'arc') {
-        if (keysDown(C.controls.shoot)) {
-          p.shootCharge = Math.min(C.shot.chargeTime, p.shootCharge + dt());
-        } else if (p.shootCharge > 0) {                 // relache -> on lance
-          if (!C.sun.enabled || p.sun >= cost) {
-            p.sun = Math.max(0, p.sun - cost);
-            playerShoot(p.shootCharge / C.shot.chargeTime);
-          }
-          p.shootCharge = 0;
-        }
-      } else {                                          // tir droit : rafale
-        p.shootCharge = 0;
-        if (keysDown(C.controls.shoot) && p.fireCd <= 0) {
-          if (!C.sun.enabled || p.sun >= cost) {
-            p.sun = Math.max(0, p.sun - cost);
-            playerShoot(1);
-            p.fireCd = C.shot.rate;
-          } else { p.fireCd = 0.2; }                     // plus assez d'energie
-        }
+      if (p.lobCd > 0) p.lobCd -= dt();
+      if (!eqv && keysDown(C.controls.shoot) && p.fireCd <= 0) {
+        playerShoot('graine', 1);
+        p.fireCd = C.shot.rate;
       }
 
-      // CHAT : se charge en MAINTENANT la touche (anti-spam), part une fois plein
+      // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
       const canCat = p.catCharges > 0 && !get('cat').length && !eqv;
-      if (canCat && keysDown(C.controls.cat) && !p.catLock) {
-        p.catCharge += dt();
-        if (p.catCharge >= C.cat.chargeTime) { deployCat(); p.catCharge = 0; p.catLock = true; }
-      } else {
-        p.catCharge = 0;
-        if (!keysDown(C.controls.cat)) p.catLock = false;
-      }
-      if (p.catCharge > 0) {
-        const f = Math.min(1, p.catCharge / C.cat.chargeTime);
-        const by = p.pos.y - TS * 2.1;
-        catBarBg.pos = vec2(p.pos.x, by); catBarBg.opacity = 0.7;
-        catBar.pos = vec2(p.pos.x - 22, by); catBar.width = 44 * f; catBar.opacity = 1;
-        catBar.color = f >= 1 ? rgb(120, 255, 150) : rgb(120, 210, 255);
-      } else { catBarBg.opacity = 0; catBar.opacity = 0; }
-      if (p.shootCharge > 0) {                          // jauge de charge du lancer (cloche)
-        const f = Math.min(1, p.shootCharge / C.shot.chargeTime);
-        const by = p.pos.y - TS * 2.7;
-        shotBarBg.pos = vec2(p.pos.x, by); shotBarBg.opacity = 0.7;
-        shotBar.pos = vec2(p.pos.x - 22, by); shotBar.width = 44 * f; shotBar.opacity = 1;
-        shotBar.color = f >= 1 ? rgb(120, 255, 150) : rgb(255, 170, 60);
-      } else { shotBarBg.opacity = 0; shotBar.opacity = 0; }
+      if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
+      if (!keysDown(C.controls.cat)) p.catLock = false;
 
       if (p.isGrounded()) p.jumpsLeft = C.player.maxJumps;
 
@@ -2055,8 +1881,6 @@
       if (p.invuln > 0) { p.invuln -= dt(); p.opacity = (Math.floor(time() * 20) % 2) ? 0.4 : 1; }
       else p.opacity = 1;
       if (p.shielded > 0) { p.shielded -= dt(); p.opacity = 0.85; }
-      p.spellCd.pleurer = Math.max(0, p.spellCd.pleurer - dt());
-      p.spellCd.raler = Math.max(0, p.spellCd.raler - dt());
       p.killFlash = Math.max(0, (p.killFlash || 0) - dt());
 
       // RECHARGE SOLAIRE (photosynthese) : la jauge remonte toute seule au
@@ -2254,8 +2078,8 @@
 
     // --- bandeau bas : controles -------------------------------------
     pill(C.width / 2, C.height - 22, C.width, 56, [26, 18, 12], 0.5, 0, 3);
-    inkText('Q/D ou Flèches : bouger     HAUT : sauter     ESPACE : lancer', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
-    inkText('MAJ : changer d arme     C (2s) : chat     X : pleurer     V : râler', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
+    inkText('Q/D ou Fleches : bouger     HAUT : sauter     ESPACE : tir de base', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
+    inkText('X : lob lourd     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
 
     // --- invite "ESPACE pour commencer" : pastille doree clignotante ---
     const startPill = pill(C.width / 2, 430, 500, 44, [40, 26, 16], 0.78, 22, 5);
