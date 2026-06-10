@@ -31,6 +31,20 @@
   setGravity(C.gravity);
 
   // ---------------------------------------------------------------------
+  //  ZOOM D'AFFICHAGE (desktop) : agrandit le canvas via une transform CSS
+  //  centree -> +40% par defaut (CONFIG.desktopZoom) sans toucher au rendu
+  //  interne ni au gameplay. Sur mobile (TOUCH_ON) le canvas est deja en
+  //  letterbox+stretch plein ecran : pas de zoom CSS (il deborderait).
+  // ---------------------------------------------------------------------
+  if (!TOUCH_ON && C.desktopZoom && C.desktopZoom !== 1) {
+    const cv = document.querySelector('canvas');
+    if (cv) {
+      cv.style.transformOrigin = 'center center';
+      cv.style.transform = `scale(${C.desktopZoom})`;
+    }
+  }
+
+  // ---------------------------------------------------------------------
   //  CAPTURE CLAVIER : garder le focus sur le canvas (sinon les touches
   //  partent au navigateur). Inchange depuis la demo.
   // ---------------------------------------------------------------------
@@ -195,12 +209,46 @@
     if (anim && o._anim !== anim) { try { o.play(anim); } catch (e) {} o._anim = anim; }
   }
 
+  // SAC VIDE : tant que le chat est DEHORS (deploye), Laura porte un sac vide -> on
+  //  joue la variante "<spr>_nocat" si elle existe (sinon on garde le sprite avec chat).
+  function noCat(spr) {
+    return (get('cat').length && hasSprite(spr + '_nocat')) ? spr + '_nocat' : spr;
+  }
+
   // setAnim pour Laura : un equipement peut remplacer le sprite d'une pose
-  // (ex. rollers -> override.run = 'hero_roll').
+  // (ex. rollers -> override.run = 'hero_roll'), puis bascule sac-vide si le chat court.
   function heroAnim(o, spr, anim) {
     const eq = o.equipped && C.equipment && C.equipment[o.equipped];
     if (eq && eq.override && eq.override[anim] && hasSprite(eq.override[anim])) spr = eq.override[anim];
-    setAnim(o, spr, anim);
+    setAnim(o, noCat(spr), anim);
+  }
+
+  // CALQUE D'ACTION (rig en couches, cf. SPRITES.md) : pose un sprite act_* (bras
+  //  qui lance / lance le chat) PAR-DESSUS Laura, qui continue sa locomotion en
+  //  dessous (course/vélo/rollers...). Le calque copie exactement pos/ancre/echelle/
+  //  flip de Laura -> aligne par construction (overlay dessine a la taille d'une frame
+  //  de Laura). Absent (pas d'asset) -> on ne fait rien (repli gere par l'appelant).
+  //  `replay` (nouveau tir) rejoue le calque depuis la 1re frame.
+  function setActionOverlay(p, sprName, anim, replay) {
+    if (!sprName || !hasSprite(sprName)) {
+      if (p._actOv && p._actOv.exists()) { destroy(p._actOv); p._actOv = null; }
+      return false;
+    }
+    const off = (C.player && C.player.actionOffset) || [0, 0];
+    if (!p._actOv || !p._actOv.exists()) {
+      const ov0 = add([
+        sprite(sprName), artScale(), pos(p.pos.x, p.pos.y), anchor('bot'),
+        z(7), 'actov', { _spr: null, _anim: null },
+      ]);
+      ov0.onUpdate(() => { if (!p || !p.exists()) destroy(ov0); });   // filet anti-orphelin
+      p._actOv = ov0;
+    }
+    const ov = p._actOv;
+    ov.pos = vec2(p.pos.x + off[0], p.pos.y + off[1]);
+    ov.flipX = p.flipX;
+    if (replay) ov._anim = null;
+    setAnim(ov, sprName, anim);
+    return true;
   }
 
   // ---------------------------------------------------------------------
@@ -256,45 +304,60 @@
 
   function playerShoot(ammoKey, power, opts) {
     const p = PLAYER;
+    opts = opts || {};
     const ammo = C.ammoTypes[ammoKey] || C.ammoTypes.graine;
-    const sname = hasSprite(ammo.sprite) ? ammo.sprite : 'ammo_graine';   // garde-fou si PNG absent
+    const wantSpr = opts.sprite || ammo.sprite;
+    const sname = hasSprite(wantSpr) ? wantSpr : (hasSprite(ammo.sprite) ? ammo.sprite : 'ammo_graine');   // garde-fou si PNG absent
     const fx = p.facing >= 0 ? 1 : -1;
     const traj = ammo.traj || 'straight';
-    const aoe = ammo.aoe || null;
+    const aoe = opts.aoe || ammo.aoe || null;            // arsenal (patisserie) peut surcharger l'AoE
+    const spd = opts.speed || ammo.speed;
     const pw = (power == null) ? 1 : Math.max(0, Math.min(1, power));   // charge 0..1 (cloche)
-    // TIR DE BASE (graine) : la puissance monte avec le TIER (1->3). Le lob (gateau) garde son damage.
-    const dmg = (opts && opts.damage != null) ? opts.damage
-              : ((ammoKey === 'graine') ? Math.max(1, Math.min(3, p.tier || 1)) : ammo.damage);
+    const dmg = (opts.damage != null) ? opts.damage : ammo.damage;     // l'arsenal fournit le degat (graines/patisseries)
     const b = add([
-      sprite(sname), artScale(),
+      sprite(sname), artScale(opts.projScale || 1),
       pos(p.pos.x + fx * 22, p.pos.y - TS * 0.6),
       anchor('center'), area(),
       offscreen({ distance: 220, destroy: true }),
       'pbullet',
-      { dmg: dmg, vx: 0, vy: 0, traj, aoe },
+      // channel/bossDmg : canal de tick + degat dedie vs BOSS (v2, cf. hitBoss).
+      { dmg: dmg, vx: 0, vy: 0, traj, aoe,
+        channel: opts.channel || (aoe ? 'aoe' : 'seed'),
+        bossDmg: (opts.bossDmg != null) ? opts.bossDmg : null },
     ]);
+    if (opts.flame) { try { b.use(color(255, 138, 40)); } catch (_) {} }   // graine/gateau ENFLAMME : teinte chaude
     playIfAnim(b, sname);
     if (traj === 'arc') {                       // en cloche (lob lourd) : puissance auto-visee -> portee
-      const v = arcLaunch(p, pw, ammo);
+      const v = arcLaunch(p, pw, { speed: spd });
       b.vx = v.vx; b.vy = v.vy;
     } else {                                    // tout droit (angle eventuel pour l'eventail)
-      const off = (opts && opts.angleOffset) || 0;
-      b.vx = fx * ammo.speed * Math.cos(off); b.vy = ammo.speed * Math.sin(off);
+      const off = opts.angleOffset || 0;
+      b.vx = fx * spd * Math.cos(off); b.vy = spd * Math.sin(off);
     }
     b.onUpdate(() => {
       if (b.traj === 'arc') b.vy += C.shot.arcGravity * dt();
       b.pos.x += b.vx * dt(); b.pos.y += b.vy * dt();
       if (b.pos.y > LEVEL.height + 100) destroy(b);
     });
-    if (aoe) {                                  // GATEAU : eclate en AoE a l'impact
-      const boom = () => { if (!b.exists()) return; const bx = b.pos.x, by = b.pos.y; destroy(b); explodeAoe(bx, by, aoe.radius, aoe.damage || ammo.damage); };
+    if (aoe) {                                  // PATISSERIE : eclate en AoE a l'impact
+      const boom = () => {
+        if (!b.exists()) return;
+        const bx = b.pos.x, by = b.pos.y; destroy(b);
+        explodeAoe(bx, by, aoe.radius, aoe.damage || ammo.damage, 'aoe');
+        const sec = opts.secondary || 0;        // GATEAU DES ENFERS : N mini-explosions decalees autour de l'impact
+        for (let i = 0; i < sec; i++) {
+          const a = (i / sec) * Math.PI * 2, rr = aoe.radius * 0.55;
+          // canal 'aoe2' : vs boss, AU PLUS UNE mini-explosion compte (cf. hitBoss)
+          wait(0.06 + i * 0.05, () => explodeAoe(bx + Math.cos(a) * rr, by + Math.sin(a) * rr * 0.6, aoe.radius * 0.5, Math.max(1, (aoe.damage || 2) - 1), 'aoe2'));
+        }
+      };
       b.onCollide('enemy', boom);
       b.onCollide('passant', boom);   // figurant : encaisse les balles (mais rien d'autre)
       b.onCollide('boss', boom);
       b.onCollide('solid', boom);
-    } else if (opts && opts.pierce) {           // PERCANT : traverse plusieurs ennemis sans se detruire
+    } else if (opts.pierce) {                   // PERCANT : traverse plusieurs ennemis sans se detruire
       b.pierce = opts.pierce; b._hit = new Set();
-      const through = (e, fn) => { if (b._hit.has(e)) return; b._hit.add(e); fn(e, { dmg: b.dmg }); b.pierce--; if (b.pierce <= 0 && b.exists()) destroy(b); };
+      const through = (e, fn) => { if (b._hit.has(e)) return; b._hit.add(e); fn(e, { dmg: b.dmg, bossDmg: b.bossDmg, channel: b.channel, pos: b.pos }); b.pierce--; if (b.pierce <= 0 && b.exists()) destroy(b); };
       b.onCollide('enemy', (e) => through(e, hitEnemy));
       b.onCollide('passant', (e) => through(e, hitEnemy));
       b.onCollide('boss', (e) => through(e, hitBoss));
@@ -314,50 +377,84 @@
     sfx('shoot');
   }
 
-  // TIR DE BASE selon l'ARME courante (p.weapon, posee par les powerups) + le TIER.
-  //  graine = 1 tir droit (degats = tier). spread = eventail (3, 5 au tier 3).
-  //  pierce = traverse (1+tier ennemis). bombe = tir droit explosif (petite AoE).
+  // TIR DE BASE = GRAINES (ESPACE, gratuit). La PUISSANCE (p.power) pilote le
+  //  nombre de graines + l'eventail + le feu/percage ; la CADENCE (p.rate) pilote
+  //  le delai entre tirs (pose au point d'appel, cf. fireCd). cf. CONFIG.arsenal.graines.
   function fireBase(p) {
-    const tier = Math.max(1, Math.min(3, p.tier || 1));
-    const w = p.weapon || 'graine';
-    if (w === 'spread') {
-      const offs = tier >= 3 ? [-0.26, -0.13, 0, 0.13, 0.26] : [-0.16, 0, 0.16];
-      offs.forEach((o) => playerShoot('graine', 1, { angleOffset: o, damage: 1 }));
-    } else if (w === 'pierce') {
-      playerShoot('graine', 1, { pierce: 1 + tier, damage: tier });
-    } else if (w === 'bombe') {
-      playerShoot('bombe', 1, { damage: 1 + tier });
-    } else {
-      playerShoot('graine', 1);
+    const A = (C.arsenal && C.arsenal.graines) || {};
+    const lv = Math.max(1, Math.min((A.levels && A.levels.length) || 1, p.power || 1));
+    const L = (A.levels && A.levels[lv - 1]) || { pellets: 1, spread: 0, damage: 1, flame: false, pierce: 0 };
+    const n = Math.max(1, L.pellets || 1);
+    // degat de TICK vs boss par niveau de puissance (la volee compte pour 1, cf. hitBoss)
+    const bossTick = (A.bossTick && A.bossTick[lv - 1] != null) ? A.bossTick[lv - 1] : (L.damage || 1);
+    for (let i = 0; i < n; i++) {
+      const off = (n === 1) ? 0 : (i - (n - 1) / 2) * (L.spread || 0);   // eventail centre
+      playerShoot('graine', 1, {
+        angleOffset: off, damage: L.damage || 1, speed: A.speed,
+        sprite: L.flame ? 'ammo_graine_fire' : undefined,   // P3 : vrai sprite de graine enflammee (plus de teinte code)
+        pierce: L.pierce || 0, projScale: 1,
+        channel: 'seed', bossDmg: bossTick,
+      });
     }
   }
+  // Delai entre deux tirs de graines selon la CADENCE (lu a chaque tir).
+  function grainesCd(p) {
+    const cad = (C.arsenal && C.arsenal.graines && C.arsenal.graines.cadence) || [C.shot.rate];
+    const r = Math.max(1, Math.min(cad.length, p.rate || 1));
+    return cad[r - 1] || C.shot.rate;
+  }
 
-  // LOB LOURD (X) : lance un gateau en cloche, auto-vise sur la cible la plus
-  //  proche (autoAimArc). Coute de l'energie (jauge soleil) et a un cooldown.
+  // PATISSERIE (X) : lance une cloche AoE auto-visee (autoAimArc). La PUISSANCE
+  //  (p.power) choisit cookie -> gateau -> gateau des enfers (taille d'explosion +
+  //  mini-explosions) ; la CADENCE (p.rate) son cooldown. Coute du SOLEIL. cf.
+  //  CONFIG.arsenal.patisseries.
   function lobShoot() {
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if ((p.lobCd || 0) > 0) return;
-    const cost = C.ammoTypes.gateau.cost || 0;
+    const A = (C.arsenal && C.arsenal.patisseries) || {};
+    const lv = Math.max(1, Math.min((A.levels && A.levels.length) || 1, p.power || 1));
+    const L = (A.levels && A.levels[lv - 1]) || { sprite: 'ammo_gateau', scale: 1, radius: 94, damage: 3, cost: 30, secondary: 0 };
+    const cost = L.cost || 0;
     if (C.sun.enabled && p.sun < cost) { flashMsg('PAS ASSEZ D ENERGIE'); return; }
     if (C.sun.enabled) p.sun = Math.max(0, p.sun - cost);
-    const aim = autoAimArc(p, C.ammoTypes.gateau);
+    const aim = autoAimArc(p, { speed: A.speed || 520 });
     p.facing = aim.facing; p.aimAngle = aim.aimAngle;
-    playerShoot('gateau', aim.power);
-    p.lobCd = (C.shot && C.shot.lobCooldown) || 0.6;
+    playerShoot('gateau', aim.power, {
+      sprite: L.sprite, projScale: L.scale || 1, speed: A.speed,   // sprite dedie par niveau (cookie / gateau / gateau des enfers)
+      aoe: { radius: L.radius, damage: L.damage }, secondary: L.secondary || 0,
+    });
+    const cad = A.cadence || [(C.shot && C.shot.lobCooldown) || 0.6];
+    const r = Math.max(1, Math.min(cad.length, p.rate || 1));
+    p.lobCd = cad[r - 1] || 0.6;
     p.throwT = 0.32;
   }
 
   // Explosion de zone (gateau) : onde + miettes + degats a tout dans le rayon.
-  function explodeAoe(x, y, radius, dmg) {
+  //  channel ('aoe' par defaut, 'aoe2' pour les mini-explosions des enfers) =
+  //  canal de tick vs BOSS (cf. hitBoss) — vs mobs, degats pleins comme avant.
+  function explodeAoe(x, y, radius, dmg, channel) {
     addBoom(x, y);
     safeShake(11);
     sfx('spell');
     const c = vec2(x, y);
     get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
     get('passant').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });   // souffle = balle -> touche aussi les figurants
-    get('boss').forEach((bo) => { if (bo.exists() && bo.pos.dist(c) < radius) hitBoss(bo, { dmg }); });
+    get('boss').forEach((bo) => { if (bo.exists() && bo.pos.dist(c) < radius) hitBoss(bo, { dmg, channel: channel || 'aoe' }); });
     get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });   // nettoie les tirs ennemis pris dans le souffle
+  }
+
+  // Souffle d'une BOMBE de boss : explose, TUE les monstres (enemy + figurants)
+  //  dans le rayon, nettoie les tirs ennemis et blesse Laura si elle est dessous.
+  //  N'abime PAS le boss (c'est lui qui la lache). Cf. dropBomb.
+  function bombBlast(x, y, radius, dmg) {
+    addBoom(x, y); safeShake(8); sfx('spell');
+    const c = vec2(x, y);
+    get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
+    get('passant').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
+    get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });
+    const p = PLAYER;
+    if (p && p.exists() && p.pos.dist(c) < radius) damagePlayer(dmg, x);
   }
 
   // FX d'explosion : flash + onde de choc qui s'etend + eclats chauds (miettes).
@@ -383,15 +480,15 @@
     }
   }
 
-  // PROJECTILE du boss courant : son def.shot (sprite themE). Pose par spawnBoss.
-  let BOSS_SHOT_SPRITE = null;
-  function enemyBullet(x, y, target, speed, kind) {
+  // PROJECTILE ennemi/boss. v2 : le sprite de boss est PASSE PAR L'APPELANT
+  //  (bosses.js fournit b.def.shot en 6e arg de api.bullet) — plus de global
+  //  BOSS_SHOT_SPRITE : avec les boss INVITES du jury, plusieurs boss vivent en
+  //  meme temps et un global serait ecrase par le dernier spawn. Tirs 'enemy'
+  //  (ADEME, tampons, chutes du ciel) -> 'shot_paper'. Si le PNG manque,
+  //  retour propre a la forme generique (cercle rouge boss / rectangle creme).
+  function enemyBullet(x, y, target, speed, kind, spr) {
     const dir = target.pos.sub(vec2(x, y)).unit();
-    // Projectile THEMATIQUE : boss -> sprite de son def.shot (ex. Michael lance des
-    //  courbes, Cendrine des formulaires) ; tirs 'enemy' (ADEME, tampons, chutes du
-    //  ciel) -> 'shot_paper'. Sprite oriente vers sa trajectoire. Si le PNG manque,
-    //  retour propre a la forme generique (cercle rouge boss / rectangle creme).
-    const sname = (kind === 'boss') ? BOSS_SHOT_SPRITE : 'shot_paper';
+    const sname = (kind === 'boss') ? spr : 'shot_paper';
     const comps = (sname && hasSprite(sname))
       ? [sprite(sname), artScale(), rotate(Math.atan2(dir.y, dir.x) * 180 / Math.PI)]
       : ((kind === 'boss')
@@ -437,15 +534,20 @@
       'player',
       {
         hp: C.player.maxHp, maxHp: C.player.maxHp,
-        facing: 1, invuln: 0, shielded: 0, throwT: 0, throwReplay: false, catOutT: 0, catInT: 0,
+        facing: 1, invuln: 0, sunRegenLockT: 0, medNoHit: true, throwT: 0, throwReplay: false,
+        catTossT: 0, catRegenT: 0, _actOv: null,   // pose "lance le chat" (brieve) + recharge auto + calque d'action
         aimAngle: C.shot.aimDefault,           // angle de lancer du lob (resolu par autoAimArc)
         jumpsLeft: C.player.maxJumps,
         ammoKey: C.player.startAmmo,
-        weapon: 'graine',                     // famille de tir de base (changee par les powerups)
+        // ARSENAL : PUISSANCE + CADENCE communs aux 2 armes (cf. CONFIG.arsenal).
+        //  Montent via pickups, RESET par niveau (PLAYER recree par scene).
+        power: (C.arsenal && C.arsenal.power.start) || 1,
+        rate:  (C.arsenal && C.arsenal.rate.start) || 1,
+        powerFlash: 0, rateFlash: 0, saveFlash: 0,
         fireCd: 0, lobCd: 0,
-        sun: C.sun.max, sunMax: C.sun.max,    // jauge energie/stamina (sunMax constant = C.sun.max)
-        tier: (C.tier && C.tier.start) || 1, tierFlash: 0,   // TIER (pips) : moralite + puissance du tir de base
-        score: 0, kills: 0,                    // kills = passants abattus (stat de "meurtre")
+        sun: C.sun.max, sunMax: C.sun.max,    // jauge SOLEIL = energie (patisseries) + SURBOUCLIER
+        score: 0, kills: 0, saved: 0,          // kills = passants abattus ; saved = passants sauves par le chat
+        levelTime: 0,                          // chrono du niveau (time-attack : meilleur temps sur la carte)
         data: 0, pages: 0, gotPubli: false,
         catCharges: C.cat.startCharges,
         catLock: false,
@@ -460,6 +562,34 @@
     return p;
   }
 
+  // Camionnette d'arrivee : sprite statique au PREMIER PLAN au depart du niveau.
+  //  C'est un objet du MONDE (pas fixed) -> il defile vers la gauche et sort du
+  //  cadre quand Laura avance. La camionnette regarde a DROITE : son AVANT peint
+  //  (cabine, bord DROIT du contenu) est cale `clearance` px a gauche du centre
+  //  de Laura -> elle est toujours degagee, et l'arriere part loin hors-champ a
+  //  gauche. `scale` retaille la camionnette (1 = taille brute du PNG/ART, qui
+  //  est enorme). Mesures du contenu (alpha bbox de bg_startlevel) : bord droit
+  //  peint x=987, pad transparent sous les roues 25px (sur 677) -> on en deduit
+  //  l'avant peint (FRONT_INSET) et la descente au sol (BOTTOM_PAD), tous deux a
+  //  l'echelle. PAS d'offscreen(hide) : l'ancre bas-gauche est loin hors-champ a
+  //  gauche, donc screenPos() la croirait hors ecran et masquerait tout le sprite.
+  function spawnStartVehicle() {
+    const sv = C.startVehicle;
+    if (!sv || sv.enabled === false || !PLAYER) return;
+    if (!hasSprite(sv.sprite)) return;     // PNG absent -> on n'ajoute rien (pas de crash)
+    const s = (sv.scale || 1) / ART;       // echelle d'affichage totale
+    const FRONT_INSET = 987 * s;           // px affiches : avant peint depuis le bord gauche du sprite
+    const BOTTOM_PAD  = 25 * s;            // px affiches : vide sous les roues -> a descendre pour poser au sol
+    const frontX = PLAYER.pos.x - (sv.clearance || 0);   // monde : avant peint vise, a gauche de Laura
+    add([
+      sprite(sv.sprite), scale(s),
+      pos(frontX - FRONT_INSET + (sv.nudgeX || 0), PLAYER.pos.y + BOTTOM_PAD + (sv.sink || 0)),
+      anchor('botleft'),
+      z(sv.z != null ? sv.z : 40),
+      'startvehicle',
+    ]);
+  }
+
   function knockPlayer(srcX) {            // recul : s'eloigne de la source
     const p = PLAYER;
     const dir = (srcX != null && srcX > p.pos.x) ? -1 : 1;
@@ -469,24 +599,34 @@
   function damagePlayer(dmg, srcX) {
     const p = PLAYER;
     if (!dmg || dmg <= 0) return;            // contact INOFFENSIF (passant) : ni recul, ni perte d'equip, ni shake
-    if (p._god || p.invuln > 0 || p.shielded > 0) return;
+    if (p._god || p.invuln > 0) return;
     knockPlayer(srcX);                     // recul + (l'anim "hurt" se joue via invuln)
-    if (p.equipped) {                       // l'equipement encaisse le coup A LA PLACE d'une vie
+    p.invuln = C.player.invulnTime;
+    // v2 — ORDRE DES DEGATS : SOLEIL -> EQUIPEMENT -> COEURS (GAMEPLAY.md §2).
+    // 1) SURBOUCLIER : n'absorbe que si la jauge passe le SEUIL (sun >= hitAbsorb)
+    //    — en dessous le soleil est conserve (c'est de la munition) mais ne
+    //    protege plus. Le coup BRISE le bouclier : regen passive coupee
+    //    hitRegenDelay s (sunRegenLockT, cf. boucle de regen + jauge HUD grisee).
+    const absorb = C.sun.enabled ? (C.sun.hitAbsorb || 0) : 0;
+    if (absorb > 0 && p.sun >= absorb) {
+      p.sun = Math.max(0, p.sun - absorb);
+      p.sunRegenLockT = C.sun.hitRegenDelay || 0;
+      p.sunFlash = 0.5; p.shieldFlash = 0.6;
+      safeShake(7); sfx('hit');
+      return;
+    }
+    // 2) EQUIPEMENT : le coup casse le velo/les rollers a la place d'un coeur.
+    //  (perdre coeur OU equipement casse la medaille cachee "sans degat" —
+    //   le bouclier, lui, a le droit d'absorber : ca reste humain.)
+    if (p.equipped) {
       loseEquip();
-      p.invuln = C.player.invulnTime;
+      p.medNoHit = false;
       safeShake(8); sfx('hit');
       return;
     }
-    if (p.tier > 1) {                       // TIER 2/3 = BOUCLIER : le coup coute un tier, pas un coeur
-      p.tier--; p.tierFlash = 0.6;
-      flashMsg('TIER -1');
-      p.invuln = C.player.invulnTime;
-      knockPlayer(srcX);
-      safeShake(6); sfx('hit');
-      return;
-    }
+    // 3) COEURS.
+    p.medNoHit = false;
     p.hp -= dmg;
-    p.invuln = C.player.invulnTime;
     safeShake(6);
     sfx('hit');
     if (p.hp <= 0) { p.hp = 0; loseGame(); }
@@ -532,22 +672,43 @@
     return r;
   }
 
-  // --- SOL PIEGE ('%') : hazard plat au ras du sol, NON solide. On court au
-  //  travers mais ca pique : degat au contact (CONFIG.hazards.touchDamage) gate
-  //  par l'invuln (un coup propre, pas un drain). Le DASH (i-frames) le traverse.
-  //  Skin par biome via LEVEL.theme.hazard ; fallback visible tant que le PNG manque.
+  // --- SOL PIEGE ('%') : FOSSE A DEGAT au ras du sol, NON solide. Le sol RESTE
+  //  solide (Laura ne TOMBE pas dedans) : elle COURT AU-DESSUS de la gueule, mais
+  //  le contact pique -> degat (CONFIG.hazards.touchDamage) gate par l'invuln (un
+  //  coup propre, pas un drain). Le DASH (i-frames) traverse.
+  //  RENDU = un TROU EN TROMPE-L'OEIL VU DE DESSUS, ENCASTRE DANS LE SOL SOUS LES
+  //  PIEDS (pas un objet pose). Comme addPanel separe collision (tuile invisible) et
+  //  deco, on separe ici : le VISUEL (sprite ancre 'top', bord arriere remonte de
+  //  HAZ_TUCK sous la levre de terre) descend dans la BANDE DE TERRE. Le jeu n'a
+  //  quasi pas de hauteur sous le sol (HUD juste dessous) -> l'art est LARGE et BAS
+  //  (cf. _hazardgen) et on ne plonge pas plus. Dessine ENTRE le sol (z=-1) et les
+  //  acteurs (z=0) -> Laura passe DEVANT, le trou reste SOUS ses pieds. La COLLISION
+  //  est une bande FINE au niveau de la SURFACE : on encaisse en passant dessus.
+  //  Skin par biome via LEVEL.theme.hazard (riziere = piques de bambou / interieur =
+  //  acide). Fallback dessine (trou sombre + lisere) tant que le PNG manque.
+  const HAZ_DROP = 12;      // descend le trou SOUS les pieds (bord haut sous la surface)
+  const HAZ_SCALE = 1.3;    // grossit le trou (les piques/acide restent lisibles en jeu)
   function spawnHazard(cx, groundY) {
     const th = (LEVEL && LEVEL.theme) || {};
     const sname = pickSkin(th.hazard, 'hazard');
+    const deco = [];
     if (sname && hasSprite(sname)) {
-      const o = add([sprite(sname), artScale(), pos(cx, groundY), anchor('bot'), area(), z(-0.5), 'hazard']);
+      const o = add([sprite(sname), artScale(HAZ_SCALE), pos(cx, groundY + HAZ_DROP), anchor('top'), z(-0.5), 'hazarddeco']);
       playIfAnim(o, sname);
-      return o;
+      deco.push(o);
+    } else {                                       // bouche-trou : trou sombre + lisere de danger
+      deco.push(add([rect(TS * 1.2, TS * 0.5), pos(cx, groundY + HAZ_DROP), anchor('top'),
+        color(32, 16, 20), opacity(0.97), z(-0.5), 'hazarddeco']));
+      deco.push(add([rect(TS * 1.0, TS * 0.12), pos(cx, groundY + HAZ_DROP), anchor('top'),
+        color(150, 40, 40), opacity(0.95), z(-0.45), 'hazarddeco']));
     }
-    return add([                                  // bouche-trou : bande de "danger" au sol
-      rect(TS * 0.86, TS * 0.3), pos(cx, groundY), anchor('bot'), area(),
-      color(150, 40, 40), opacity(0.92), z(-0.5), 'hazard',
-    ]);
+    // COLLISION : bande a la SURFACE (la gueule de la fosse), NON solide. Large ~
+    //  la fosse visible (degat en passant dessus). deco rattache -> detruit avec
+    //  la bande (tampons-piege temporaires des boss via api.hazard + lifespan).
+    const hit = add([rect(TS * 1.3, TS * 0.46), pos(cx, groundY), anchor('bot'),
+      area(), opacity(0), z(-0.4), 'hazard', { deco }]);
+    hit.onDestroy(() => deco.forEach((d) => { if (d.exists()) destroy(d); }));
+    return hit;
   }
 
   // --- PANNEAUX SOLAIRES (plateformes) en perspective + pieds au sol -------
@@ -589,12 +750,27 @@
 
   function addPanel(x, y, spr, breakable) {
     const comps = [rect(TS, TS), pos(x, y), anchor('topleft'), opacity(0),
-      area(), body({ isStatic: true }), z(-3), 'solid'];                  // tuile de collision invisible
+      area(), body({ isStatic: true }), z(-3), 'solid', 'panel'];         // tuile de collision invisible
     if (breakable) comps.push('breakable', { crumbling: false });
     const t = add(comps);
+    // v2 ONE-WAY (JOUEUR seulement, GAMEPLAY.md §3) : le panneau n'arrete Laura
+    //  que PAR LE DESSUS — on annule la resolution physique quand elle MONTE,
+    //  quand ses pieds sont SOUS le cap (passage lateral / d'en dessous), ou
+    //  pendant un drop-through (BAS+SAUT -> p._dropT). Ennemis / projectiles /
+    //  bombes : panneau toujours solide (couvert + abri anti-bombe inchanges).
+    //  NB : platformEffector du moteur NON retenu — il s'applique a TOUS les
+    //  corps et son filtre par angle de velocite ne couvre pas "pieds sous le
+    //  cap" (montee laterale) ; meme hook, filtre maison de 4 lignes.
+    t.onBeforePhysicsResolve((col) => {
+      const o = col.target;
+      if (!o || !o.is || !o.is('player')) return;
+      if ((o.vel && o.vel.y < 0) || o.pos.y > t.pos.y + 12 || (o._dropT || 0) > 0) col.preventResolution();
+    });
     const deco = addPanelDeco(x, y, spr, breakable ? [255, 150, 120] : null);  // rouge = cassable
     t.deco = deco.objs; t.cap = deco.cap;
-    if (breakable) t.onCollide('player', (pl) => { if (pl.pos.y <= t.pos.y + 14) startCrumblePanel(t); });
+    // cassable : ne s'amorce qu'en MARCHANT dessus (curPlatform), plus au simple
+    //  contact (sinon le traverser par en dessous l'armait — review v2 #12).
+    if (breakable) t.onCollide('player', (pl) => { if (pl.curPlatform && pl.curPlatform() === t) startCrumblePanel(t); });
     return t;
   }
 
@@ -920,21 +1096,42 @@
     }
   }
 
-  // PASSANTS = figurants INOFFENSIFS. Les abattre ne rapporte rien et fait
-  //  PERDRE un TIER (la conscience) tant qu'on en a -> plus on tue, moins on
-  //  est puissant. Incite a traverser sans toucher aux passants. Le compteur
-  //  p.kills (stat de "meurtre") s'affiche dans le HUD. Etat par niveau :
-  //  repart de C.tier.start au niveau suivant (PLAYER recree par scene).
+  // PASSANTS = figurants INOFFENSIFS. Les abattre ne rapporte rien et n'affaiblit
+  //  PLUS l'arme (la morale n'est pas une ressource de combat, cf. GAMEPLAY.md) :
+  //  ca laisse juste un CADAVRE + incremente p.kills (compteur "meurtre" du HUD,
+  //  pese sur les medailles). Le CHAT, lui, SAUVE les figurants (savePassant).
   function registerKill() {
     const p = PLAYER; if (!p) return;
     p.kills = (p.kills || 0) + 1;
     p.killFlash = 0.6;                       // declenche le pulse du compteur HUD
-    if (p.tier > 1) {
-      p.tier--; p.tierFlash = 0.6;
-      flashMsg('PASSANT ABATTU  TIER -1');
-    } else {
-      flashMsg('PASSANT ABATTU');
-    }
+    // MORALITE : abattre un figurant n'affaiblit plus l'arme (cf. GAMEPLAY.md :
+    //  la morale n'est PAS une ressource de combat). Reste une stat (kills) qui
+    //  pese sur le score-conscience / les medailles "sauves".
+    flashMsg('PASSANT ABATTU');
+  }
+
+  // Le CHAT sauve un figurant qu'il croise (cf. GAMEPLAY.md) : +score, +compteur
+  //  "sauves", le PNJ s'envole en se dissipant (pas de cadavre). Meme regle que
+  //  corpsify : on DIFFERE le retrait area/body (jamais d'unuse en plein onCollide).
+  function savePassant(e) {
+    if (!e || !e.exists() || e.dead || e.saved) return;
+    e.saved = true; e.dead = true;              // dead=true AUSSI -> bloque un corpsify() concurrent (meme garde)
+    const p = PLAYER;
+    if (p) { p.saved = (p.saved || 0) + 1; p.score += 120; p.saveFlash = 0.6; }
+    flashMsg('SAUVE !  +120');
+    sfx('pickup');
+    addPoof(e.pos.x, e.pos.y - TS * 0.6);
+    e.untag('passant'); e.tag('saved');        // hors IA / souffle de zone passant
+    wait(0, () => { if (e.exists()) { try { e.unuse('area'); } catch (_) {} try { e.unuse('body'); } catch (_) {} } });
+    let tt = 0;
+    e.onUpdate(() => {
+      if (!e.exists()) return;                  // garde : peut survivre 1 tick a un destroy externe (transition de scene)
+      tt += dt();
+      e.pos.y -= 46 * dt();                     // s'envole doucement
+      e.opacity = Math.max(0, 1 - tt / 1.0);
+      if (e.head && e.head.exists()) e.head.opacity = e.opacity;   // l'opacite ne s'herite pas -> fade la tete aussi
+      if (tt > 1.0) destroy(e);
+    });
   }
 
   // PASSANT abattu -> CADAVRE permanent. Le figurant ne disparait plus : il
@@ -1018,31 +1215,70 @@
     });
   }
 
-  // BOMBE QUI TOMBE (dette tech 2) : remplace l'ancien skyHazard "bullet plate".
-  //  Un vrai projectile descend pendant le telegraphe (ombre qui grandit), puis
-  //  EXPLOSE au sol (addBoom + shake + degat de zone si Laura est dessous). Le
-  //  DASH / saut permet d'esquiver. sprName = sprite de bombe (fallback cercle).
+  // Haut (y monde) du PREMIER solide de la colonne sous atX, en partant du ciel :
+  //  sol '=', panneau '-'/'x', caillou '^'. C'est la surface ou la bombe s'ecrase
+  //  (-> bloquee par un panneau au-dessus du joueur). null si colonne vide (trou).
+  function surfaceTopAt(atX) {
+    const grid = LEVEL && LEVEL.grid;
+    if (!grid) return null;
+    const c = Math.floor(atX / TS);
+    if (c < 0) return null;
+    for (let r = 0; r < grid.length; r++) {
+      const ch = grid[r] && grid[r][c];
+      if (ch === '=' || ch === '-' || ch === 'x' || ch === '^') return r * TS;
+    }
+    return null;
+  }
+
+  // Ombre de chute : feuille fx_bomb_shadow (6 frames qui grossissent), posee SUR
+  //  LA SURFACE visee (sol/panneau), PAS au niveau du perso. La frame suit
+  //  l'avancement de la chute = telegraphe lisible. Repli cercle si le PNG manque.
+  function addBombShadow(atX, surfaceY, dur) {
+    const life = dur || 0.6;
+    if (!hasSprite('fx_bomb_shadow')) { addImpactMarker(atX, surfaceY, life); return; }
+    const a = C.anims && C.anims.fx_bomb_shadow;
+    const NF = (a && a.sliceX) || 6;
+    const m = add([
+      sprite('fx_bomb_shadow'), artScale(), pos(atX, surfaceY - 2), anchor('center'),
+      opacity(0.9), z(2), 'fx', { t: 0 },
+    ]);
+    m.onUpdate(() => {
+      m.t += dt();
+      const k = Math.min(1, m.t / life);
+      m.frame = Math.min(NF - 1, Math.floor(k * NF));   // la feuille EST l'anim (grossit)
+      if (m.t >= life) destroy(m);
+    });
+  }
+
+  // BOMBE QUI TOMBE : un vrai projectile descend pendant le telegraphe (ombre qui
+  //  grandit sur la SURFACE visee), puis EXPLOSE au PREMIER impact -> souffle qui
+  //  TUE les monstres autour + blesse Laura (bombBlast). Bloquee par le 1er solide
+  //  de la colonne : se planquer SOUS un panneau protege. DASH/saut lateral esquive.
+  //  sprName = sprite de bombe (fallback cercle).
   function dropBomb(atX, groundY, delay, sprName) {
+    const cfg = C.bombs || {};
     const d = delay || 0.6;
-    addImpactMarker(atX, groundY, d);
-    const startY = groundY - 360;
+    const landY = surfaceTopAt(atX);             // 1er solide de la colonne (sol/panneau)
+    const surfaceY = (landY != null) ? landY : groundY;
+    addBombShadow(atX, surfaceY, d);
+    const startY = surfaceY - (cfg.fallFrom || 320);
     const spr = (sprName && hasSprite(sprName)) ? sprName : 'shot_bomb';
     const useSpr = hasSprite(spr);
     const bomb = add([
-      ...(useSpr ? [sprite(spr), artScale()] : [circle(12), color(26, 22, 24), outline(3, rgb(255, 150, 70))]),
+      ...(useSpr ? [sprite(spr), artScale(cfg.size || 0.6)] : [circle(9), color(26, 22, 24), outline(3, rgb(255, 150, 70))]),
       pos(atX, startY), anchor('center'), z(10),
-      offscreen({ distance: 600, destroy: true }), 'fx', { t: 0 },
+      offscreen({ distance: 600, destroy: true }), 'fx', { t: 0, boom: false },
     ]);
     if (useSpr) playIfAnim(bomb, spr);
     bomb.onUpdate(() => {
+      if (bomb.boom) return;
       bomb.t += dt();
-      bomb.pos.y = startY + (groundY - startY) * Math.min(1, bomb.t / d);
+      bomb.pos.y = startY + (surfaceY - startY) * Math.min(1, bomb.t / d);
       if (bomb.angle != null) bomb.angle += 240 * dt();
-      if (bomb.t >= d) {
+      if (bomb.t >= d) {                          // 1er impact sur la surface = explosion
+        bomb.boom = true;
         const bx = bomb.pos.x; destroy(bomb);
-        addBoom(bx, groundY); safeShake(8);
-        const p = PLAYER;
-        if (p && p.exists() && Math.abs(p.pos.x - bx) < TS * 1.1 && p.pos.y > groundY - TS * 2.2) damagePlayer(2, bx);
+        bombBlast(bx, surfaceY, cfg.blast || 64, cfg.damage || 2);
       }
     });
   }
@@ -1050,11 +1286,85 @@
   // ---------------------------------------------------------------------
   //  BOSS (IA deportee dans js/bosses.js)
   // ---------------------------------------------------------------------
+  // --- ONDE DE CHOC AU SOL (seisme LOCALISE, v2 — remplace les shakes de
+  //  telegraphe, cf. CONFIG.quake) : vague qui parcourt LE SOL (elle passe SOUS
+  //  les panneaux, cf. columnGroundY) depuis x dans la direction dir ; blesse le
+  //  joueur s'il est AU SOL sur son passage -> sauter / dasher / etre sur un
+  //  panneau l'evite. Visuel : feuille fx_quake si embarquee + poussiere.
+  function spawnQuake(x, dir, range) {
+    const q = C.quake || {};
+    const gy = columnGroundY(Math.floor(x / TS));
+    const e = add([rect(q.width || 26, 18), pos(x, gy), anchor('bot'), area(), opacity(0), z(1),
+      'quakewave', { vx: (dir >= 0 ? 1 : -1) * (q.speed || 300), traveled: 0, range: range || 300, dustT: 0 }]);
+    let vis = null;
+    if (hasSprite('fx_quake')) {
+      vis = add([sprite('fx_quake'), artScale(), pos(x, gy + 2), anchor('bot'), z(1.2), 'fx']);
+      vis.flipX = dir < 0;
+      playIfAnim(vis, 'fx_quake');
+    }
+    e.onUpdate(() => {
+      e.pos.x += e.vx * dt();
+      e.pos.y = columnGroundY(Math.floor(e.pos.x / TS));   // suit le SOL, pas les plateformes
+      e.traveled += Math.abs(e.vx) * dt();
+      e.dustT -= dt();
+      if (e.dustT <= 0) {
+        e.dustT = 0.045;
+        add([circle(rand(3, 6)), pos(e.pos.x + rand(-8, 8), e.pos.y - rand(0, 9)), anchor('center'),
+          color(168, 142, 96), opacity(0.7), z(1.1), lifespan(0.28, { fade: 0.22 }), 'fx']);
+      }
+      if (vis && vis.exists()) { vis.pos.x = e.pos.x; vis.pos.y = e.pos.y + 2; }
+      if (e.traveled >= e.range) destroy(e);
+    });
+    e.onDestroy(() => { if (vis && vis.exists()) destroy(vis); });
+    e.onCollide('player', (pl) => { if (pl.isGrounded()) damagePlayer(q.damage || 1, e.pos.x); });
+    return e;
+  }
+
+  // --- BOSS INVITE (boss-rush du jury, v2, GAMEPLAY.md §4.4) ----------------
+  //  Spawn un ancien boss a hpFrac de ses HP : tag 'boss' normal (IA / anims /
+  //  clamp d'arene) + flag guest -> hitBoss ne touche ni bossesAlive ni cafe ni
+  //  message de victoire, et le HUD lui dessine une mini-barre sous celle du jury.
+  function addGuestBoss(key, x, hpFrac) {
+    const def = C.bosses[key];
+    if (!def) return null;
+    const gy = columnGroundY(Math.floor(x / TS));
+    const b = spawnBoss(key, x, gy - 2);
+    b.guest = true;
+    b.hp = Math.max(5, Math.round((def.maxHp || def.hp) * (hpFrac || 0.35)));
+    b.maxHp = b.hp;                                 // barre pleine a l'invocation
+    b.homeX = x;
+    addPoof(x - 16, gy - TS); addPoof(x + 16, gy - TS * 1.5); addPoof(x, gy - TS * 0.5);
+    sfx('boss');
+    return b;
+  }
+
+  // petit texte flottant au-dessus d'un boss (OUVERT ! / GARDE !).
+  //  NB : lifespan EXIGE le comp opacity (sinon "Component lifespan requires
+  //  component opacity" en console et rien ne s'affiche).
+  function bossFloaty(b, txt, col) {
+    if (!txt) return;
+    const o = add([text(txt, { size: 16 }), pos(b.pos.x, b.pos.y - TS * 2.6), anchor('center'),
+      color(col[0], col[1], col[2]), opacity(1), z(60), lifespan(0.9, { fade: 0.5 }), 'fx']);
+    o.onUpdate(() => { o.pos.y -= 24 * dt(); });
+  }
+
+  // "tink" : tir encaisse par la GARDE du boss (degats reduits / tick absorbe).
+  //  1er tink d'un boss -> floaty pedagogique "GARDE !".
+  function bossTink(b, x, y) {
+    add([circle(4), pos(x, y), anchor('center'), color(205, 205, 205), opacity(0.85), z(46),
+      lifespan(0.14, { fade: 0.12 }), 'fx']);
+    if (!b._guardMsgDone) { b._guardMsgDone = true; bossFloaty(b, C.story.bossGuard, [185, 185, 185]); }
+  }
+
   const BOSS_API = {
     TS: TS,
     bullet: enemyBullet,
     add: (kind, x, y) => spawnEnemy(kind, x, y),
-    shake: safeShake,
+    quake: spawnQuake,                        // v2 : seisme localise au sol
+    addGuestBoss: addGuestBoss,               // v2 : boss-rush du jury
+    // (api.shake supprime en v2 : les telegraphes de boss sont des FX localises
+    //  — poofs/quake — et plus aucun appelant dans bosses.js. Les explosions
+    //  gardent leur shake via safeShake direct cote game.js.)
     poof: addPoof,
     marker: addImpactMarker,
     dropBomb: dropBomb,                       // bombe qui tombe + explose (dette tech 2)
@@ -1067,7 +1377,6 @@
 
   function spawnBoss(key, x, y) {
     const def = C.bosses[key];
-    BOSS_SHOT_SPRITE = def.shot || null;         // projectile themE de ce boss (cf. enemyBullet)
     const sname = variant(def.sprite);          // feuille DEPLACEMENT (idle/hurt)
     // feuille ATTAQUE separee (def.attackSprite) ; null si le PNG manque -> on
     //  reste sur la feuille de deplacement (pas de crash).
@@ -1095,9 +1404,33 @@
     if (!p || !p.exists()) return;
     if (b.stun > 0) { b.stun -= dt(); setAnim(b, b.spr, 'idle'); return; }
     if (b.knockT > 0) { b.knockT -= dt(); b.move(b.knockX, 0); }
+    // --- v2 garde/fenetres (GAMEPLAY.md §4.1) : prepare l'etat AVANT l'IA ---
+    //  guard est RESET chaque frame a la valeur de config ; l'IA le repasse a 1
+    //  dans ses etats de punition (bosses.js). vulnT = fenetre forcee (chat),
+    //  catVulnLock = re-arm du chat, _chCd = ticks de degat par canal (hitBoss).
+    //  p2/p2Just = bascule de PHASE 2 a 50% des HP (lue par l'IA).
+    b.guard = (b.def.guard != null) ? b.def.guard : 0.35;
+    if (b.vulnT > 0) b.vulnT -= dt();
+    if (b.catVulnLock > 0) b.catVulnLock -= dt();
+    if (b._chCd) { for (const k in b._chCd) if (b._chCd[k] > 0) b._chCd[k] -= dt(); }
+    const p2 = (b.hp / b.maxHp) <= 0.5;
+    b.p2Just = p2 && !b.p2;
+    b.p2 = p2;
+    if (b.p2Just) { addPoof(b.pos.x - 18, b.pos.y - TS); addPoof(b.pos.x + 18, b.pos.y - TS * 1.4); sfx('boss'); }
     const AI = window.BOSS_AI || {};
     const ai = AI[b.def.behavior] || AI.default;
     if (ai) ai(b, p, BOSS_API);
+    // --- v2 : surlignage DORE pendant une fenetre (guard >= 1 ou vulnT) ----
+    const open = (b.vulnT > 0) || b.guard >= 1;
+    if (open && !b._openVis) {
+      b._openVis = true;
+      try { b.use(color(255, 214, 120)); } catch (_) {}
+      if ((b._openMsgT || 0) <= 0) { bossFloaty(b, C.story.bossOpen, [255, 210, 90]); b._openMsgT = 3; }
+    } else if (!open && b._openVis) {
+      b._openVis = false;
+      try { b.unuse('color'); } catch (_) {}
+    }
+    if (b._openMsgT > 0) b._openMsgT -= dt();
     if (b.hurtT > 0) { b.hurtT -= dt(); b.animWant = 'hurt'; }
     // Garde le boss SUR le sol jouable : empeche une IA (teleport de Cendrine,
     //  charges, va-et-vient) de l'envoyer au-dela du bord droit -> chute dans
@@ -1119,11 +1452,40 @@
   function hitBoss(b, bullet) {
     if (bullet && bullet.exists && bullet.exists()) destroy(bullet);
     if (!b.exists()) return;
-    b.hp -= (bullet ? bullet.dmg : 1);
+    // --- v2 (GAMEPLAY.md §4.1) : TICK par canal + GARDE ---------------------
+    //  'seed'        : 1 coup / bossHit.seedCd — la volee de graines compte
+    //                  pour 1, degat du tick = bullet.bossDmg (arsenal.bossTick).
+    //  'aoe'/'aoe2'  : 1 explosion / bossHit.aoeCd par canal (la patisserie
+    //                  principale + AU PLUS une mini-explosion des enfers).
+    //  'cat'         : pas de tick (1 seul coup par chat de toute facon).
+    //  Hors fenetre (guard < 1 et pas de vulnT) : degats x guard, "tink" gris.
+    const BH = C.bossHit || {};
+    const ch = (bullet && bullet.channel) || 'seed';
+    const hx = (bullet && bullet.pos) ? bullet.pos.x : b.pos.x;
+    const hy = (bullet && bullet.pos) ? bullet.pos.y : b.pos.y - TS;
+    const cds = { seed: BH.seedCd || 0.25, aoe: BH.aoeCd || 0.5, aoe2: BH.aoeCd || 0.5 };
+    if (cds[ch] != null) {
+      if (!b._chCd) b._chCd = {};
+      if ((b._chCd[ch] || 0) > 0) { if (ch === 'seed') bossTink(b, hx, hy); return; }   // tick absorbe
+      b._chCd[ch] = cds[ch];
+    }
+    const open = (b.vulnT > 0) || (b.guard == null) || b.guard >= 1;
+    const raw = bullet ? (bullet.bossDmg != null ? bullet.bossDmg : (bullet.dmg || 1)) : 1;
+    if (!open && ch === 'seed') bossTink(b, hx, hy);   // encaisse en garde : feedback
+    b.hp -= raw * (open ? 1 : Math.max(0.05, b.guard));
     b.hurtT = 0.12;
     b.opacity = 0.55;
     wait(0.08, () => { if (b.exists()) b.opacity = 1; });
     if (b.hp <= 0) {
+      b.hp = 0;
+      if (b.guest) {
+        // boss INVITE (jury) : pas de cafe / message / bossesAlive — le jury reprend.
+        PLAYER.score += Math.round((b.def.score || 0) * 0.25);
+        for (let i = 0; i < 10; i++) addPoof(b.pos.x + rand(-26, 26), b.pos.y - rand(0, TS * 1.6));
+        destroy(b);
+        safeShake(8); sfx('boss');
+        return;
+      }
       PLAYER.score += b.def.score || 0;
       LEVEL.bossesAlive = Math.max(0, LEVEL.bossesAlive - 1);
       for (let i = 0; i < 14; i++) addPoof(b.pos.x + rand(-30, 30), b.pos.y - rand(0, TS * 2));
@@ -1144,8 +1506,8 @@
     if (get('cat').length) return;            // un seul chat a la fois
     if (p.catCharges <= 0) { flashMsg(C.story.catEmpty); return; }
     p.catCharges--;
-    // Laura reste figee sur la pose "chat lance" (sac vide) et immobile tant que le
-    //  chat est dehors : gere dans PLAYER.onUpdate via get('cat') (jusqu'au retour).
+    p.catRegenT = 0;                          // (re)demarre le compteur de recharge auto a chaque lancer
+    p.catTossT = C.cat.tossTime || 0.4;       // brieve pose "lance le chat" puis Laura reprend ses anims
     const dir = p.facing >= 0 ? 1 : -1;
     const startX = p.pos.x + dir * (C.cat.spawnAhead || 42);  // pose au sol, juste devant Laura
     const cat = add([
@@ -1164,8 +1526,16 @@
     cat.onCollide('boss', (bo) => {
       if (cat.hitBosses.has(bo)) return;          // 1 seul coup par boss et par chat
       cat.hitBosses.add(bo);
-      hitBoss(bo, { exists: () => false, dmg: C.cat.bossDamage });
+      // v2 : le chat OUVRE une fenetre de vulnerabilite (l'ouvre-boite des boss),
+      //  re-armable au plus tot cat.vulnRelock s plus tard sur le meme boss.
+      if ((bo.catVulnLock || 0) <= 0 && (C.cat.vulnOpen || 0) > 0) {
+        bo.vulnT = Math.max(bo.vulnT || 0, C.cat.vulnOpen);
+        bo.catVulnLock = C.cat.vulnRelock || 8;
+        bossFloaty(bo, C.story.bossOpen, [255, 210, 90]);
+      }
+      hitBoss(bo, { exists: () => false, dmg: C.cat.bossDamage, channel: 'cat' });
     });
+    cat.onCollide('passant', (e) => savePassant(e));   // le chat SAUVE les figurants qu'il croise
     cat.onUpdate(() => {
       const sp = C.cat.speed;
       get('ehot').forEach((h) => { if (h.pos.dist(cat.pos) < C.cat.cleanRadius) destroy(h); });  // nettoie les tirs
@@ -1178,8 +1548,7 @@
         cat.flipX = cat.dir < 0;
         cat.move(cat.dir * sp, 0);
         if (Math.abs(cat.pos.x - target) <= (C.cat.catchDist || 26)) {
-          if (PLAYER && PLAYER.exists()) PLAYER.catInT = 0.45;   // Laura rattrape le chat (anim de retour)
-          addPoof(cat.pos.x, cat.pos.y - 20);
+          addPoof(cat.pos.x, cat.pos.y - 20);   // le chat revient et disparait ; Laura n'est plus figee
           destroy(cat);
         }
       }
@@ -1222,20 +1591,17 @@
     switch (it.kind) {
       case 'sunray': p.sun = Math.min(p.sunMax, p.sun + C.sun.rayGain); break;
       case 'cafe':   p.hp = Math.min(p.maxHp, p.hp + (it.def.heal || 1)); break;
-      case 'data':   p.data++;
-        if (p.tier < ((C.tier && C.tier.max) || 3)) {   // une data fait monter le TIER (puissance + bouclier)
-          p.tier++; p.tierFlash = 0.6;
-          flashMsg('TIER ' + p.tier + ' !');
-        }
-        break;
+      case 'data':   p.data++; break;               // donnee de terrain : score + % data (plus de lien au TIER)
       case 'page':   p.pages++; break;
       case 'publi':  p.gotPubli = true; flashMsg(C.story.publi); break;
       case 'croquette': p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); break;
       default: break;
     }
-    if (it.def.weapon) {                          // powerup d'arme : change le tir de base (p.weapon)
-      p.weapon = it.def.weapon;
-      flashMsg('ARME : ' + (it.def.weapon === 'spread' ? 'EVENTAIL' : it.def.weapon === 'pierce' ? 'PERCANT' : 'BOMBE'));
+    if (it.def.upgrade) {                          // UPGRADE D'ARSENAL : +1 PUISSANCE ou +1 CADENCE (commun aux 2 armes)
+      const ax = it.def.upgrade;                   // 'power' | 'rate'
+      const cap = (C.arsenal && C.arsenal[ax] && C.arsenal[ax].max) || 3;
+      if (ax === 'power') { if (p.power < cap) { p.power++; } p.powerFlash = 0.8; flashMsg('PUISSANCE ' + p.power); }
+      else                { if (p.rate  < cap) { p.rate++;  } p.rateFlash  = 0.8; flashMsg('CADENCE ' + p.rate); }
     }
     if (it.def.equip) equip(it.def.equip);       // equipement (rollers, etc.)
     p.score += it.def.score || 0;
@@ -1390,6 +1756,7 @@
       tiles:   Object.assign({}, dT.tiles, lT.tiles),
       enemies: Object.assign({}, dT.enemies, lT.enemies),
       pickups: Object.assign({}, dT.pickups, lT.pickups),
+      hazard:  lT.hazard || dT.hazard,                       // skin du sol piege ('%') : riziere / acide (sinon fallback 'hazard')
       panelLeg: lT.panelLeg || dT.panelLeg,                  // pied des plateformes (panneau / etagere)
       indoor: lT.indoor || dT.indoor,                        // interieur : bords invisibles (pas de caillou)
       // passant : fusion PEU PROFONDE (un niveau qui fournit `passant` remplace
@@ -1438,9 +1805,9 @@
           case 'k': spawnPickup('croquette', cx, y + TS / 2); break;
           case 'L': spawnPickup('rollers', cx, y + TS / 2); break;
           case 'Y': spawnPickup('velo', cx, y + TS / 2); break;
-          case 'e': spawnPickup('arme_spread', cx, y + TS / 2); break;   // powerup arme : eventail
-          case 'i': spawnPickup('arme_pierce', cx, y + TS / 2); break;   // powerup arme : percant
-          case 'b': spawnPickup('arme_bombe', cx, y + TS / 2); break;    // powerup arme : bombe
+          case 'e': spawnPickup('puissance', cx, y + TS / 2); break;     // upgrade arsenal : +1 PUISSANCE
+          case 'i': spawnPickup('cadence', cx, y + TS / 2); break;       // upgrade arsenal : +1 CADENCE
+          case 'b': spawnPickup('puissance', cx, y + TS / 2); break;     // (ancien 'bombe') -> PUISSANCE
           case '^': addRock(cx, groundY); break;
           case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
           case 'T': spawnEnemy('camion', cx, groundY); break;
@@ -1461,8 +1828,17 @@
           case 'S': spawnEnemy('sac', cx, groundY); break;                    // IMMOBILE
           case 'F': spawnEnemy('fontaine', cx, groundY); break;               // IMMOBILE
           case 'D': spawnEnemy('dossiers', cx, groundY); break;               // IMMOBILE
-          case 'N': spawnEnemy('passant', cx, groundY); break;   // figurant (corps biome + tete au hasard)
-          case 'B': LEVEL.bossesAlive++; spawnBoss(def.boss, cx, groundY); break;
+          case 'N':   // figurant (corps biome + tete au hasard) + compte pour la medaille SAUVES
+            LEVEL.passantTotal = (LEVEL.passantTotal || 0) + 1;
+            spawnEnemy('passant', cx, groundY);
+            break;
+          case 'B':
+            LEVEL.bossesAlive++;
+            // v2 : retient la position/portee du boss pour le CHECKPOINT d'arene
+            LEVEL.bossX = cx;
+            LEVEL.bossRange = (C.bosses[def.boss] && C.bosses[def.boss].range) || 300;
+            spawnBoss(def.boss, cx, groundY);
+            break;
           case '*': exitCx = cx; LEVEL.sun = spawnSun(cx, y + TS / 2); break;
           default: break;
         }
@@ -1510,7 +1886,13 @@
     // PERF : ombre ancree a SA colonne (pos x0) + points RELATIFS -> offscreen()
     //  la cache hors-cadre (sinon toutes les ombres se redessinent chaque frame).
     //  Cam fixe en Y -> culling en X. Marge TS+dx : couvre le penche vers la droite.
-    const sMargin = TS + dx;
+    //  + le SURPLUS de hauteur des cartes hautes (rangees AU-DESSUS de l'ecran,
+    //  cf. camY) : l'ancre (x0, 0) y est hors ecran en haut, et l'ombre d'un
+    //  panneau hors-champ DOIT rester visible — les toits/decks caches projettent
+    //  leur ombre dans l'aire de jeu, c'est un element de gameplay (zones sans
+    //  regen + indice qu'il existe un etage secret). inShade() est deja base
+    //  grille (insensible a l'ecran) ; ceci aligne le VISUEL dessus.
+    const sMargin = TS + dx + Math.max(0, (LEVEL ? LEVEL.height : 0) - C.height);
     reg[c].push(add([pos(x0, 0), polygon([                  // parallelogramme penche
       vec2(0, yTop), vec2(TS, yTop), vec2(TS + dx, yBot), vec2(dx, yBot),
     ]), color(40, 56, 100), opacity(0.24), z(-0.5), offscreen({ hide: true, distance: sMargin }), 'shade', { col: c }]));
@@ -1536,75 +1918,99 @@
   }
 
   // ---------------------------------------------------------------------
-  //  HUD — style "carnet de terrain" cosy (Animal Crossing / Dora) :
-  //  des cartes cremes arrondies, ombres douces, icones et une jauge
-  //  soleil doree. TOUT est peint dans un seul calque fixe (onDraw) :
-  //  zero scroll, ordre maitrise, et de vrais panneaux qui ne bavent
-  //  plus sur la zone de jeu. Le HUD lit l'etat du joueur en direct.
-  //  Largeur d'une frame (= PNG / sliceX) pour dimensionner les icones.
+  // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  //  HUD v3 : 3 panneaux fond brun chaud semi-transparent.
+  //    Haut-gauche  : coeurs · jauge soleil · objectifs
+  //    Haut-droite  : timer (dixiemes) + score
+  //    Bas-centre   : armes · munitions (bas de l'ecran)
+  //  Barre boss     : haut-centre entre les deux panneaux, seulement engagee.
   // ---------------------------------------------------------------------
   const HUD_FRAME_W = {
     heart: 56, pickup_data: 64, pickup_page: 64, pickup_publi: 64,
-    pickup_croquette: 64, ammo_graine: 52,
-    ammo_gateau: 60, cat_run: 112, pickup_sunray: 64, pickup_cafe: 64,
-    skull: 56,
+    pickup_croquette: 64, ammo_graine: 52, ammo_graine_fire: 56,
+    ammo_cookie: 52, ammo_gateau: 60, ammo_gateau_enfer: 72,
+    cat_run: 120, pickup_sunray: 64, pickup_cafe: 64,
+    skull: 56, pickup_puissance: 64, pickup_cadence: 64,
   };
 
   function buildHUD() {
     const W = C.width, H = C.height;
-    // palette chaude, accordee au ciel (#8FD0F0) et au soleil (#FFD23F)
     const COL = {
-      ink: rgb(74, 53, 36), inkSoft: rgb(140, 110, 78),
-      cream: rgb(252, 245, 224), creamLo: rgb(241, 226, 192),
-      edge: rgb(150, 108, 58), sheen: rgb(255, 253, 243), shadow: rgb(35, 26, 16),
-      gold: rgb(255, 196, 58), goldHi: rgb(255, 232, 150),
-      track: rgb(108, 90, 64), leaf: rgb(112, 178, 64), sky: rgb(86, 176, 224),
-      rose: rgb(228, 96, 112), red: rgb(226, 59, 80), redDk: rgb(150, 28, 46),
+      ink:    rgb(44, 27, 15),    cream:  rgb(252, 245, 224),
+      dim:    rgb(200, 175, 140), gold:   rgb(255, 208, 74),
+      goldHi: rgb(255, 238, 168), leaf:   rgb(140, 212, 96),
+      red:    rgb(244, 88, 74),   rose:   rgb(252, 156, 136),
+      panel:  rgb(130, 82, 34),
     };
 
-    // ---- primitives de dessin (toutes en coordonnees ecran) ----
     const R = (x, y, w, h, o) => drawRect(Object.assign({ pos: vec2(x, y), width: w, height: h }, o));
-    function panel(x, y, w, h, r) {
-      r = (r == null) ? 12 : r;
-      R(x + 3, y + 5, w, h, { radius: r, color: COL.shadow, opacity: 0.20 });               // ombre portee
-      R(x, y, w, h, { radius: r, color: COL.creamLo });                                      // fond
-      R(x, y, w, Math.max(r + 2, h * 0.5), { radius: r, color: COL.cream });                 // degrade haut
-      R(x + 4, y + 4, w - 8, 2, { radius: 1, color: COL.sheen, opacity: 0.8 });              // brillance
-      R(x, y, w, h, { radius: r, fill: false, outline: { width: 2.5, color: COL.edge } });   // liseré
+
+    function panel(x, y, w, h) {
+      R(x + 2, y + 4, w, h, { radius: 10, color: COL.ink, opacity: 0.40 });
+      R(x, y, w, h, { radius: 10, color: COL.panel, opacity: 0.62 });
+      R(x, y, w, h, { radius: 10, fill: false, outline: { width: 2, color: rgb(210, 155, 72) } });
     }
-    function bar(x, y, w, h, t, fill, hi) {
-      t = Math.max(0, Math.min(1, t));
-      const r = h / 2;
-      R(x, y, w, h, { radius: r, color: COL.track, opacity: 0.85 });
-      if (t > 0) {
-        const fw = Math.max(h, w * t);
-        R(x, y, fw, h, { radius: r, color: fill });
-        R(x + 3, y + 2, Math.max(2, fw - 6), Math.max(1, h * 0.34), { radius: r, color: hi, opacity: 0.85 });
-      }
-      R(x, y, w, h, { radius: r, fill: false, outline: { width: 1.5, color: COL.edge } });
+
+    function inkT(s, x, y, sz, fill, anchor, op) {
+      op = (op == null) ? 1 : op;
+      const o = sz >= 16 ? 2.0 : 1.6;
+      for (let a = 0; a < 8; a++)
+        drawText({ text: s, pos: vec2(x + Math.cos(a * Math.PI / 4) * o, y + Math.sin(a * Math.PI / 4) * o), anchor: anchor || 'left', size: sz, color: COL.ink, opacity: op });
+      drawText({ text: s, pos: vec2(x, y), anchor: anchor || 'left', size: sz, color: fill, opacity: op });
     }
+
     function icon(name, x, y, tpx, opt) {
       opt = opt || {};
       if (!hasSprite(name)) return;
       const fw = HUD_FRAME_W[name] || 64;
-      drawSprite({
-        sprite: name, frame: opt.frame || 0, pos: vec2(x, y), anchor: 'center',
-        scale: vec2(tpx / fw), opacity: (opt.opacity == null) ? 1 : opt.opacity,
-      });
+      drawSprite({ sprite: name, frame: opt.frame || 0, pos: vec2(x, y), anchor: 'center', scale: vec2(tpx / fw), opacity: (opt.opacity == null) ? 1 : opt.opacity });
     }
-    const T = (txt, x, y, size, col, anchor, opacity) => drawText({
-      text: txt, pos: vec2(x, y), size: size, color: col,
-      anchor: anchor || 'left', opacity: (opacity == null) ? 1 : opacity,
-    });
-    function keycap(lbl, x, y) {                 // petite touche clavier
-      const w = 8 + lbl.length * 8, h = 18;
-      R(x, y, w, h, { radius: 5, color: COL.ink, opacity: 0.85 });
-      R(x + 2, y + 2, w - 4, 5, { radius: 3, color: COL.inkSoft, opacity: 0.5 });
-      T(lbl, x + w / 2, y + h / 2 + 1, 11, COL.cream, 'center');
+
+    function bar(x, y, w, h, t, fill, hi) {
+      t = Math.max(0, Math.min(1, t));
+      const r = h / 2;
+      R(x, y + 1.5, w, h, { radius: r, color: COL.ink, opacity: 0.35 });
+      R(x, y, w, h, { radius: r, color: COL.ink, opacity: 0.55 });
+      if (t > 0) {
+        const barW = Math.max(h, w * t);
+        R(x, y, barW, h, { radius: r, color: fill });
+        R(x + 2.5, y + 1.5, Math.max(2, barW - 5), Math.max(1, h * 0.32), { radius: r, color: hi, opacity: 0.9 });
+      }
+      R(x, y, w, h, { radius: r, fill: false, outline: { width: 1.5, color: COL.ink } });
     }
-    function pip(x, y, on) {                      // pastille (charges du chat)
-      drawCircle({ pos: vec2(x, y), radius: 5.5, color: on ? COL.leaf : COL.track, opacity: on ? 1 : 0.5 });
-      drawCircle({ pos: vec2(x, y), radius: 5.5, fill: false, outline: { width: 1.5, color: COL.edge } });
+
+    function keycap(lbl, cx, cy) {
+      if (TOUCH_ON) return;
+      const w = 12 + lbl.length * 7, h = 17;
+      R(cx - w / 2, cy - h / 2 + 2, w, h, { radius: 4, color: COL.ink, opacity: 0.45 });
+      R(cx - w / 2, cy - h / 2, w, h, { radius: 4, color: COL.cream, opacity: 0.95 });
+      R(cx - w / 2, cy - h / 2, w, h, { radius: 4, fill: false, outline: { width: 1.5, color: COL.ink } });
+      drawText({ text: lbl, pos: vec2(cx, cy + 0.5), anchor: 'center', size: 10, color: COL.ink });
+    }
+
+    function chev(x, y, on, col, pulse) {
+      const pts = [vec2(x - 4, y - 6), vec2(x + 5, y), vec2(x - 4, y + 6)];
+      if (on && pulse) drawCircle({ pos: vec2(x, y), radius: 9, color: col, opacity: 0.35 });
+      drawPolygon({ pts, color: on ? col : COL.dim, opacity: on ? 1 : 0.45 });
+      if (on) drawPolygon({ pts, fill: false, outline: { width: 1.2, color: COL.ink } });
+    }
+
+    function pip(x, y, on) {
+      drawCircle({ pos: vec2(x, y), radius: 6, color: on ? COL.leaf : COL.ink, opacity: on ? 1 : 0.35 });
+      drawCircle({ pos: vec2(x, y), radius: 6, fill: false, outline: { width: 1.5, color: COL.ink } });
+    }
+
+    function star(x, y, r, col) {
+      for (let i = 0; i < 5; i++) {
+        const a0 = -Math.PI / 2 + i * Math.PI * 2 / 5;
+        const aL = a0 - Math.PI / 5, aR = a0 + Math.PI / 5, ri = r * 0.46;
+        drawPolygon({
+          pts: [vec2(x, y), vec2(x + Math.cos(aL) * ri, y + Math.sin(aL) * ri),
+            vec2(x + Math.cos(a0) * r, y + Math.sin(a0) * r), vec2(x + Math.cos(aR) * ri, y + Math.sin(aR) * ri)],
+          color: col,
+        });
+      }
     }
 
     const layer = add([pos(0, 0), fixed(), z(120)]);
@@ -1612,133 +2018,188 @@
       const p = PLAYER; if (!p) return;
       const t = time();
 
-      // ===== CARTE VITALE (haut-gauche) : coeurs + soleil + recoltes =====
-      const vx = 14, vy = 12, vw = 232, vh = 96;
-      panel(vx, vy, vw, vh);
-      // coeurs (manquants estompes, presents qui respirent)
+      // =====================================================================
+      // PANNEAU HAUT GAUCHE : coeurs · jauge soleil · objectifs
+      // =====================================================================
+      const PL_W = 288, PL_H = 106, PL_X = 8, PL_Y = 8;
+      panel(PL_X, PL_Y, PL_W, PL_H);
+
+      // Ligne 1 : coeurs + crane
+      const R1Y = PL_Y + 30;
+      const lowHp = p.hp === 1;
       for (let i = 0; i < p.maxHp; i++) {
         const full = i < p.hp;
+        const panic = (full && lowHp) ? 1 + 0.10 * Math.sin(t * 9) : 1;
         const bob = full ? Math.sin(t * 4 + i * 0.6) * 1.2 : 0;
-        icon('heart', vx + 26 + i * 24, vy + 24 + bob, 21, { frame: full ? 0 : 1, opacity: full ? 1 : 0.28 });
+        icon('heart', PL_X + 18 + i * 30, R1Y + bob, 28 * panic, { frame: full ? 0 : 1, opacity: full ? 1 : 0.28 });
       }
-      // COMPTEUR "TETE DE MORT" (a cote des coeurs) : nb de passants inoffensifs
-      //  abattus. HIERARCHIE : les coeurs (vie) dominent ; le crane est une note
-      //  SECONDAIRE, estompee tant qu'on n'a tue personne ("conscience propre"),
-      //  qui vire au ROUGE et PULSE a chaque meurtre (killFlash). Tradition
-      //  arcade : un petit halo rouge a l'instant du coup.
-      const killed = p.kills > 0;
-      const fk = Math.min(1, (p.killFlash || 0) / 0.6);             // 0..1, "chaud" juste apres un meurtre
-      const skx = vx + 170, sky2 = vy + 24;
-      R(vx + 144, vy + 13, 1.5, 23, { color: COL.ink, opacity: 0.16 });   // fin separateur vie | conscience
-      if (killed && fk > 0) drawCircle({ pos: vec2(skx, sky2), radius: 15 + fk * 9, color: COL.red, opacity: 0.30 * fk });
-      const skBob = killed ? Math.sin(t * 3) * 0.8 : 0;             // leger flottement quand actif
-      icon('skull', skx, sky2 - fk * 3 + skBob, 24 * (1 + 0.34 * fk), { opacity: killed ? 1 : 0.30 });
-      T('x' + p.kills, skx + 17, sky2, killed ? 18 : 15, killed ? COL.red : COL.inkSoft, 'left');
-      // jauge soleil = energie = munitions lourdes (avec GLOW de recharge)
-      const sy = vy + 47;
-      const sbx = vx + 38, sbw = vw - 38 - 16, sbh = 13;
+      if (p.kills > 0) {
+        const skx = PL_X + 18 + p.maxHp * 30 + 10;
+        const fk = Math.min(1, (p.killFlash || 0) / 0.6);
+        if (fk > 0) drawCircle({ pos: vec2(skx, R1Y), radius: 13 + fk * 8, color: COL.red, opacity: 0.28 * fk });
+        icon('skull', skx, R1Y + Math.sin(t * 3) * 0.7, 24 * (1 + 0.28 * fk));
+        inkT('x' + p.kills, skx + 16, R1Y, 15, COL.red);
+      }
+
+      // Ligne 2 : icone soleil + jauge pleine largeur
+      const R2Y = PL_Y + 62;
       const absMax = C.sun.max || 1;
-      const sf = p.sun / absMax;                                          // remplissage RELATIF a la capacite (constante)
-      const fw = Math.max(sbh, sbw * sf);
+      const sf = Math.max(0, Math.min(1, p.sun / absMax));
+      const sbx = PL_X + 36, sbw = PL_W - 50, sbh = 14, sby = R2Y - sbh / 2;
+      const sunBarFw = Math.max(sbh, sbw * sf);
       const charging = p._sunCharging || p.sunFlash > 0;
       const pulse = 0.5 + 0.5 * Math.sin(t * 6);
-      // halo lumineux derriere la portion remplie tant que ca recharge
-      //  (+ flash plus large quand la recharge (re)demarre)
       if (charging) {
-        const base = 0.42 + 0.34 * pulse + p.sunFlash * 1.1;
-        for (let g = 0; g < 3; g++) {
-          const pad = 4 + g * 4 + p.sunFlash * 11;
-          R(sbx - pad, sy - pad, fw + pad * 2, sbh + pad * 2,
-            { radius: (sbh + pad * 2) / 2, color: COL.goldHi, opacity: Math.max(0, base * (0.55 - g * 0.15)) });
+        const base = 0.26 + 0.24 * pulse + (p.sunFlash || 0) * 0.9;
+        for (let g = 0; g < 2; g++) {
+          const pad = 2.5 + g * 3.5 + (p.sunFlash || 0) * 8;
+          R(sbx - pad, sby - pad, sunBarFw + pad * 2, sbh + pad * 2,
+            { radius: (sbh + pad * 2) / 2, color: COL.goldHi, opacity: Math.max(0, base * (0.5 - g * 0.18)) });
         }
       }
-      bar(sbx, sy, sbw, sbh, sf, COL.gold, COL.goldHi);
-      // HIGHLIGHT bien visible DANS la barre : tout le remplissage s'eclaire
-      //  par a-coups + une bande brillante qui balaye de gauche a droite.
+      bar(sbx, sby, sbw, sbh, sf, COL.gold, COL.goldHi);
       if (charging) {
-        R(sbx, sy, fw, sbh, { radius: sbh / 2, color: COL.goldHi, opacity: 0.30 + 0.40 * pulse });
-        const sweep = (t * 0.8) % 1;                 // 0..1 en boucle le long du remplissage
-        const bandX = sbx + sweep * fw, bandW = 18;
-        const x0 = Math.max(sbx, bandX - bandW / 2), x1 = Math.min(sbx + fw, bandX + bandW / 2);
-        if (x1 > x0) R(x0, sy + 1, x1 - x0, sbh - 2, { radius: (sbh - 2) / 2, color: COL.cream, opacity: 0.9 });
+        R(sbx, sby, sunBarFw, sbh, { radius: sbh / 2, color: COL.goldHi, opacity: 0.25 + 0.35 * pulse });
+        const sweep = (t * 0.8) % 1;
+        const sweepX = sbx + sweep * sunBarFw, sweepW = 18;
+        const sweepX0 = Math.max(sbx, sweepX - sweepW / 2), sweepX1 = Math.min(sbx + sunBarFw, sweepX + sweepW / 2);
+        if (sweepX1 > sweepX0) R(sweepX0, sby + 1, sweepX1 - sweepX0, sbh - 2, { radius: (sbh - 2) / 2, color: COL.cream, opacity: 0.9 });
       }
-      // icone soleil : pulse quand ca recharge, ternie a l'ombre
-      const sunPulse = p._sunCharging ? (1 + Math.sin(t * 6) * 0.16) : 1;
-      const sunOp = (p._sunShaded && !p._sunCharging) ? 0.45 : 1;
-      icon('pickup_sunray', vx + 22, sy + 6, 24 * sunPulse, { opacity: sunOp });
-      // recoltes : data / pages / publi
-      const cy = vy + 76;
-      let cx = vx + 18;
+      // v2 SURBOUCLIER : cran de SEUIL a hitAbsorb (au-dessus = un coup absorbe),
+      //  jauge GRISEE pendant le lock "bouclier brise" (pas de regen passive),
+      //  anneau dore autour de l'icone soleil quand le bouclier est ARME.
+      const sunLocked = (p.sunRegenLockT || 0) > 0;
+      if (sunLocked) R(sbx, sby, sunBarFw, sbh, { radius: sbh / 2, color: rgb(110, 104, 96), opacity: 0.62 });
+      const thF = Math.max(0, Math.min(1, (C.sun.hitAbsorb || 0) / absMax));
+      if (thF > 0 && thF < 1) {
+        const thX = sbx + sbw * thF;
+        R(thX - 1.5, sby - 3, 3, sbh + 6, { radius: 1.5, color: COL.cream, opacity: 0.85 });
+      }
+      const shieldOn = !sunLocked && (C.sun.hitAbsorb || 0) > 0 && p.sun >= C.sun.hitAbsorb;
+      if (shieldOn) drawCircle({ pos: vec2(PL_X + 17, R2Y), radius: 16 + Math.sin(t * 5) * 1.2, fill: false, outline: { width: 2.5, color: COL.goldHi }, opacity: 0.8 });
+      const sunPulse = p._sunCharging ? 1 + Math.sin(t * 6) * 0.14 : 1;
+      icon('pickup_sunray', PL_X + 17, R2Y, 26 * sunPulse, { opacity: (p._sunShaded && !p._sunCharging) ? 0.5 : 1 });
+
+      // Ligne 3 : objectifs data / pages / publi
+      const R3Y = PL_Y + 92;
       const dataSkin = (LEVEL.theme.pickups && LEVEL.theme.pickups.data && hasSprite(LEVEL.theme.pickups.data)) ? LEVEL.theme.pickups.data : 'pickup_data';
-      icon(dataSkin, cx, cy, 21); cx += 16;
-      T(p.data + '/' + LEVEL.dataTotal, cx, cy, 15, COL.ink); cx += 52;
-      icon('pickup_page', cx, cy, 21); cx += 16;
-      T(p.pages + '/' + LEVEL.pageTotal, cx, cy, 15, COL.ink); cx += 52;
+      let cx2 = PL_X + 12;
+      icon(dataSkin, cx2 + 11, R3Y, 22); inkT(p.data + '/' + LEVEL.dataTotal, cx2 + 25, R3Y, 14, COL.cream); cx2 += 76;
+      icon('pickup_page', cx2 + 11, R3Y, 22); inkT(p.pages + '/' + LEVEL.pageTotal, cx2 + 25, R3Y, 14, COL.cream); cx2 += 76;
       if (LEVEL.hasPubli) {
         const got = p.gotPubli;
-        icon('pickup_publi', cx, cy + (got ? Math.sin(t * 5) * 1.5 : 0), 22, { opacity: got ? 1 : 0.45 });
-        T(got ? '100%' : '?', cx + 15, cy, 15, got ? COL.gold : COL.inkSoft);
+        icon('pickup_publi', cx2 + 11, R3Y + (got ? Math.sin(t * 5) * 1.2 : 0), 22, { opacity: got ? 1 : 0.38 });
+        if (got) inkT('100%', cx2 + 26, R3Y, 14, COL.gold);
       }
 
-      // ===== SCORE (haut-droite) =====
-      const sw = 156, shh = 50, sxx = W - 14 - sw, syy = 12;
-      panel(sxx, syy, sw, shh);
-      T('SCORE', sxx + 14, syy + 15, 12, COL.inkSoft);
-      T('' + p.score, sxx + sw - 14, syy + shh - 17, 23, COL.ink, 'right');
+      // =====================================================================
+      // PANNEAU HAUT DROITE : timer (dixiemes de seconde) + score
+      // =====================================================================
+      const lt = p.levelTime || 0;
+      const mmn = Math.floor(lt / 60), ssn = Math.floor(lt % 60), tn = Math.floor((lt % 1) * 10);
+      const tstr = (mmn < 10 ? '0' : '') + mmn + ':' + (ssn < 10 ? '0' : '') + ssn;
+      const PR_W = 170, PR_H = 72, PR_X = W - PR_W - 8, PR_Y = 8;
+      panel(PR_X, PR_Y, PR_W, PR_H);
 
-      // ===== ARME (bas-gauche) : tir de base (graine) =====
-      const aw = 196, ah = 44, axx = 14, ayy = H - 14 - ah;
-      panel(axx, ayy, aw, ah);
-      const wname = p.weapon === 'spread' ? 'EVENTAIL' : p.weapon === 'pierce' ? 'PERCANT' : p.weapon === 'bombe' ? 'BOMBE' : 'GRAINES';
-      const wspr = p.weapon === 'bombe' ? 'ammo_gateau' : 'ammo_graine';
-      icon(hasSprite(wspr) ? wspr : 'ammo_graine', axx + 26, ayy + ah / 2, 30);
-      T(wname, axx + 48, ayy + 16, 15, COL.ink);
-      T('GRATUIT', axx + 50, ayy + 31, 12, COL.leaf);   // tir de base : gratuit, jamais de blocage
-      keycap('ESPACE', axx + aw - 52, ayy + 5);
-      // PIPS DE TIER ("NIVEAU") : moralite + puissance du tir de base. Remplis
-      //  jusqu'a p.tier, vides ensuite ; pulse legerement juste apres un changement.
-      const tierMax = (C.tier && C.tier.max) || 3;
-      const tpulse = (p.tierFlash || 0) > 0 ? 1 : 0;
-      T('NIVEAU', axx + aw - 50, ayy + 27, 10, COL.inkSoft);
-      for (let i = 0; i < tierMax; i++) {
-        const px = axx + aw - 44 + i * 16, py = ayy + 37;
-        const on = i < (p.tier || 0);
-        pip(px, py, on);
-        if (on && tpulse) drawCircle({ pos: vec2(px, py), radius: 6.5, color: COL.leaf, opacity: 0.5 });
+      // Horloge + temps principal
+      const ckx = PR_X + 20, cky = PR_Y + 28;
+      drawCircle({ pos: vec2(ckx, cky), radius: 11, color: COL.cream, opacity: 0.9 });
+      drawCircle({ pos: vec2(ckx, cky), radius: 11, fill: false, outline: { width: 1.8, color: COL.ink } });
+      const aS = lt / 60 * Math.PI * 2 - Math.PI / 2;
+      const aM = lt / 3600 * Math.PI * 2 - Math.PI / 2;
+      drawLine({ p1: vec2(ckx, cky), p2: vec2(ckx + Math.cos(aS) * 8, cky + Math.sin(aS) * 8), width: 2, color: COL.ink });
+      drawLine({ p1: vec2(ckx, cky), p2: vec2(ckx + Math.cos(aM) * 5, cky + Math.sin(aM) * 5), width: 2, color: COL.ink });
+      inkT(tstr, PR_X + 38, cky, 26, COL.cream);
+      inkT('.' + tn, PR_X + PR_W - 8, PR_Y + 44, 16, COL.goldHi, 'right');
+
+      // Score : etoile + nombre
+      const scoreStr = '' + p.score;
+      star(PR_X + 18, PR_Y + 58, 9, COL.ink);
+      star(PR_X + 18, PR_Y + 58, 7, COL.gold);
+      inkT(scoreStr, PR_X + 34, PR_Y + 58, 17, COL.cream);
+
+      // =====================================================================
+      // PANNEAU BAS CENTRE : armes · munitions (ancre en bas de l'ecran)
+      // =====================================================================
+      const WEP_H = 56, WEP_W = 650;
+      const WEP_X = (W - WEP_W) / 2;
+      const WEP_Y = H - WEP_H - 6;
+      const WEP_ROW = WEP_Y + WEP_H / 2;
+      panel(WEP_X, WEP_Y, WEP_W, WEP_H);
+
+      let wx = WEP_X + 18;
+      // Graine + ESPACE
+      icon('ammo_graine', wx + 13, WEP_ROW, 28);
+      wx += 28;
+      keycap('ESPACE', wx + 30, WEP_ROW);
+      wx += TOUCH_ON ? 16 : 64;
+      drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(115, 78, 42) });
+      wx += 16;
+      // Patisserie + cout + X
+      const PA = (C.arsenal && C.arsenal.patisseries) || {};
+      const plv = Math.max(1, Math.min((PA.levels && PA.levels.length) || 1, p.power || 1));
+      const PL = (PA.levels && PA.levels[plv - 1]) || { sprite: 'ammo_gateau', cost: 0 };
+      const poor = C.sun.enabled && p.sun < (PL.cost || 0);
+      icon(hasSprite(PL.sprite) ? PL.sprite : 'ammo_gateau', wx + 16, WEP_ROW, 30, { opacity: poor ? 0.55 : 1 });
+      wx += 34;
+      const costStr = '-' + (PL.cost || 0);
+      inkT(costStr, wx, WEP_ROW, 14, poor ? COL.red : COL.gold);
+      wx += costStr.length * 9 + 4;
+      icon('pickup_sunray', wx + 7, WEP_ROW, 15);
+      wx += 18;
+      keycap('X', wx + 9, WEP_ROW);
+      wx += TOUCH_ON ? 12 : 24;
+      drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(210, 155, 72) });
+      wx += 16;
+      // Upgrades puissance + cadence
+      const pmax = (C.arsenal && C.arsenal.power && C.arsenal.power.max) || 3;
+      const rmax = (C.arsenal && C.arsenal.rate && C.arsenal.rate.max) || 3;
+      icon('pickup_puissance', wx + 11, WEP_ROW, 22);
+      wx += 25;
+      for (let i = 0; i < pmax; i++) chev(wx + i * 15, WEP_ROW, i < (p.power || 1), COL.red, (p.powerFlash || 0) > 0);
+      wx += pmax * 15 + 16;
+      icon('pickup_cadence', wx + 11, WEP_ROW, 22);
+      wx += 25;
+      for (let i = 0; i < rmax; i++) chev(wx + i * 15, WEP_ROW, i < (p.rate || 1), rgb(96, 196, 244), (p.rateFlash || 0) > 0);
+      wx += rmax * 15 + 12;
+      drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(210, 155, 72) });
+      wx += 16;
+      // Chat + charges + SAUVES
+      icon('cat_run', wx + 20, WEP_ROW, 32);
+      wx += 48;
+      for (let i = 0; i < C.cat.maxCharges; i++) pip(wx + i * 16, WEP_ROW, i < p.catCharges);
+      if ((C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+        const frac = Math.min(1, (p.catRegenT || 0) / C.cat.regenTime);
+        drawCircle({ pos: vec2(wx + p.catCharges * 16, WEP_ROW), radius: 1 + 5 * frac, color: COL.leaf, opacity: 0.9 });
       }
+      wx += C.cat.maxCharges * 16 + 8;
+      keycap('C', wx + 9, WEP_ROW);
+      wx += TOUCH_ON ? 12 : 24;
+      const savedN = p.saved || 0;
+      if ((p.saveFlash || 0) > 0) drawCircle({ pos: vec2(wx + 40, WEP_ROW), radius: 13, color: COL.leaf, opacity: 0.38 });
+      inkT('SAUVES ' + savedN, wx, WEP_ROW, 14, savedN > 0 ? COL.leaf : COL.dim);
 
-      // ===== LOB LOURD (a droite de l'arme) : X, coute de l'energie =====
-      const lw = 124, lxx = axx + aw + 8, lyy = ayy;
-      panel(lxx, lyy, lw, ah);
-      const lam = C.ammoTypes.gateau, lcost = lam.cost || 0;
-      const lpoor = C.sun.enabled && p.sun < lcost;
-      icon(hasSprite(lam.sprite) ? lam.sprite : 'ammo_gateau', lxx + 24, lyy + ah / 2, 28);
-      T('LOB', lxx + 44, lyy + 16, 14, COL.ink);
-      icon('pickup_sunray', lxx + 48, lyy + 31, 13);
-      T('-' + lcost, lxx + 57, lyy + 31, 12, lpoor ? COL.red : COL.inkSoft);
-      keycap('X', lxx + lw - 26, lyy + 7);
-
-      // ===== CHAT (a droite du lob) =====
-      const kw = 120, kxx = lxx + lw + 8, kyy = ayy;
-      panel(kxx, kyy, kw, ah);
-      icon('cat_run', kxx + 28, kyy + ah / 2, 44, { frame: 0 });
-      for (let i = 0; i < C.cat.maxCharges; i++) pip(kxx + 56 + i * 16, kyy + 15, i < p.catCharges);
-      keycap('C', kxx + 50, kyy + 24);
-
-      // ===== BOSS (haut-centre) — seulement quand il est engage =====
-      //  (a portee de l'ecran, ou des qu'on l'a touche) : sinon la barre
-      //  squattait le haut de l'ecran tout le niveau alors qu'il est loin.
-      const boss = get('boss')[0];
+      // =====================================================================
+      // BOSS : fin ruban haut-centre, entre les deux panneaux.
+      //  v2 : barre PRINCIPALE = le boss du niveau (jamais un invite) ; elle
+      //  PULSE en dore pendant une fenetre de vulnerabilite ("tape maintenant").
+      //  Boss INVITE (boss-rush du jury) : mini-barre dessous.
+      // =====================================================================
+      const bossesUp = get('boss');
+      const boss = bossesUp.find((bb) => !bb.guest) || bossesUp[0];
+      const guest = bossesUp.find((bb) => bb.guest && bb !== boss);
       if (boss && (boss.hp < boss.maxHp || Math.abs(boss.pos.x - p.pos.x) < W * 0.62)) {
-        const bw = 420, bh = 46, bx = W / 2 - bw / 2, by = 12;
-        panel(bx, by, bw, bh);
-        T(boss.def.name || 'BOSS', bx + bw / 2, by + 13, 13, COL.redDk, 'center');
-        bar(bx + 16, by + 26, bw - 32, 13, Math.max(0, boss.hp) / boss.maxHp, COL.red, COL.rose);
-      }
-
-      // ===== Triche (bas-centre, discret) =====
-      if (C.cheats) {
-        T('1-6 niveau   0 finir   G dieu   H plein', W / 2, H - 12, 10, COL.inkSoft, 'center', 0.7);
+        const open = (boss.vulnT > 0) || (boss.guard != null && boss.guard >= 1);
+        if (open) {
+          const pw = 0.5 + 0.5 * Math.sin(t * 8);
+          R(W / 2 - 149, 32, 298, 17, { radius: 8, color: COL.goldHi, opacity: 0.22 + 0.3 * pw });
+        }
+        inkT(boss.def.name || 'BOSS', W / 2, 24, 14, open ? COL.gold : COL.rose, 'center');
+        bar(W / 2 - 145, 36, 290, 9, Math.max(0, boss.hp) / boss.maxHp, COL.red, COL.rose);
+        if (guest && guest.exists()) {
+          inkT(guest.def.name || 'INVITE', W / 2, 54, 11, COL.cream, 'center');
+          bar(W / 2 - 95, 63, 190, 6, Math.max(0, guest.hp) / guest.maxHp, COL.red, COL.rose);
+        }
       }
     });
 
@@ -1752,31 +2213,110 @@
   // ---------------------------------------------------------------------
   function persist() { if (SAVE) SAVEAPI.save(SLOT, SAVE); }
 
+  // v2 : MENTION TRES HONORABLE = or partout (t/d/s) sur les 5 niveaux + jury battu.
+  function hasMention(d) {
+    if (!d || !d.juryDone || !d.medals) return false;
+    for (let i = 0; i < SAVEAPI.N_LEVELS; i++) {
+      const m = d.medals[i];
+      if (!m || m.t < 3 || m.d < 3 || m.s < 3) return false;
+    }
+    return true;
+  }
+
   function completeLevel() {
     const p = PLAYER;
     const total = LEVEL.dataTotal + LEVEL.pageTotal;
     const got = p.data + p.pages;
     const pct = total > 0 ? Math.round(got / total * 100) : 100;
+    const tsec = p.levelTime || 0;               // chrono du niveau (time-attack)
+    // --- v2 MEDAILLES (GAMEPLAY.md §5.1) : TEMPS (pars du niveau) / DATA / SAUVES.
+    //  Paliers : 3=or, 2=argent, 1=bronze, 0=rien. SAUVES = sauves/spawnes (un
+    //  passant tue n'est plus sauvable -> le pacifisme paie) ; niveau sans
+    //  passant => 100 (pas de medaille impossible).
+    const lvDef = LEVELS[C.levels[CUR_IDX]] || {};
+    const par = lvDef.par || null;
+    const medT = (par && tsec > 0) ? (tsec <= par.or ? 3 : (tsec <= par.argent ? 2 : (tsec <= par.bronze ? 1 : 0))) : 0;
+    const medD = pct >= 100 ? 3 : (pct >= 80 ? 2 : (pct >= 60 ? 1 : 0));
+    const passTot = LEVEL.passantTotal || 0;
+    const savedPct = passTot > 0 ? Math.round((p.saved || 0) / passTot * 100) : 100;
+    const medS = savedPct >= 100 ? 3 : (savedPct >= 60 ? 2 : (savedPct >= 30 ? 1 : 0));
+    const meds = { t: medT, d: medD, s: medS };
     if (SAVE) {
       SAVE.totalScore += p.score;
       SAVE.bestScore = Math.max(SAVE.bestScore, p.score);
+      if (!SAVE.medals) SAVE.medals = [];
       if (CUR_IDX < SAVEAPI.N_LEVELS) {
         SAVE.levelsDone[CUR_IDX] = true;
         if (p.gotPubli) SAVE.publis[CUR_IDX] = true;
         SAVE.dataPct[CUR_IDX] = Math.max(SAVE.dataPct[CUR_IDX] || 0, pct);
+        if (tsec > 0) {                           // MEILLEUR TEMPS : garde le plus court. tsec>0 ignore une
+          if (!SAVE.bestTime) SAVE.bestTime = [];  //  fin INSTANTANEE (triche '0') qui sinon ecraserait un vrai temps via Math.min(.,0).
+          const prev = SAVE.bestTime[CUR_IDX] || 0;
+          SAVE.bestTime[CUR_IDX] = (prev > 0) ? Math.min(prev, tsec) : tsec;
+        }
+        // medailles : on garde le MEILLEUR palier atteint par categorie
+        const pm = SAVE.medals[CUR_IDX] || { t: 0, d: 0, s: 0 };
+        SAVE.medals[CUR_IDX] = { t: Math.max(pm.t || 0, medT), d: Math.max(pm.d || 0, medD), s: Math.max(pm.s || 0, medS) };
+        if (!SAVE.savedPct) SAVE.savedPct = [];
+        SAVE.savedPct[CUR_IDX] = Math.max(SAVE.savedPct[CUR_IDX] || 0, savedPct);
+        if (p.medNoHit && tsec > 0) {              // medaille cachee "sans degat" (pas via triche '0')
+          if (!SAVE.feli) SAVE.feli = [];
+          SAVE.feli[CUR_IDX] = true;
+        }
         SAVE.unlockedMax = Math.max(SAVE.unlockedMax, CUR_IDX + 1);
         SAVE.cursor = Math.min(C.levels.length - 1, CUR_IDX + 1);
       } else {
         SAVE.juryDone = true;
+        // jury : medaille TEMPS seulement (pas de data/sauves — que des invoques)
+        const pj = SAVE.medals[SAVEAPI.N_LEVELS] || { t: 0 };
+        SAVE.medals[SAVEAPI.N_LEVELS] = { t: Math.max(pj.t || 0, medT) };
       }
       persist();
     }
     sfx('win');
     if (CUR_IDX >= SAVEAPI.N_LEVELS) go('win', { score: p.score });
-    else go('chapter', { idx: CUR_IDX, score: p.score });
+    else go('chapter', { idx: CUR_IDX, score: p.score, meds, tsec, pct, savedPct, par, feli: !!(p.medNoHit && tsec > 0) });
   }
 
-  function loseGame() { sfx('lose'); go('lose', { score: PLAYER ? PLAYER.score : 0 }); }
+  function loseGame() {
+    // v2 CHECKPOINT BOSS (GAMEPLAY.md §2.4) : mourir PENDANT le boss -> respawn
+    //  IN-SCENE a la porte d'arene (pas de re-traversee du niveau, pas de rebuild
+    //  -> pas de re-farm de pickups), boss reset, chrono qui CONTINUE (la penalite
+    //  time-attack est naturelle). Mourir hors boss : ecran lose comme avant.
+    if (LEVEL && LEVEL.checkpoint && LEVEL.bossesAlive > 0 && PLAYER && PLAYER.exists()) {
+      respawnAtArena();
+      return;
+    }
+    sfx('lose'); go('lose', { score: PLAYER ? PLAYER.score : 0 });
+  }
+
+  function respawnAtArena() {
+    const p = PLAYER, ck = LEVEL.checkpoint;
+    p.hp = p.maxHp;
+    p.sun = Math.min(p.sunMax, Math.max(p.sun, 50));
+    p.sunRegenLockT = 0;
+    p.pos.x = ck.x; p.pos.y = ck.y;
+    p.invuln = 1.2; p.knockT = 0; p.dashT = 0; p._dropT = 0;
+    if (p.vel) p.vel = vec2(0, 0);
+    p.medNoHit = false;                          // la medaille "sans degat" est perdue de toute facon
+    get('boss').forEach((b) => {
+      if (b.guest) { destroy(b); return; }       // les invites du jury disparaissent
+      b.hp = b.maxHp;
+      b.pos.x = b.homeX;
+      // machine d'etats vierge : chaque IA se re-initialise sur champ undefined
+      b.cs = b.ts = b.ms = b.state = b.ps = b.jPhase = undefined;
+      b.t = 0; b.stun = 0; b.hurtT = 0; b.knockT = 0;
+      b.vulnT = 0; b.catVulnLock = 0; b.openT = 0; b.p2 = false; b.p2Just = false;
+      b._guest = null; b._chCd = null; b._guardMsgDone = false;
+      if (b._baseScale) { b.scale = b._baseScale.clone(); }   // cendrine morte mi-implosion
+      b.opacity = 1; b.animWant = 'idle';
+      if (b._openVis) { b._openVis = false; try { b.unuse('color'); } catch (_) {} }
+    });
+    get('ehot').forEach((h) => destroy(h));
+    get('quakewave').forEach((q) => destroy(q));
+    flashMsg(C.story.checkpoint);
+    sfx('hit');
+  }
 
   function tryReachSun() {
     if (LEVEL.bossesAlive > 0) { flashMsg(C.story.bossWarn); return; }
@@ -1801,6 +2341,7 @@
     const def = LEVELS[levelKey];
     buildLevel(def);
     if (!PLAYER) { add([text('Pas de @ dans la map !', { size: 24 }), pos(40, 40)]); return; }
+    spawnStartVehicle();
 
     const hud = buildHUD();
     // Cam fixe en Y. Un niveau plus HAUT que l'ecran (rangees ajoutees EN HAUT,
@@ -1931,9 +2472,19 @@
     const onKeysRelease = (arr, cb) => arr.forEach((k) => onKeyRelease(k, cb));
     onPlayKey(C.controls.jump, () => {
       const p = PLAYER;
-      if (get('cat').length) return;                       // immobile tant que le chat est dehors
       const eq = p.equipped && C.equipment && C.equipment[p.equipped];
       const jf = C.player.jumpForce * ((eq && eq.jumpMul) || 1);   // rollers/velo : saute plus haut
+      // v2 DROP-THROUGH : BAS+SAUT debout sur un PANNEAU ('-'/'x') -> on DESCEND
+      //  a travers (le one-way d'addPanel ignore Laura tant que _dropT > 0). Ne
+      //  consomme AUCUN saut. Tactile : double-tap ▼ synthetise ce combo (mobile.js).
+      if (p.isGrounded() && keysDown(C.controls.crouch)) {
+        const plat = p.curPlatform && p.curPlatform();
+        if (plat && plat.is && plat.is('panel')) {
+          p._dropT = 0.25;
+          p.pos.y += 2;            // decolle du cap pour amorcer la chute immediatement
+          return;
+        }
+      }
       if (p.isGrounded()) { p.jump(jf); p.jumpsLeft = C.player.maxJumps - 1; sfx('jump'); }
       else if (p.jumpsLeft > 0) { p.jump(jf); p.jumpsLeft--; sfx('jump'); }
     });
@@ -1942,18 +2493,18 @@
       if (!PLAYER.isGrounded() && PLAYER.vel && PLAYER.vel.y < 0) PLAYER.vel = vec2(PLAYER.vel.x, PLAYER.vel.y * 0.45);
     });
     onPlayKey(C.controls.lob, lobShoot);
-    // DASH (Maj) : ruee horizontale + i-frames (via p.invuln). Coute de l'energie, cooldown.
+    // DASH (Maj) : ruee horizontale + i-frames (via p.invuln). GRATUIT (cf.
+    //  GAMEPLAY.md), simple cooldown. La ruee elle-meme est appliquee dans la
+    //  boucle d'update via move() (transitoire) -> aucune vitesse residuelle.
     onPlayKey(C.controls.dash, () => {
       const p = PLAYER; if (!p || !p.exists()) return;
       const d = C.player.dash; if (!d) return;
       if (p.dashT > 0 || (p.dashCd || 0) > 0 || p.knockT > 0) return;
-      const cost = d.cost || 0;
-      if (C.sun.enabled && p.sun < cost) return;
-      if (C.sun.enabled) p.sun = Math.max(0, p.sun - cost);
       p.dashT = d.duration || 0.16;
       p.dashVx = (p.facing || 1) * (d.speed || 540);
       p.dashCd = d.cooldown || 0.5;
       p.invuln = Math.max(p.invuln || 0, d.iframes || 0.2);
+      if (p.vel) p.vel = vec2(0, p.vel.y);       // repart d'une vitesse horizontale NULLE (anti-glissade)
       addPoof(p.pos.x, p.pos.y - TS * 0.4);
     });
     onKeys(C.controls.quit, () => { quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
@@ -1977,7 +2528,9 @@
       onPlayPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
       onPlayPress('h', () => {                                                        // plein
         PLAYER.hp = PLAYER.maxHp; PLAYER.kills = 0; PLAYER.sunMax = C.sun.max; PLAYER.sun = C.sun.max;
-        PLAYER.tier = (C.tier && C.tier.max) || 3;
+        PLAYER.power = (C.arsenal && C.arsenal.power.max) || 3;   // ARSENAL au max
+        PLAYER.rate = (C.arsenal && C.arsenal.rate.max) || 3;
+        PLAYER.powerFlash = 0.8; PLAYER.rateFlash = 0.8;
         PLAYER.catCharges = C.cat.maxCharges; flashMsg('PLEIN !');
       });
     }
@@ -2021,17 +2574,35 @@
 
     PLAYER.onUpdate(() => {
       const p = PLAYER;
+      p.levelTime = (p.levelTime || 0) + dt();   // chrono du niveau (fige quand le jeu est en pause)
       let moving = false;
       const eqv = p.equipped && C.equipment && C.equipment[p.equipped];
       const spd = C.player.speed * ((eqv && eqv.speedMul) || 1);   // rollers = plus rapide
       const crouching = p.isGrounded() && keysDown(C.controls.crouch);   // accroupi (au sol ; BAS = SEUL usage)
-      // CHAT INSTANTANE : Laura est IMMOBILE tant que le chat est dehors (il revient
-      //  tout seul) ; plus de charge a maintenir.
-      const catOut = get('cat').length > 0;
+      // CHAT : il part en aller-retour tout seul ; Laura n'est PLUS figee, elle
+      //  continue de bouger / tirer / sauter pendant ce temps (cf. calque d'action).
       if (p.dashCd > 0) p.dashCd -= dt();
-      if (p.dashT > 0) { p.dashT -= dt(); if (p.vel) p.vel = vec2(p.dashVx, p.vel.y); }   // DASH : ruee horizontale, gravite conservee
+      if (p._dropT > 0) p._dropT -= dt();        // drop-through en cours (one-way des panneaux)
+
+      // v2 : pose le CHECKPOINT d'arene la 1re fois que Laura entre dans la zone
+      //  du boss (boss encore vivant) -> mourir au boss = respawn ici (loseGame).
+      if (!LEVEL.checkpoint && LEVEL.bossX != null && LEVEL.bossesAlive > 0) {
+        const edge = LEVEL.bossX - (LEVEL.bossRange || 300) - TS * 2;
+        if (p.pos.x >= edge) {
+          LEVEL.checkpoint = { x: Math.max(TS * 1.5, edge - TS), y: columnGroundY(Math.floor(edge / TS)) - 2 };
+        }
+      }
+      // DASH : ruee horizontale TRANSITOIRE via move() (PAS via p.vel, qui est
+      //  PERSISTE par le body de KAPLAY -> l'ancienne ecriture de vel.x ne se
+      //  remettait jamais a 0 et Laura glissait sans fin). La gravite (vel.y)
+      //  reste geree par le body. A la sortie, on annule toute vx residuelle.
+      if (p.dashT > 0) {
+        p.dashT -= dt();
+        p.move(p.dashVx, 0);
+        if (p.dashT <= 0 && p.vel) p.vel = vec2(0, p.vel.y);
+      }
       else if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }  // recul : pas de controle
-      else if (!crouching && !catOut) {
+      else if (!crouching) {
         if (keysDown(C.controls.left)) { p.move(-spd, 0); p.facing = -1; moving = true; }
         if (keysDown(C.controls.right)) { p.move(spd, 0); p.facing = 1; moving = true; }
       }
@@ -2042,7 +2613,7 @@
       if (p.lobCd > 0) p.lobCd -= dt();
       if (keysDown(C.controls.shoot) && p.fireCd <= 0) {   // rollers/velo = powerup positif : on garde le tir
         fireBase(p);
-        p.fireCd = C.shot.rate;
+        p.fireCd = grainesCd(p);                 // cadence pilotee par la CADENCE (p.rate)
       }
 
       // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
@@ -2050,11 +2621,18 @@
       if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
       if (!keysDown(C.controls.cat)) p.catLock = false;
 
+      // RECHARGE AUTO DU CHAT : une charge revient seule toutes les cat.regenTime s
+      //  (jamais bloquee a 0). Les croquettes ('k') donnent EN PLUS un +1 instantane.
+      if ((C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+        p.catRegenT = (p.catRegenT || 0) + dt();
+        if (p.catRegenT >= C.cat.regenTime) { p.catRegenT -= C.cat.regenTime; p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); sfx('pickup'); }
+      } else p.catRegenT = 0;
+
       if (p.isGrounded()) p.jumpsLeft = C.player.maxJumps;
 
-      // animation selon l'etat. Priorite : retour chat > depart chat > lancer >
-      // accroupi > saut > touche > course > idle. heroAnim applique l'override
-      // d'equipement (velo/rollers -> sprite "Laura sur l'engin").
+      // animation selon l'etat. Priorite : ACTION (lancer/chat) > accroupi > saut >
+      // touche > course > idle. heroAnim applique l'override d'equipement
+      // (velo/rollers -> sprite "Laura sur l'engin").
       // accroupissement progressif : duckProg 0 (debout) -> 1 (accroupi a fond).
       //  En MAINTENANT bas la planche se joue a l'endroit (se baisse) ; au
       //  relachement on la rejoue a l'envers pour se relever. La frame est posee
@@ -2064,24 +2642,52 @@
         ? Math.min(1, (p.duckProg || 0) + dt() / dDown)
         : Math.max(0, (p.duckProg || 0) - dt() / dUp);
       const duckSpr = p.isGrounded() && p.duckProg > 0 && hasSprite('hero_duck');
-      if (p.catInT > 0) { p.catInT -= dt(); heroAnim(p, 'hero_cat_in', 'cat'); }
-      else if (catOut) { heroAnim(p, 'hero_cat_out', 'cat'); }   // figee, sac vide, jusqu'au retour
-      else if (p.throwT > 0) {                          // PRIORITE sur le saut : on tire meme en l'air
-        p.throwT -= dt();
-        if (p.equipped) {                               // monte (rollers/velo) : tire depuis la pose de roule (pas de frame de lancer dediee)
-          heroAnim(p, moving ? 'hero_run' : 'hero_idle', moving ? 'run' : 'idle');
-        } else {
-          const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
-          if (p.throwReplay) { p._anim = null; p.throwReplay = false; }   // rejoue depuis la 1re frame
-          heroAnim(p, (ts && hasSprite(ts)) ? ts : 'hero_throw', 'throw');
-        }
+
+      // --- ACTION (lancer / chat) : CALQUE superpose OU plein-corps selon equipement
+      //  + assets dispos (cf. SPRITES.md "rig en couches"). word = 'throw' | 'cat'.
+      //   1. equipe + feuille dediee <base>_<word> -> swap plein-corps (ex. velo : hero_bike_throw).
+      //   2. calque act_<word> dispo -> base (course/roule) INCHANGEE + overlay (rollers ; a pied si fourni).
+      //   3. repli : a pied -> plein-corps (hero_throw / hero_cat_out) ; equipe sans asset -> pose de roule.
+      let actWord = null, actReplay = false, actAmmoSpr = null;
+      if (p.catTossT > 0) { p.catTossT -= dt(); actWord = 'cat'; }   // PRIORITE sur le tir : la pose "lance le chat"
+      else if (p.throwT > 0) {                                       // PRIORITE sur le saut : on tire meme en l'air
+        p.throwT -= dt(); actWord = 'throw';
+        if (p.throwReplay) { actReplay = true; p.throwReplay = false; }   // rejoue depuis la 1re frame
+        const ts = C.ammoTypes[p.ammoKey] && C.ammoTypes[p.ammoKey].throwSprite;   // anim de lancer par arme
+        actAmmoSpr = (ts && hasSprite(ts)) ? ts : 'hero_throw';
       }
+      let actBody = null, actOvSpr = null;          // sprite plein-corps | calque bras superpose
+      const actClip = actWord === 'cat' ? 'cat' : 'throw';
+      if (actWord === 'cat') {
+        actBody = 'hero_cat_out';                   // pose plein-corps "lance le chat"
+      } else if (actWord === 'throw') {
+        // BRAS DE LANCER PAR LOCOMOTION : run/bike/roll/duck ont un calque bras dedie
+        //  (hero_<loco>_throw, ~3 frames transparentes) pose PAR-DESSUS la locomotion qui
+        //  CONTINUE dessous. idle / saut n'en ont pas -> plein-corps hero_throw.
+        let loco;
+        if (p.equipped === 'velo') loco = 'bike';        // en velo on reste sur le velo, meme en l'air
+        else if (!p.isGrounded()) loco = 'jump';
+        else if (duckSpr) loco = 'duck';
+        else if (p.equipped === 'rollers') loco = 'roll';
+        else if (moving) loco = 'run';
+        else loco = 'idle';
+        const arm = 'hero_' + loco + '_throw';
+        if (hasSprite(arm)) actOvSpr = arm;          // calque bras : locomotion inchangee dessous
+        else actBody = hasSprite('hero_throw') ? 'hero_throw' : actAmmoSpr;   // idle/saut -> plein-corps
+      }
+      setActionOverlay(p, actOvSpr, actClip, actReplay);            // (de)pose le calque d'action
+
+      if (actBody) { if (actReplay) p._anim = null; setAnim(p, noCat(actBody), actClip); }
       else if (p.dashT > 0) heroAnim(p, hasSprite('hero_dash') ? 'hero_dash' : 'hero_run', hasSprite('hero_dash') ? 'dash' : 'run');
       else if (duckSpr) {                               // scrub manuel : frame = progression
-        if (p._spr !== 'hero_duck') { p.use(sprite('hero_duck')); p._spr = 'hero_duck'; p._anim = null; }
+        const ds = noCat('hero_duck');                 // sac vide si le chat est dehors
+        if (p._spr !== ds) { p.use(sprite(ds)); p._spr = ds; p._anim = null; }
         const lastF = ((C.anims.hero_duck && C.anims.hero_duck.sliceX) || 7) - 1;
         p.frame = Math.max(0, Math.min(lastF, Math.round(p.duckProg * lastF)));
       }
+      // En velo, le saut ne change PAS d'anim : on reste sur le velo (cycle de
+      //  pedalage course/idle), pas de pose de saut figee.
+      else if (!p.isGrounded() && p.equipped === 'velo') heroAnim(p, moving ? 'hero_run' : 'hero_idle', moving ? 'run' : 'idle');
       else if (!p.isGrounded()) heroAnim(p, 'hero_jump', 'jump');
       else if (p.invuln > C.player.invulnTime - 0.25) heroAnim(p, 'hero_hurt', 'hurt');
       else if (moving) heroAnim(p, 'hero_run', 'run');
@@ -2101,18 +2707,23 @@
 
       if (p.invuln > 0) { p.invuln -= dt(); p.opacity = (Math.floor(time() * 20) % 2) ? 0.4 : 1; }
       else p.opacity = 1;
-      if (p.shielded > 0) { p.shielded -= dt(); p.opacity = 0.85; }
       p.killFlash = Math.max(0, (p.killFlash || 0) - dt());
-      p.tierFlash = Math.max(0, (p.tierFlash || 0) - dt());
+      p.powerFlash = Math.max(0, (p.powerFlash || 0) - dt());
+      p.rateFlash = Math.max(0, (p.rateFlash || 0) - dt());
+      p.saveFlash = Math.max(0, (p.saveFlash || 0) - dt());
+      p.shieldFlash = Math.max(0, (p.shieldFlash || 0) - dt());
 
       // RECHARGE SOLAIRE (photosynthese) : la jauge remonte toute seule au
       //  soleil, pas a l'ombre d'un panneau. Le front montant (reprise de
       //  recharge : passage ombre->soleil, ou apres avoir depense une arme
       //  lourde) declenche un petit flash de glow dans le HUD.
       if (C.sun.enabled) {
+        // BOUCLIER BRISE (v2) : apres un coup absorbe, la regen PASSIVE est
+        //  coupee sunRegenLockT s (les rayons 'o', eux, creditent toujours).
+        p.sunRegenLockT = Math.max(0, (p.sunRegenLockT || 0) - dt());
         const shaded = inShade(p);
         const rate = shaded ? (C.sun.regenShade || 0) : (C.sun.regen || 0);
-        const charging = (rate > 0 && p.sun < p.sunMax);
+        const charging = (rate > 0 && p.sun < p.sunMax && p.sunRegenLockT <= 0);
         if (charging) p.sun = Math.min(p.sunMax, p.sun + rate * dt());
         if (charging && !p._sunCharging) p.sunFlash = 0.5;
         p.sunFlash = Math.max(0, (p.sunFlash || 0) - dt());
@@ -2505,6 +3116,23 @@
       add([text(n.label, { size: 13, align: 'center' }), pos(n.x, n.y - R - 16), anchor('center'), color(CREAM[0], CREAM[1], CREAM[2]), z(3.1)]);
       // nom du boss (sous le noeud) — masque tant que le niveau n'est pas fini
       inkText(done ? n.boss : '? ? ?', n.x, n.y + R + 12, 11, done ? [255, 236, 206] : [210, 216, 222], { outline: 2, z: 3 });
+      // MEILLEUR TEMPS (time-attack) sous le nom du boss, si le niveau est fini
+      if (done && i < SAVEAPI.N_LEVELS && SAVE.bestTime && SAVE.bestTime[i] > 0) {
+        const bt = SAVE.bestTime[i], bm = Math.floor(bt / 60), bs = Math.floor(bt % 60);
+        inkText('TEMPS ' + (bm < 10 ? '0' : '') + bm + ':' + (bs < 10 ? '0' : '') + bs,
+          n.x, n.y + R + 25, 10, [255, 222, 128], { outline: 2, z: 3 });
+      }
+      // v2 : pastilles MEDAILLES sous le noeud (TEMPS/DATA/SAUVES ; jury = temps seul)
+      const md = done && SAVE.medals ? SAVE.medals[(i < SAVEAPI.N_LEVELS) ? i : SAVEAPI.N_LEVELS] : null;
+      if (md) {
+        const vals = (i < SAVEAPI.N_LEVELS) ? [md.t, md.d, md.s] : [md.t];
+        const tcol = (v) => v >= 3 ? [255, 206, 71] : (v === 2 ? [206, 212, 222] : (v === 1 ? [206, 140, 80] : [96, 90, 84]));
+        vals.forEach((v, k) => {
+          const cc = tcol(v || 0);
+          add([circle(5), pos(n.x + (k - (vals.length - 1) / 2) * 15, n.y + R + 38), anchor('center'),
+            color(cc[0], cc[1], cc[2]), outline(2, rgb(INK[0], INK[1], INK[2])), opacity((v || 0) > 0 ? 1 : 0.45), z(3)]);
+        });
+      }
     });
 
     // --- bandeaux titre + aide -----------------------------------------
@@ -2561,6 +3189,32 @@
     let prog = 'Manuscrit : ' + Math.min(done, N) + ' / ' + N + ' chapitres';
     if (gotPubli) prog += '     +  PUBLICATION !';
     uiAppear(uiText(prog, C.width / 2, 118, 15, UI.CREAM, { outline: 2, z: 7 }), 0.26, -8);
+
+    // --- v2 : recap des 3 MEDAILLES du niveau (sprite medal_* si embarque,
+    //  pastille dessinee sinon ; seuil or rappele en petit, gris = ratee) ----
+    const meds = data && data.meds;
+    if (meds) {
+      const par = data.par;
+      const fmtT = (s) => { const m = Math.floor(s / 60), ss = Math.floor(s % 60); return (m < 10 ? '0' : '') + m + ':' + (ss < 10 ? '0' : '') + ss; };
+      const rows = [
+        { v: meds.t, name: (C.story.medals || [])[0] || 'TEMPS',  info: (data.tsec ? fmtT(data.tsec) : '--') + (par ? '  (or ' + fmtT(par.or) + ')' : '') },
+        { v: meds.d, name: (C.story.medals || [])[1] || 'DATA',   info: (data.pct != null ? data.pct : 0) + '%  (or 100%)' },
+        { v: meds.s, name: (C.story.medals || [])[2] || 'SAUVES', info: (data.savedPct != null ? data.savedPct : 0) + '%  (or 100%)' },
+      ];
+      rows.forEach((m, i) => {
+        const mx = C.width / 2 + (i - 1) * 196, my = 174;
+        const sprName = m.v >= 3 ? 'medal_or' : (m.v === 2 ? 'medal_argent' : (m.v === 1 ? 'medal_bronze' : 'medal_lock'));
+        if (hasSprite(sprName)) {
+          uiAppear(add([sprite(sprName), pos(mx - 56, my), anchor('center'), artScale(0.9), z(7), opacity(m.v > 0 ? 1 : 0.55)]), 0.3 + i * 0.06, -8);
+        } else {
+          const cc = m.v >= 3 ? [255, 206, 71] : (m.v === 2 ? [206, 212, 222] : (m.v === 1 ? [206, 140, 80] : [96, 90, 84]));
+          uiAppear(add([circle(13), pos(mx - 56, my), anchor('center'), color(cc[0], cc[1], cc[2]), outline(3, rgb(58, 36, 22)), z(7), opacity(m.v > 0 ? 1 : 0.5)]), 0.3 + i * 0.06, -8);
+        }
+        uiAppear(uiText(m.name, mx + 8, my - 9, 14, m.v > 0 ? UI.GOLD : UI.CREAM, { outline: 2, z: 7 }), 0.32 + i * 0.06, -8);
+        uiAppear(uiText(m.info, mx + 8, my + 11, 11, UI.CREAM, { outline: 2, z: 7 }), 0.34 + i * 0.06, -8);
+      });
+      if (data.feli) uiAppear(uiText(C.story.feliJury + '  (sans degat !)', C.width / 2, 210, 13, UI.GOLD, { outline: 2, z: 7 }), 0.5, -6);
+    }
 
     // cartouche : le texte du chapitre (pose sur le bas, laisse voir le decor)
     uiAppear(uiPill(C.width / 2, 420, 772, 116, UI.NIGHT, 0.72, 16, 4), 0.32, 16);
@@ -2676,6 +3330,17 @@
     uiAppear(mkChip(C.width / 2 - 128, 436, 'COMPLETION', comp + '%'), 0.4, 12);
     uiAppear(mkChip(C.width / 2 + 128, 436, 'MEILLEUR SCORE', String(best)), 0.46, 12);
 
+    // --- v2 : MENTION TRES HONORABLE (or partout + jury battu) -------------
+    //  Banniere doree TOUT EN HAUT (le bas est occupe par la plaque-diplome).
+    if (hasMention(SAVE)) {
+      uiAppear(uiPill(C.width / 2, 26, 470, 34, UI.GOLD, 0.94, 17, 3), 0.52, -10);
+      uiAppear(uiText(C.story.mention, C.width / 2, 26, 18, UI.NIGHT, { outline: 0, z: 7 }), 0.55, -10);
+      if (hasSprite('trophy_mention')) {
+        uiAppear(add([sprite('trophy_mention'), pos(C.width / 2 - 268, 26), anchor('center'), artScale(0.6), z(7)]), 0.58, -10);
+        uiAppear(add([sprite('trophy_mention'), pos(C.width / 2 + 268, 26), anchor('center'), artScale(0.6), z(7)]), 0.58, -10);
+      }
+    }
+
     uiPrompt(C.story.retry, C.width / 2, 490, 0.58);
     const again = () => go('overworld');
     onConfirm(again); onClick(again); onBack(again);
@@ -2697,6 +3362,8 @@
     get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; },
     // debug : abat le i-eme passant a l'ecran (teste le cadavre) ; sans arg, tous
     kill: (i) => { const l = get('passant'); (i == null ? l : [l[i]]).forEach((e) => e && e.exists() && hitEnemy(e, { dmg: 99 })); },
+    // debug : lache une bombe sur la colonne du joueur (teste chute/ombre/souffle)
+    bomb: (delay) => { if (PLAYER && PLAYER.exists()) dropBomb(PLAYER.pos.x, PLAYER.pos.y, delay || 0.9, 'shot_bomb'); },
   };
 
   // --- GO ! ------------------------------------------------------------
@@ -2711,13 +3378,16 @@
   } else if (typeof location !== 'undefined' && location.hash.indexOf('winscreen') >= 0) {
     SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #winscreen : apercu ecran soutenance (save jetable, non persistee)
     SAVE.levelsDone.fill(true); SAVE.publis.fill(true); SAVE.dataPct.fill(100); SAVE.juryDone = true; SAVE.bestScore = 4200;
+    SAVE.medals = SAVE.medals.map((_, i) => (i < SAVEAPI.N_LEVELS) ? { t: 3, d: 3, s: 3 } : { t: 3 });  // apercu MENTION
     go('win', { score: 4200 });
   } else if (typeof location !== 'undefined' && location.hash.indexOf('chapterscreen') >= 0) {
     SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #chapterscreen[0-4] : apercu ecran chapitre (save jetable)
     const cm = location.hash.match(/chapterscreen([0-4])/); const ci = cm ? parseInt(cm[1], 10) : 1;
     for (let i = 0; i <= ci; i++) SAVE.levelsDone[i] = true;
     if (ci % 2 === 0) SAVE.publis[ci] = true;
-    go('chapter', { idx: ci, score: 1500 });
+    go('chapter', { idx: ci, score: 1500,        // apercu : medailles factices (recap v2)
+      meds: { t: 2, d: 3, s: 1 }, tsec: 137, pct: 100, savedPct: 40,
+      par: { or: 115, argent: 175, bronze: 255 }, feli: true });
   } else {
     go('title');
   }

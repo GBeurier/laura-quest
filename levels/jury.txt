@@ -1,11 +1,11 @@
-                                                            
-                                                            
-                  o                       o                 
-              ----                    ----                  
-         k              c        d              k           
-                  ----      ----        ----    --          
-      d                                     --     p        
-                                                            
-  @  N N N^ dNN N  N NcN N N  N NpN N  N N Nc        B    * 
+
+
+
+        ---   ---            o
+                          i p          e      k
+                          --           --     xx      i
+                       e                              --
+                       --           --
+   @NNdNNkNNdNNkNNdNNp   c    N^ o N     N dN   B  dN   c*No
 ============================================================
 

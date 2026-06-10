@@ -69,7 +69,9 @@
   const KEY = {
     left: pick('left'),
     right: pick('right'),
-    jump: pick('jump'),                         // surtout PAS 'up' si possible -> 'z'/'w'
+    // surtout PAS 'up' (la doc/le HUD annoncent 'z' ; pick() seul rendait le 1er
+    //  element = 'up', en contradiction avec ce commentaire et CLAUDE.md).
+    jump: (ctrl.jump || []).find((k) => k !== 'up') || pick('jump'),
     shoot: pick('shoot'),
     crouch: pick('crouch'),
     cat: pick('cat'),
@@ -120,6 +122,27 @@
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  // DOUBLE-TAP sur ▼ -> pulsation SAUT (drop-through). S'EMPILE sur bindHold
+  //  (qui envoie deja le keydown crouch sur ce meme pointerdown) : on ne fait
+  //  qu'ajouter, au 2e tap rapide, un keydown/keyup KEY.jump decale dans le
+  //  temps pour que crouch soit deja "down" cote KAPLAY. Tap simple = rien de
+  //  plus (accroupi normal). 'jk' = touche jump telle que synthetisee par SAUT.
+  function bindDoubleTapJump(el) {
+    const jk = domKey(KEY.jump);
+    const WINDOW = 300, DELAY = 40, HOLD = 100;       // ms
+    let last = 0;
+    el.addEventListener('pointerdown', () => {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (now - last <= WINDOW) {
+        last = 0;                                      // consomme : pas de triple-tap en chaine
+        setTimeout(() => fire('keydown', jk), DELAY);
+        setTimeout(() => fire('keyup', jk), DELAY + HOLD);
+      } else {
+        last = now;
+      }
+    });
+  }
+
   function build() {
     if (document.getElementById('lq-touch')) return;
     injectCSS();
@@ -132,6 +155,16 @@
     const bR = makeBtn('lq-move lq-dirR', '▶');   // ▶
     const bDown = makeBtn('lq-small lq-crouch', '▼'); // ▼ accroupi
     bindHold(bL, KEY.left); bindHold(bR, KEY.right); bindHold(bDown, KEY.crouch);
+
+    // ▼ DOUBLE-TAP = drop-through (descendre a travers un panneau). Au clavier
+    //  c'est BAS+SAUT ; en tactile on evite le combo 2 doigts -> 2e tap rapide
+    //  (<=300ms) sur ▼. Le maintien (1 tap) reste l'accroupi normal : bindHold
+    //  gere deja keydown/keyup crouch, on n'y touche pas. On AJOUTE juste, au
+    //  2e tap, une pulsation SAUT (meme touche que le bouton SAUT, KEY.jump) :
+    //  keydown ~40ms APRES le keydown crouch (KAPLAY applique une touche au
+    //  frame suivant -> laisse crouch devenir "down" avant la pression saut),
+    //  puis keyup ~100ms plus tard. cf. game.js : drop = crouch tenu + press jump.
+    bindDoubleTapJump(bDown);
 
     // Actions (droite)
     const bJump = makeBtn('lq-big lq-jump', '▲', 'SAUT');   // ▲

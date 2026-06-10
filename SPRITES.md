@@ -122,6 +122,9 @@ boucle (+ flash d'opacité). Ancre **bot**.
 | `sun_goal` | Soleil = sortie du niveau | 128×128 | 256×256 | center |
 | `tile_soil` | Terre (sol) | 48×48 | 96×96 | topleft |
 | `tile_panel` | Panneau solaire (plateforme) | 48×48 | 96×96 | topleft |
+| `hazard_paddy` | Fosse-piège EXTÉRIEUR (riziere : piques de bambou) | ~72×35 | ~144×70 | **bot** |
+| `hazard_acid` | Fosse-piège INTÉRIEUR (acide vert) | ~72×34 | ~144×67 | **bot** |
+| `hazard` | Fosse-piège générique (piques d'acier, fallback) | ~72×30 | ~144×59 | **bot** |
 | `heart` | Cœur de vie (HUD) | 28×28 | 56×56 | topleft |
 | `fx_tear` | Larme (sort « pleurer ») | 28×28 | 56×56 | center |
 | `fx_grumble` | Bulle (sort « râler ») | 76×52 | 152×104 | center |
@@ -131,6 +134,17 @@ boucle (+ flash d'opacité). Ancre **bot**.
 > `tile_soil` / `tile_panel` doivent rester **carrés (48 logique)** pour la grille.
 > Le **panneau cassable** (`x` dans la map) réutilise `tile_panel` teinté rouge — pas de
 > nouveau sprite à dessiner ; il explose après un saut dessus (cf. `js/level.js`).
+>
+> **Fosses-pièges (`hazard*`, map `%`)** : ancre **`bot`** — le sprite est posé
+> **à plat sur le sol** (la lèvre proche au ras du sol, légèrement enfoncée). Le
+> jeu a très peu de hauteur sous le sol (le HUD est juste dessous), donc on ne
+> peut PAS plonger vers le bas : dessine un **TROU VU DE DESSUS** (trompe-l'œil),
+> ouverture **large et basse** (~2:1), le **danger (piques / acide) remplit
+> l'ouverture** et reste visible, fines parois qui s'assombrissent (illusion de
+> profondeur). Un trou dans le sol, **pas un seau ni un panneau debout**. Autour =
+> transparent (composite sur n'importe quel sol). Skin par biome via
+> `theme.hazard`. Art : `_hazardgen/` (Codex `image_gen`, trompe-l'œil) ;
+> placeholders : `python3 tools/gen_hazard_placeholders.py`.
 >
 > **Plateformes par décor (cap + pied) :** la plateforme `-`/`x` = un *cap* (haut où l'on
 > marche) + un *pied* étiré au sol (`addPanelDeco`). Le cap est reskinné par `theme.tiles['-']`
@@ -301,14 +315,91 @@ Tout est réglable dans `config.js → ammoTypes` (`damage`, `speed`, `cost`, `t
 ## 8. Chat (aller-retour) & recul
 
 **Chat** : il **saute hors du sac**, **court** vers l'avant en nettoyant ennemis + tirs,
-fait **demi-tour** à `cat.range`, **revient** et **resaute dans le sac** puis disparaît.
-- Animation : il utilise `cat_run` dans les deux sens (retourné via `flipX`). Tu peux
-  ajouter une feuille `cat_jump` plus tard pour les sauts d'entrée/sortie.
-- Réglages : `config.js → cat.{range, speed, hopHeight, jumpTime}`.
+fait **demi-tour** à `cat.range`, **revient** et disparaît en touchant Laura.
+- **Laura n'est PLUS figée** pendant ce temps : elle joue une **brève** pose « lance le
+  chat » (`cat.tossTime`, ~0,4 s) puis **reprend tous ses moves** (courir / tirer / sauter)
+  pendant que le chat fait son aller-retour tout seul. La pose de lancer passe par le
+  **rig en couches** (cf. §9) : calque `act_cat` sur rollers/à pied, feuille dédiée
+  `hero_bike_cat` sur vélo.
+- Animation du chat lui-même : feuille `cat_run` dans les deux sens (`flipX`).
+- **Recharge** des charges (`cat.maxCharges` = 3) :
+  - **auto** : une charge revient seule toutes les **`cat.regenTime`** s (= 40). Jamais
+    bloquée à 0. Le HUD remplit progressivement le prochain pip (anneau qui grossit).
+  - **croquettes** (`k` dans les maps, `pickup_croquette`) : **+1 instantané** en plus.
+- Réglages : `config.js → cat.{range, speed, regenTime, tossTime, maxCharges, startCharges}`.
 
 **Recul** : quand Laura touche un monstre (ou un tir), elle est **repoussée** dans la
 direction opposée (pas de contrôle pendant ~0,2 s) et joue l'anim **`hurt`** de
 `hero_hurt`. Réglages : `config.js → player.{knockback, knockTime}`.
+
+---
+
+## 9. Rig en couches : actions (lancer / chat) × locomotion (à pied / rollers / vélo)
+
+**Le problème résolu.** Avant, Laura était **un seul sprite plein-corps**. Du coup
+chaque action (lancer, lancer-le-chat) × chaque locomotion (à pied, rollers, vélo)
+aurait demandé sa propre feuille → explosion combinatoire. C'est pour ça qu'un lancer
+**en rollers/vélo** retombait sur la pose de roule (pas de bras qui lance) et que le chat
+**figeait** Laura.
+
+**La solution : deux couches.**
+- **Couche LOCOMOTION (base)** = le sprite de Laura : `hero_idle/run/jump/duck/hurt`
+  à pied, ou `hero_roll` / `hero_bike` quand elle est équipée. **Inchangée.**
+- **Couche ACTION (calque)** = un petit sprite `act_*` (haut du corps : bras qui lance,
+  ou geste de lancer le chat) **posé par-dessus** Laura. Elle continue sa locomotion en
+  dessous ; le calque joue **sa** propre anim une fois puis se retire seul.
+
+### Comment le moteur choisit (par action `throw` ou `cat`) — `game.js`, `PLAYER.onUpdate`
+1. **Équipée + feuille dédiée `<base>_<action>` présente** → swap plein-corps.
+   Ex. vélo : `hero_bike_throw`, `hero_bike_cat` (et si tu veux, `hero_roll_throw`/`hero_roll_cat`).
+2. Sinon **calque `act_<action>` présent** → base **inchangée** + on superpose `act_throw` / `act_cat`.
+3. Sinon **repli** : à pied → plein-corps historique (`hero_throw` / `hero_cat_out`) ;
+   équipée sans asset → simple pose de roule (comme aujourd'hui, aucune régression).
+
+> Tout est **gardé par `hasSprite`** : tant qu'un PNG n'existe pas, on tombe au niveau
+> suivant — rien ne casse, tu allumes les couches au fur et à mesure que tu génères.
+
+### Pourquoi ça règle ta peur d'alignement
+Le calque `act_*` se dessine **à la TAILLE D'UNE FRAME de Laura** (même 64×76 logique,
+PNG @×2 = 128×152), **même ancre `bot`**. Le moteur le pose **exactement** sur Laura
+(même `pos`/ancre/échelle/`flipX`) → **aligné par construction, zéro offset à régler**.
+Méthode d'auteur **WYSIWYG** : ouvre une frame de `hero_run`/`hero_idle` en calque de
+référence, dessine le bras-qui-lance (et la croquette/le chat qui part) **à la bonne
+place**, **efface le corps** → il ne reste que le bras sur fond transparent. Drop-in.
+*(Un micro-décalage est possible via `config.js → player.actionOffset = [x,y]` si une base
+assoit Laura un peu plus bas, mais en pratique : pas besoin.)*
+
+### Le vélo = anims **dédiées** (ton instinct était bon)
+Sur le vélo la posture est trop différente (penchée, mains au guidon) pour qu'un calque
+« debout » colle. Donc **règle 1** : tu dessines des feuilles **plein-corps** `hero_bike_throw`
+et `hero_bike_cat` (Laura-sur-le-vélo en train de lancer). Pas de calque à aligner. Si tu
+ne les fais pas, le vélo lance **depuis la pose de roule** (propre, sans glitch).
+
+### Liste d'assets à générer (regard → gauche/face, le jeu mirroir via `flipX`)
+
+| Fichier | Rôle | Couvre | logique | PNG @×2 | anim (clip) | ancre |
+|---|---|---|---|---|---|---|
+| `act_throw` | bras qui lance (graine/lob) — **calque** | à pied + rollers | 64×76 | 128×152 | `throw` | bot |
+| `act_cat`   | geste « lance le chat » — **calque** | à pied + rollers | 64×76 | 128×152 | `cat` | bot |
+| `hero_bike_throw` | Laura-sur-vélo lance — **plein-corps** | vélo | (= `hero_bike`) | idem | `throw` | bot |
+| `hero_bike_cat`   | Laura-sur-vélo lance le chat — **plein-corps** | vélo | (= `hero_bike`) | idem | `cat` | bot |
+| *(option)* `hero_roll_throw` / `hero_roll_cat` | versions dédiées rollers si le calque ne te plaît pas | rollers | (= `hero_roll`) | idem | `throw`/`cat` | bot |
+
+**Brancher** chaque feuille : ajoute son entrée dans `config.js → anims` avec le bon
+`sliceX` (nb de frames) et un clip `throw` ou `cat` `loop:false`, ex. :
+```js
+act_throw:       { sliceX: 6, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
+act_cat:         { sliceX: 5, anims: { cat:   { from: 0, to: 4, loop: false, speed: 14 } } },
+hero_bike_throw: { sliceX: 6, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
+hero_bike_cat:   { sliceX: 5, anims: { cat:   { from: 0, to: 4, loop: false, speed: 14 } } },
+```
+puis dépose les PNG dans `assets/sprites/` et `python3 gen_assets_data.py`.
+
+### Diversité de moves « gratuite »
+Une fois la couche action en place, **ajouter un move = 1 calque** `act_<nom>` (qui marche
+sur **toutes** les locomotions à pied/rollers), pas une matrice de feuilles. (Pour
+brancher une *nouvelle* action il faut une petite ligne dans `PLAYER.onUpdate` qui pose
+son timer + `actWord` ; les actuelles sont `throw` et `cat`.)
 
 ---
 

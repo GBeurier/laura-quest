@@ -1,0 +1,19 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. You will generate five separate game-item icons (one image_gen call each).
+
+STYLE (every icon): retro 16-bit pixel-art GAME ICON, classic LucasArts "Monkey Island" / SCUMM vibe. Crisp visible square pixels, bold dark brown outline, limited warm vibrant palette, flat cel shading, chunky readable CUTE shapes, a touch of humor. NO smooth gradients, NO anti-aliasing, NO 3D, NO painterly/airbrushed look.
+
+COMPOSITION (every icon): ONE single object, centered, SMALL, with WIDE empty padding all around (the object fills about 55-65% of the square frame and never touches the edges). These belong to a cheerful agrivoltaics-PhD farming platformer (sun, solar panels, crops, lab research, French academia).
+
+BACKGROUND (every icon): fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO vignette, NO text, NO frame, NO grid, NO watermark. NEVER use magenta or pink anywhere on the object itself.
+
+
+NOTE: these are SPINNING food projectiles thrown by the hero. Draw each as ONE compact, roundish object that reads well while rotating (no long thin tail), centered with wide padding (~60%).
+
+IMAGE 1 -> a compact little cluster of three or four plump ROUND brown garden seeds (pumpkin-seed teardrop shapes with a visible seam), warm tan and brown, clearly SEEDS about to sprout, definitely NOT pale elongated rice grains and NOT cereal. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/ammo_graine.png
+IMAGE 2 -> the SAME compact cluster of plump round brown garden seeds but now ABLAZE, wreathed in chunky orange-and-yellow FLAMES with a hot glowing core, a fierce flaming fire-seed projectile; the seeds still clearly visible inside the fire, compact and round (no smoke). cp the generated PNG to /home/delete/laura_quest/_icongen/raw/ammo_graine_fire.png
+IMAGE 3 -> a round golden-brown chocolate-chip COOKIE with a few chunky dark chocolate chips, warm and appetizing. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/ammo_cookie.png
+IMAGE 4 -> a small round single-serving layered birthday CAKE with creamy frosting, a couple of cute drips and one bright red cherry on top, appetizing. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/ammo_gateau.png
+IMAGE 5 -> the SAME small round layered CAKE but turned INFERNAL: dark devil's-chocolate layers, glowing molten-lava drips and small orange flames licking up, a menacing 'cake from hell', still clearly a round cake, fierce but cute (absolutely NO skull). cp the generated PNG to /home/delete/laura_quest/_icongen/raw/ammo_gateau_enfer.png
+
+Generate the images ONE AT A TIME (one image_gen call, then cp, then the next). Do NOT run chroma-key removal, do NOT delete any files. When all are done, print one line per image: '<name>: <path> (<W>x<H>)'.
+IMPORTANT: ONLY generate the image(s) above with image_gen and cp them to the given path(s). Do NOT edit any source code, do NOT run chroma-key removal, do NOT modify or delete any other file, do NOT run git.

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Laura — HUD v2 « marge du carnet de terrain »</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* =====================================================================
+     LAURA — HUD v2 : « la marge du carnet de terrain ».
+     AUCUN panneau. Tout le HUD vit dans la BANDE DE TERRE sous la levre
+     d'herbe (y = 432 + groundDrop = 446..528 dans tous les niveaux, la
+     camera etant ancree en bas) -> par construction il ne recouvre JAMAIS
+     la zone de jeu. Texte a contour d'encre (typo des ecrans titre/carte).
+     Stage = 960x528 logique (= canvas du jeu). Coordonnees portees dans
+     buildHUD() de js/game.js : L1 (etat) y=466, L2 (action) y=503.
+     L'ancien design "cartes cremes" (v1) est abandonne : les cartes du bas
+     (96px a y=418) mordaient ~50px sur la zone de jeu et cachaient les
+     ennemis au sol.
+     ===================================================================== */
+  :root{
+    --ink:#2C1B0F; --cream:#FCF5E0; --dim:#D6C09E;
+    --gold:#FFD04A; --goldHi:#FFEEA8; --leaf:#8CD460; --red:#F45848; --rose:#FC9C88;
+    --dirt1:#8A5230; --dirt2:#6E3F24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#141a24;font-family:'Baloo 2',system-ui,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:24px}
+  .stage{position:relative;width:960px;height:528px;border-radius:12px;overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);
+    background:linear-gradient(#8FD0F0 0%, #BDE8F6 60%, #CFEEF7 78%, #8FD0F0 83%)}
+  /* monde factice : collines + herbe + terre (la levre d'herbe est a y=440) */
+  .hills{position:absolute;left:0;right:0;bottom:88px;height:160px;
+    background:radial-gradient(60% 130% at 25% 100%, #79AC52, transparent 70%),
+               radial-gradient(70% 140% at 75% 100%, #6CA049, transparent 70%)}
+  .grass{position:absolute;left:0;right:0;bottom:80px;height:14px;background:#5FA844;
+    box-shadow:inset 0 4px 0 #79C257}
+  .dirt{position:absolute;left:0;right:0;bottom:0;height:82px;
+    background:linear-gradient(var(--dirt1), var(--dirt2));}
+  /* le voile d'encre qui assoit le bandeau (0.08 + 0.07 cumulatif) */
+  .dirt::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(rgba(44,27,15,.08) 0 18px, rgba(44,27,15,.15) 18px 100%)}
+  .enemy{position:absolute;bottom:94px;width:64px;height:54px;border-radius:14px;background:#777;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;opacity:.9}
+  /* ------- les 2 lignes du bandeau (centres verticaux : 466 et 503) ------- */
+  .l1{position:absolute;left:0;right:0;top:466px;transform:translateY(-50%);height:24px;z-index:2}
+  .l2{position:absolute;left:0;right:0;top:503px;transform:translateY(-50%);height:24px;z-index:2}
+  .el{position:absolute;display:flex;align-items:center;gap:4px;color:var(--cream);
+    font-weight:800;font-size:12px;
+    text-shadow:-1.4px 0 var(--ink),1.4px 0 var(--ink),0 -1.4px var(--ink),0 1.4px var(--ink),
+      -1px -1px var(--ink),1px -1px var(--ink),-1px 1px var(--ink),1px 1px var(--ink)}
+  .hearts{left:18px}.hearts .h{color:var(--red);font-size:17px}.hearts .h.off{opacity:.32}
+  .skull{left:160px;color:var(--red)}
+  .sun{left:196px}.sun .disc{width:22px;height:22px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #FFF6CE, var(--gold) 65%, #E9B017);border:2px solid var(--ink)}
+  .gauge{position:relative;width:140px;height:9px;border-radius:5px;background:rgba(44,27,15,.55);
+    outline:1.5px solid var(--ink)}
+  .gauge .fill{position:absolute;inset:0;width:62%;border-radius:5px;
+    background:linear-gradient(var(--goldHi), var(--gold) 65%)}
+  .collect{left:390px;gap:10px}.collect .c{display:flex;align-items:center;gap:4px}
+  .collect .g{font-size:14px}
+  .score{right:20px;font-size:19px;gap:7px}.score .star{color:var(--gold);font-size:16px}
+  .wep1{left:18px}.wep1 .g{font-size:15px}
+  .key{display:inline-flex;align-items:center;justify-content:center;height:15px;padding:0 5px;
+    background:var(--cream);border:1.5px solid var(--ink);border-radius:4px;
+    font-size:9px;font-weight:800;color:var(--ink);text-shadow:none;box-shadow:0 1.5px 0 rgba(44,27,15,.45)}
+  .wep2{left:124px}.wep2 .g{font-size:16px}.wep2 .cost{color:var(--gold);font-size:11px}
+  .tracks{left:250px;gap:6px}.tracks .g{font-size:13px}
+  .chev{font-size:12px;font-weight:900;text-shadow:none}
+  .chev.p.on{color:var(--red)} .chev.c.on{color:#60C4F4} .chev.off{color:var(--dim);opacity:.45}
+  .cat{left:546px;gap:5px}.cat .g{font-size:16px}
+  .pip{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--ink)}
+  .pip.on{background:var(--leaf)} .pip.off{background:rgba(44,27,15,.35)}
+  .saved{color:var(--dim);font-size:11px;margin-left:6px}
+  .time{right:20px;color:var(--dim);font-size:13px;gap:6px}
+  .clock{width:13px;height:13px;border-radius:50%;background:var(--cream);border:1.5px solid var(--ink);position:relative}
+  .clock::after{content:"";position:absolute;left:50%;top:50%;width:1.5px;height:4.5px;background:var(--ink);transform-origin:top}
+  /* ------- boss : fin ruban flottant haut-centre, seulement engage ------- */
+  .boss{position:absolute;left:50%;top:10px;transform:translateX(-50%);text-align:center;z-index:2}
+  .boss .bn{color:var(--rose);font-size:13px;font-weight:800;
+    text-shadow:-1.4px 0 var(--ink),1.4px 0 var(--ink),0 -1.4px var(--ink),0 1.4px var(--ink)}
+  .boss .bbar{width:300px;height:8px;border-radius:4px;background:rgba(44,27,15,.55);outline:1.5px solid var(--ink);margin-top:3px}
+  .boss .bf{height:100%;width:65%;border-radius:4px;background:linear-gradient(var(--rose), var(--red) 70%)}
+  .cap{color:#9aa7b8;font-size:12.5px;max-width:960px;line-height:1.5}
+  .cap b{color:#FFD04A}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hills"></div><div class="grass"></div><div class="dirt"></div>
+    <div class="enemy" style="left:120px">ennemi</div>
+    <div class="enemy" style="right:150px">ennemi</div>
+
+    <!-- BOSS (seulement quand engage) -->
+    <div class="boss"><div class="bn">CENDRINE LA RESPONSABLE</div>
+      <div class="bbar"><div class="bf"></div></div></div>
+
+    <!-- LIGNE 1 (y=466) : vie · crane · soleil · recoltes ..... score -->
+    <div class="l1">
+      <span class="el hearts"><span class="h">♥</span><span class="h">♥</span><span class="h">♥</span><span class="h off">♥</span><span class="h off">♥</span></span>
+      <span class="el skull">💀 x3</span>
+      <span class="el sun"><span class="disc"></span><span class="gauge"><span class="fill"></span></span></span>
+      <span class="el collect">
+        <span class="c"><span class="g">🌾</span>2/8</span>
+        <span class="c"><span class="g">📄</span>1/4</span>
+        <span class="c" style="opacity:.4"><span class="g">📜</span></span>
+      </span>
+      <span class="el score"><span class="star">★</span>12480</span>
+    </div>
+
+    <!-- LIGNE 2 (y=503) : graine · patisserie · upgrades · chat ..... temps -->
+    <div class="l2">
+      <span class="el wep1"><span class="g">🌱</span><span class="key">ESPACE</span></span>
+      <span class="el wep2"><span class="g">🧁</span><span class="cost">-45☀</span><span class="key">X</span></span>
+      <span class="el tracks">
+        <span class="g">🔥</span><span class="chev p on">▸</span><span class="chev p on">▸</span><span class="chev off">▸</span>
+        <span style="width:8px"></span>
+        <span class="g">⚡</span><span class="chev c on">▸</span><span class="chev off">▸</span><span class="chev off">▸</span>
+      </span>
+      <span class="el cat"><span class="g">🐱</span><span class="pip on"></span><span class="pip on"></span><span class="pip off"></span><span class="key">C</span><span class="saved">SAUVES 4</span></span>
+      <span class="el time"><span class="clock"></span>01:23</span>
+    </div>
+  </div>
+  <div class="cap">
+    <b>HUD v2 — « la marge du carnet de terrain »</b> : zero panneau, tout le bandeau vit dans la
+    <b>bande de terre</b> (y ≥ 446, zone morte dans tous les niveaux), texte a contour d'encre.
+    Ligne 1 = etat (coeurs · crane apres 1er meurtre · jauge soleil · recoltes · ★score).
+    Ligne 2 = action (graine · patisserie+cout · pistes puissance/cadence etiquetees par l'icone
+    du pickup · chat+pastilles · 🕐temps). Boss = fin ruban haut-centre, seulement engage.
+    Implemente dans <b>buildHUD()</b> (js/game.js) — ce fichier n'est que la maquette de reference.
+  </div>
+</body>
+</html>

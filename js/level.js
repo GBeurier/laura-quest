@@ -22,6 +22,9 @@
  *    'Y'  velo (equipement : + rapide, saute + haut ; perdu si touchee)
  *    '^'  caillou      (OBSTACLE solide : bloque monstres/camions, 0 degat ; Laura
  *                       saute par-dessus. Un caillou est AUSSI auto-pose a chaque bord.)
+ *    '%'  sol piege    (FOSSE A DEGAT encastree, NON solide : on court dessus mais
+ *                       le contact blesse. Skin via theme.hazard : riziere=piques /
+ *                       interieur=acide. Le DASH traverse. cf. CONFIG.hazards.)
  *    'T'  camion/tracteur (VEHICULE : va-et-vient, gros degats)
  *    'A'  assureur/huissier (te poursuit)
  *    'R'  rapport ADEME (TIR : tire de la paperasse)
@@ -86,8 +89,16 @@ const BIOMES_ALL = ['champ', 'pote', 'horti', 'labo', 'bureau'];
 
 // Les GRILLES de niveaux vivent dans levels/*.txt -> embarquees par
 //  gen_levels_data.py dans js/levels_data.js (window.LEVEL_MAPS), charge
-//  AVANT ce fichier dans index.html. Ici on ne garde que boss/theme.
+//  AVANT ce fichier dans index.html. Ici on ne garde que boss/theme/par.
 const LEVEL_MAPS = window.LEVEL_MAPS || {};
+
+// --- PARS des medailles TEMPS (GAMEPLAY.md §5.1) ----------------------------
+//  Chaque niveau porte un champ par: { or, argent, bronze } en secondes
+//  ENTIERES. Valeurs PLACEHOLDER, a calibrer au playtest (run dev #gameauto
+//  + chrono, cibles ~ x1.25 / x1.75 / x2.5 du temps dev). Formule provisoire :
+//  course pure ~ largeur_tuiles * 48 px / 250 px/s ; or ~ course x3 + 30 s de
+//  boss (arrondi aux 5 s) ; argent ~ or x1.5 ; bronze ~ or x2.2 (arrondis aux
+//  5 s). Jury : pas de course, combat long (~2 min 30) -> valeurs fixes.
 
 window.LEVELS = {
 
@@ -103,10 +114,12 @@ window.LEVELS = {
   //  clair, tint verte de Camargue (parallax par defaut).
   niveau1: {
     boss: 'agriculteur',
+    par: { or: 115, argent: 175, bronze: 255 },   // 148 tuiles -> course ~28 s (placeholder, cf. bloc PARS)
     theme: {
       sky: [150, 212, 246],
       tint: [228, 246, 214],
       pickups: { data: 'pickup_graine', page: 'pickup_plant' },
+      hazard: ['hazard_paddy'],    // EXTERIEUR : fosse a piques de bambou dans l'eau boueuse (riziere)
       passant: PASSANT('champ'),   // habits des champs (Camargue)
     },
     map: LEVEL_MAPS.niveau1,
@@ -120,6 +133,7 @@ window.LEVELS = {
   //  random pote 'N'. Pickups 'd'=pilules, 'p'=pages.
   niveau2: {
     boss: 'proprietaire',
+    par: { or: 180, argent: 270, bronze: 395 },   // 260 tuiles -> course ~50 s (placeholder, cf. bloc PARS)
     theme: {
       sky: [196, 188, 206],
       tint: [222, 212, 224],
@@ -130,6 +144,7 @@ window.LEVELS = {
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_pilule', page: 'pickup_page' },
+      hazard: ['hazard_acid'],     // INTERIEUR : fosse d'acide / produit renverse
       passant: PASSANT('pote'),
     },
     map: LEVEL_MAPS.niveau2,
@@ -142,6 +157,7 @@ window.LEVELS = {
   //  d'arrosage 'U', random horti 'N'. Pickups 'd'=plants, 'p'=charts.
   niveau3: {
     boss: 'rstudio',
+    par: { or: 190, argent: 285, bronze: 420 },   // 280 tuiles -> course ~54 s (placeholder, cf. bloc PARS)
     theme: {
       sky: [196, 226, 200],
       tint: [206, 236, 200],
@@ -151,6 +167,7 @@ window.LEVELS = {
       tiles: { '=': ['tile_sol_serre'] },
       indoor: true,
       pickups: { data: 'pickup_plant', page: 'pickup_chart' },
+      hazard: ['hazard_acid'],     // INTERIEUR (serre) : bac de solution nutritive/acide renverse
       passant: PASSANT('horti'),   // serre -> tenue d'horticulteur
     },
     map: LEVEL_MAPS.niveau3,
@@ -164,6 +181,7 @@ window.LEVELS = {
   //  'N'. Pickups 'd'=data, 'p'=sheets.
   niveau4: {
     boss: 'michael',
+    par: { or: 205, argent: 310, bronze: 450 },   // 300 tuiles -> course ~58 s (placeholder, cf. bloc PARS)
     theme: {
       sky: [170, 184, 200],
       tint: [200, 212, 230],
@@ -174,6 +192,7 @@ window.LEVELS = {
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_data', page: 'pickup_sheet' },
+      hazard: ['hazard_acid'],     // INTERIEUR (labo) : fosse d'acide / reactif renverse
       passant: PASSANT('labo'),    // labo -> blouse blanche
     },
     map: LEVEL_MAPS.niveau4,
@@ -187,6 +206,7 @@ window.LEVELS = {
   //  random admin 'N'. Pickups 'd'=pages, 'p'=data.
   niveau5: {
     boss: 'cendrine',
+    par: { or: 220, argent: 330, bronze: 485 },   // 330 tuiles -> course ~63 s (placeholder, cf. bloc PARS)
     theme: {
       sky: [228, 220, 198],
       tint: [232, 226, 210],
@@ -197,6 +217,7 @@ window.LEVELS = {
       panelLeg: 'shelf_leg',
       indoor: true,
       pickups: { data: 'pickup_page', page: 'pickup_data' },
+      hazard: ['hazard_acid'],     // INTERIEUR (couloirs) : fosse d'acide / produit d'entretien renverse
       passant: PASSANT('bureau'),  // couloirs/admin -> tenue de bureau
     },
     map: LEVEL_MAPS.niveau5,
@@ -207,7 +228,8 @@ window.LEVELS = {
   //  les biomes, cf. bosses.js jury). Pickups 'd'=pilules, 'p'=champignons.
   jury: {
     boss: 'jury',
-    theme: { sky: [70, 86, 140], tint: [150, 162, 205], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL) },   // nuit ; randoms de tous les biomes
+    par: { or: 210, argent: 300, bronze: 420 },   // pas de course : combat long ~2 min 30 (placeholder, cf. bloc PARS)
+    theme: { sky: [70, 86, 140], tint: [150, 162, 205], hazard: ['hazard_acid'], pickups: { data: 'pickup_pilule', page: 'pickup_champignon' }, passant: PASSANT_ALL(BIOMES_ALL) },   // nuit ; randoms de tous les biomes
     map: LEVEL_MAPS.jury,
   },
 };

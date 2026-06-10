@@ -1,0 +1,21 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. You will generate 1 separate sprite(s) (one image_gen call each), each a DEADLY PIT carved into the ground for a 16-bit platformer.
+
+STYLE (every sprite): retro 16-bit SNES pixel-art, crisp visible square pixels, BOLD dark outline, limited saturated palette, flat cel shading, high contrast. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look. This is a cheerful agrivoltaics-PhD farming platformer (rice paddies, lab research, French academia).
+
+WHAT IT IS (every sprite): a HOLE / PIT carved into the FLOOR that the player looks DOWN into -- a recessed trap she runs over. Seen from a STEEP overhead 3/4 angle (as if standing right over it, looking down INTO it).
+GEOMETRY (CRITICAL -- read carefully, every sprite):
+  - WIDE and SHORT image (about 2:1, much wider than tall).
+  - The OPENING is a WIDE foreshortened ELLIPSE that lies FLAT on the ground and FILLS the frame. You look straight DOWN into the hole.
+  - The DANGER (acid / stakes / spikes) FILLS the whole opening and is fully visible from above -- it is the main subject, NOT hidden at a far bottom.
+  - Only a SHALLOW band of inner WALL shows around the rim, darkening fast with depth (trompe-l'oeil: it reads as a deep shaft whose bottom you cannot see). Near (front/bottom) rim lit from the UPPER-LEFT; far (top) rim is the back edge.
+IT IS A HOLE IN THE FLOOR (flat ground decal) -- NOT a bucket, pot, cauldron, barrel, basket, tub, bowl or vessel, and NOT a wall/billboard standing up. Do NOT draw any OUTSIDE of a container (no belly, base, handles, legs). Only the ground cut away and the inside of the hole, seen from above.
+
+TROMPE-L'OEIL (THE WHOLE POINT): a flat decal that creates a CONVINCING illusion of a REAL hole the player could fall into -- like anamorphic sidewalk-chalk "pit" street-art, but clean 16-bit pixel art. Sell depth with strong upper-left light, a bright sunlit near rim, a hard dark inner-shadow just under the rim, and the danger sitting down inside. Cracks/dirt/tiles on the rim continue the surrounding floor. Carved and three-dimensional, never a flat painted patch, never a cartoon black oval.
+
+BACKGROUND (every sprite): fill the ENTIRE area AROUND the pit with ONE perfectly FLAT solid #ff00ff magenta (chroma-key, removed later) so the pit composites into ANY floor. Only a THIN ring of exposed earth/material may border the mouth. The pit fills ~85% of the frame, mouth touching the top. NO drop shadow on the magenta, NO floor texture around it, NO gradient, NO text, NO frame, NO grid, NO watermark. NEVER use magenta/pink inside the pit.
+
+=== SPRITE: hazard ===
+STEEL SPIKE PIT (generic), seen from ABOVE. A bed of sharp grey IRON / STEEL spikes points UP at the viewer from a dark hole, cold metal with bright highlights and deep shadow between them. The rim is cracked stone / dark metal. Stark and lethal.
+
+Save the raw magenta sheet as: /home/delete/laura_quest/_hazardgen/raw/hazard.png
+Make it WIDE and SHORT (about 2:1), the elliptical opening filling the frame, danger seen from above.

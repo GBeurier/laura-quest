@@ -1,0 +1,12 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback. Do NOT draw procedurally (no PIL/SVG/canvas). Generate ONE single image.
+
+SUBJECT: a top-down DANGER-ZONE shadow marker for a platformer, the warning shadow that appears on the ground where a bomb is about to drop. Draw a wide, FLATTENED dark oval shadow (seen from straight above, lying on the floor) with a BOLD bright red-orange WARNING RING around its rim and a slightly darker center, a little ominous. retro 16-bit pixel-art, crisp visible square pixels, thick dark outline, flat cel shading, NO smooth gradients, NO 3D, NO anti-aliasing.
+
+COMPOSITION: the flattened oval is centered and fills about 85% of the width and about 55% of the height (wide and short, like a shadow on the ground). NO bomb, NO object, NO crosshair text.
+
+BACKGROUND: fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta (chroma key). NO real shadow, NO gradient, NO text, NO frame. NEVER use magenta or pink anywhere on the oval itself.
+
+cp the generated PNG to /home/delete/laura_quest/_icongen/raw/fx_bomb_shadow.png
+When done, print: 'fx_bomb_shadow: <path> (<W>x<H>)'.
+
+IMPORTANT: ONLY generate the image(s) above with image_gen and cp them to the given path(s). Do NOT edit any source code, do NOT run chroma-key removal, do NOT modify or delete any other file, do NOT run git.

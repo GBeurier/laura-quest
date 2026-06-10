@@ -15,11 +15,17 @@ window.CONFIG = {
   height: 528,
   background: [143, 208, 240],
   tileSize: 48,
+  // Zoom d'AFFICHAGE sur desktop (1 = taille native 960x528 CSS px ; 1.4 = +40%).
+  //  Applique en CSS (transform centree) sur le canvas APRES kaplay() -> n'affecte
+  //  NI la resolution interne NI le gameplay (camera/HUD/collisions inchanges),
+  //  c'est juste un agrandissement de l'image. Ignore sur mobile (le canvas y est
+  //  deja en letterbox+stretch plein ecran, cf. js/mobile.js).
+  desktopZoom: 1.4,
   // Decalage VERTICAL du monde, en PIXELS : on descend tout le jeu de
   //  `groundDrop` px (sol + bas, + de ciel, collines/montagnes du parallax
   //  remontees avec l'horizon). 0 = monde centre comme a l'origine.
-  //  ATTENTION : trop grand -> Laura passe derriere la barre HUD du bas
-  //  (qui commence a y = height-58 = 470). 8 px reste bien au-dessus.
+  //  Le HUD (bandeau dans la bande de terre, buildHUD de js/game.js) suit
+  //  groundDrop automatiquement ; au-dela de ~16 sa 2e ligne sort de l'ecran.
   groundDrop: 8,
 
   // --- Art / haute definition -----------------------------------------
@@ -33,6 +39,29 @@ window.CONFIG = {
   //  crumbleDelay = delai avant qu'un panneau cassable ('x') explose une fois
   //  que Laura a saute dessus (assez pour un seul saut).
   tile: { crumbleDelay: 0.4 },
+
+  // --- Bombes qui tombent (boss tracteur / michael / jury) -------------
+  //  Un projectile descend pendant le telegraphe (ombre fx_bomb_shadow qui
+  //  grandit au SOL/sur le PANNEAU vise) puis EXPLOSE au PREMIER impact :
+  //  bloquee par le 1er solide de la colonne (sol '=', panneau '-'/'x',
+  //  caillou '^') -> se planquer SOUS un panneau protege. Le souffle tue les
+  //  monstres dans blast et blesse Laura. size = facteur de taille du sprite.
+  bombs: { size: 0.6, fallFrom: 320, blast: 64, damage: 2 },
+
+  // --- Vehicule d'arrivee (camionnette CIRAD) -------------------------
+  //  Sprite statique pose AU PREMIER PLAN au depart de CHAQUE niveau : le
+  //  vehicule dans lequel Laura arrive. La camionnette regarde a DROITE (cabine
+  //  a droite du sprite, arriere a gauche) ; on cale son AVANT peint `clearance`
+  //  px a gauche du centre de Laura -> elle reste toujours degagee (le spawn
+  //  varie : col 2 au jury, col 3 ailleurs), et l'arriere part loin hors-champ
+  //  a gauche. Objet du MONDE (pas fixed) -> il defile et sort de l'ecran quand
+  //  Laura avance. `z` au-dessus du joueur (premier plan). `scale` retaille la
+  //  camionnette (1 = taille brute du PNG, enorme ; 0.55 ~ 2.1x la taille de
+  //  Laura). `clearance` = ecart en px entre l'avant peint et le centre de Laura
+  //  (plus petit = plus de camionnette visible mais plus pres d'elle). `nudgeX`
+  //  (+ = droite) et `sink` (+ = bas) = decalages MANUELS en plus (le calage au
+  //  sol est deja auto via le pad transparent du PNG).
+  startVehicle: { enabled: true, sprite: 'bg_startlevel', scale: 0.55, clearance: 42, z: 40, nudgeX: 70, sink: 65 },
 
   // --- Decor de fond : PARALLAX + skins (valeurs PAR DEFAUT) ----------
   //  Chaque niveau peut tout surcharger via LEVELS[x].theme (cf. level.js).
@@ -119,19 +148,25 @@ window.CONFIG = {
     //  dans game.js) -> relacher tot = petit saut. jumpCutG (ancien systeme
     //  "tenir BAS") laisse a 0 : BAS sert UNIQUEMENT a s'accroupir.
     jumpCutG: 0,
-    maxHp: 5,
+    maxHp: 4,             // v2 : 4 coeurs (le bouclier soleil encaisse devant, cf. GAMEPLAY.md §2)
     invulnTime: 1.1,
     startAmmo: 'graine',  // tir de base
     knockback: 300,       // recul quand Laura touche un monstre / un tir
     knockTime: 0.22,      // duree du recul
-    // DASH : ruee horizontale courte avec i-frames (esquive). Coute de l'energie
-    //  (jauge soleil) et a un cooldown. Direction = sens courant de Laura.
-    dash: { speed: 560, duration: 0.16, cooldown: 0.5, cost: 25, iframes: 0.22 },
+    // DASH : ruee horizontale courte avec i-frames (esquive). GRATUIT (cf.
+    //  GAMEPLAY.md : le deplacement ne taxe pas l'energie), simple cooldown.
+    //  Direction = sens courant de Laura. cost=0 -> jamais bloque.
+    dash: { speed: 560, duration: 0.16, cooldown: 0.5, cost: 0, iframes: 0.22 },
     // Accroupissement : la planche hero_duck est "scrubbee" selon la progression.
     //  duckDown = temps pour se baisser a fond (rapide, anim jouee a l'endroit) ;
     //  duckUp   = temps pour rejouer l'anim a l'envers et se relever.
     duckDown: 0.12,
     duckUp: 0.12,
+    // CALQUE D'ACTION (lancer / chat superpose au-dessus de Laura, cf. SPRITES.md "rig").
+    //  Sur rollers/a pied, un sprite act_* (bras qui lance / lance le chat) est pose
+    //  EXACTEMENT sur Laura (meme pos/ancre/echelle). actionOffset = petit decalage
+    //  [x,y] px optionnel si une base assoit Laura differemment (defaut: aucun).
+    actionOffset: [0, 0],
   },
 
   // --- Tir ------------------------------------------------------------
@@ -150,18 +185,16 @@ window.CONFIG = {
     throwHold: 0.32,
   },
 
-  // Armes lancees (2) : 2 roles. graine = TIR DE BASE droit GRATUIT (ESPACE) ;
-  // gateau = LOB LOURD en cloche AoE auto-vise (X), qui coute de l'energie.
-  //  cost = energie consommee par tir (l'energie = la jauge "soleil").
-  //  GRAINE = tir de base, cout 0 -> jamais bloque.
-  //  traj : 'straight' (tout droit) ou 'arc' (en cloche).
+  // Munitions de BASE (sprite/vitesse/anim de lancer). Le LEVELING (nb de graines,
+  //  taille d'explosion, cadence, cout) vit dans CONFIG.arsenal ; ici on ne garde
+  //  que les 2 munitions reellement tirees : graine (droit) + gateau (cloche AoE).
+  //  traj : 'straight' (tout droit) ou 'arc' (en cloche). cost/damage/aoe sont
+  //  surcharges par arsenal au moment du tir (cf. fireBase / lobShoot dans game.js).
   ammoTypes: {
-    graine:   { sprite: 'ammo_graine', label: 'GRAINES',     damage: 1, speed: 600, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed'   },
-    //  GATEAU = cloche EXPLOSIVE : a l'impact, eclate en AoE (degats a tout ce
-    //  qui est dans aoe.radius). C'est le lob lourd "zone".
-    gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX',      damage: 3, speed: 500, cost: 20, traj: 'arc',      throwSprite: 'hero_throw_cake', aoe: { radius: 94, damage: 3 } },
-    //  BOMBE = tir de base EXPLOSIF droit (famille de powerup 'bombe'). Gratuit, petite AoE.
-    bombe:    { sprite: 'ammo_gateau', label: 'BOMBES',       damage: 2, speed: 460, cost: 0,  traj: 'straight', throwSprite: 'hero_throw_seed', aoe: { radius: 58, damage: 2 } },
+    // throwSprite : les feuilles dediees hero_throw_seed/cake ont ete retirees
+    //  des assets -> les deux armes utilisent la pose de lancer generique.
+    graine:   { sprite: 'ammo_graine', label: 'GRAINES', damage: 1, speed: 620, cost: 0,  traj: 'straight', throwSprite: 'hero_throw' },
+    gateau:   { sprite: 'ammo_gateau', label: 'GATEAUX', damage: 3, speed: 520, cost: 0,  traj: 'arc',      throwSprite: 'hero_throw', aoe: { radius: 94, damage: 3 } },
   },
 
   // --- Chat angora (allie deploye) ------------------------------------
@@ -176,11 +209,21 @@ window.CONFIG = {
     spawnAhead: 42,   // distance devant Laura ou le chat est pose au sol
     catchDist: 26,    // distance a Laura ou le chat est "rattrape" (disparait) au retour
     damage: 4,        // degats vs ennemis ordinaires (one-shot la plupart)
-    bossDamage: 2,    // degats vs boss (1 seul coup par chat -> evite de trop entamer les boss)
+    bossDamage: 6,    // degats vs boss (1 seul coup par chat)
+    // v2 : le chat est l'OUVRE-BOITE des boss — le toucher OUVRE une fenetre de
+    //  vulnerabilite (vulnOpen s, degats x1 au lieu de la garde), rouvrable au
+    //  plus tot vulnRelock s plus tard sur le meme boss. cf. hitBoss/deployCat.
+    vulnOpen: 1.5,    // duree de la fenetre ouverte par le chat (s)
+    vulnRelock: 8,    // delai mini entre deux ouvertures sur le meme boss (s)
     cleanRadius: 46,  // rayon de nettoyage des tirs ennemis
     maxCharges: 3,    // reserve de chats (arcade)
     startCharges: 2,
     chargeTime: 0,    // chat INSTANTANE (plus de maintien) : deploiement a la pression de C
+    regenTime: 40,    // RECHARGE AUTO : une charge revient seule toutes les 40s (jamais bloquee a 0).
+    //                   Les croquettes ('k', pickup_croquette) donnent EN PLUS un +1 instantane.
+    tossTime: 0.4,    // duree de la pose "lance le chat" avant que Laura reprenne ses anims normales
+    //  Laura n'est PLUS figee pendant que le chat court : il part, fait son aller-retour
+    //  tout seul, et Laura continue de bouger / tirer / sauter (cf. calque d'action, SPRITES.md).
   },
 
   // --- Jauge "Soleil" = ENERGIE / STAMINA -----------------------------
@@ -191,23 +234,78 @@ window.CONFIG = {
   sun: {
     enabled: true,
     max: 100,
-    regen: 8,             // recharge/s EN PLEIN SOLEIL (passif, photosynthese)
-    regenShade: 0,        // recharge/s A L'OMBRE sous un panneau ('-'/'x') -> 0 = aucune
-    rayGain: 28,          // bonus instantane d'un rayon de soleil ramasse
+    regen: 18,            // recharge/s EN PLEIN SOLEIL (photosynthese) -> genereuse mais plus gratuite (v2)
+    regenShade: 0,        // recharge/s A L'OMBRE sous un panneau ('-'/'x') -> 0 = zone de tension
+    rayGain: 30,          // bonus instantane d'un rayon 'o' ramasse (EXEMPTE du hitRegenDelay)
+    // SURBOUCLIER v2 (cf. GAMEPLAY.md §2) : un coup n'est absorbe que si
+    //  sun >= hitAbsorb (en dessous, le soleil est CONSERVE — c'est de la
+    //  munition — mais ne protege plus : equipement puis coeur encaissent).
+    //  Apres un coup absorbe, la regen PASSIVE est coupee hitRegenDelay s
+    //  ("bouclier brise", jauge grisee + cran HUD a hitAbsorb) ; les rayons 'o'
+    //  creditent toujours pendant le lock. cf. damagePlayer.
+    hitAbsorb: 40,        // soleil draine par coup absorbe (= aussi le SEUIL mini pour proteger)
+    hitRegenDelay: 2.5,   // s sans regen passive apres un coup absorbe (bouclier brise)
     bossDropEvery: 9,     // rayons plus RARES pendant un boss (le passif fait le gros)
   },
 
-  // --- TIER (pips de "niveau") = conscience / puissance ----------------
-  //  3 pastilles discretes, DECOUPLEES de l'energie. +1 en ramassant une
-  //  data ('d'). -1 a chaque coup recu (tier 2/3 = bouclier) ET a chaque
-  //  passant tue (la conscience). Au tier 1 il n'y a plus de bouclier ->
-  //  le coup coute un coeur. Le tir de base (graine) gagne en puissance
-  //  avec le tier (damage = tier, plafonne a max). cf. game.js.
-  tier: { max: 3, start: 1 },
+  // --- ARSENAL : 2 armes x 2 axes (cf. GAMEPLAY.md) -------------------
+  //  Remplace l'ancien systeme TIER. Les DEUX armes (graines ESPACE / patisseries
+  //  X) partagent UN SEUL niveau de PUISSANCE et UN SEUL de CADENCE. Ils montent
+  //  via pickups (pickup_puissance / pickup_cadence, caracteres 'e'/'i' dans les
+  //  maps), plafonnent a max, et RESET a chaque niveau (PLAYER recree par scene).
+  //   - PUISSANCE = force : nb de graines (1->3->5) + taille des explosions de
+  //     patisserie (cookie->gateau->gateau des enfers).
+  //   - CADENCE   = vitesse de tir (delai graines / cooldown du lob).
+  arsenal: {
+    power: { max: 3, start: 1 },
+    rate:  { max: 3, start: 1 },
+    // GRAINES (ESPACE, GRATUIT). levels[power-1] : pellets/spread/damage/flame/pierce.
+    //  P3 = 5 graines ENFLAMMEES (flame) et TRANSPERCANTES (pierce).
+    graines: {
+      speed: 620,
+      cadence: [0.28, 0.18, 0.11],                                   // delai entre tirs par niveau de CADENCE
+      bossTick: [1, 2, 3],                                           // degat d'UN TICK vs BOSS par niveau de PUISSANCE (cf. CONFIG.bossHit)
+      levels: [
+        { pellets: 1, spread: 0,    damage: 1, flame: false, pierce: 0 },
+        { pellets: 3, spread: 0.17, damage: 1, flame: false, pierce: 0 },
+        { pellets: 5, spread: 0.28, damage: 2, flame: true,  pierce: 2 },
+      ],
+    },
+    // PATISSERIES (X, COUTE DU SOLEIL). levels[power-1] : sprite/scale/radius (AoE)
+    //  /damage/cost(soleil)/secondary(mini-explosions du "gateau des enfers").
+    patisseries: {
+      speed: 520,
+      cadence: [0.70, 0.52, 0.36],                                   // cooldown du lob par niveau de CADENCE
+      levels: [
+        { sprite: 'ammo_cookie',       scale: 0.95, radius: 60,  damage: 2, cost: 30, secondary: 0 },
+        { sprite: 'ammo_gateau',       scale: 1.0,  radius: 96,  damage: 3, cost: 45, secondary: 0 },
+        { sprite: 'ammo_gateau_enfer', scale: 1.1,  radius: 132, damage: 4, cost: 48, secondary: 4, enfers: true },
+      ],
+    },
+  },
 
-  // --- Sols pieges ('%') : hazard plat au sol, blesse au contact -------
-  //  Skin par biome via LEVELS[x].theme.hazard (clous/acide/tessons...). Le DASH
-  //  (i-frames) permet de traverser. Dans les maps : le caractere '%'.
+  // --- Degats VS BOSS : ticks par canal + garde (v2, cf. GAMEPLAY.md §4.1) ---
+  //  Un boss n'encaisse qu'UN coup de graines tous les seedCd s (une volee de 5
+  //  compte pour 1 ; degat du tick = arsenal.graines.bossTick[puissance-1]) et
+  //  qu'UNE explosion de patisserie tous les aoeCd s (degat AoE plein). Hors
+  //  fenetre de punition tout est multiplie par bosses.<x>.guard ; pendant une
+  //  fenetre (etat IA, b.vulnT du chat, b.openT post-salve) le multiplicateur
+  //  passe a 1 et le boss est surligne dore. cf. hitBoss (game.js).
+  bossHit: { seedCd: 0.25, aoeCd: 0.5 },
+
+  // --- Onde de choc au sol (seisme LOCALISE des boss, cf. api.quake) --------
+  //  Remplace les tremblements d'ecran de telegraphe (Todo "virer les
+  //  tremblements") : vague de poussiere qui parcourt le sol et blesse le
+  //  joueur s'il est AU SOL sur son passage (sauter / dasher l'evite).
+  quake: { speed: 300, damage: 1, width: 26 },
+
+  // --- Sols pieges ('%') : FOSSE A DEGAT encastree dans le sol (perspective),
+  //  blesse au CONTACT en passant dessus (le sol reste solide -> on ne tombe pas).
+  //  Skin par biome via LEVELS[x].theme.hazard : EXTERIEUR 'hazard_paddy' (piques
+  //  de bambou dans l'eau, riziere) / INTERIEUR 'hazard_acid' (acide renverse).
+  //  Le DASH (i-frames) permet de traverser. Dans les maps : le caractere '%'.
+  //  Rendu/collision : spawnHazard (game.js) ; art : _hazardgen/ + placeholders
+  //  tools/gen_hazard_placeholders.py. Spec sprite : SPRITES.md.
   hazards: { touchDamage: 1 },
 
   // --- Ennemis (modeles) ----------------------------------------------
@@ -272,9 +370,12 @@ window.CONFIG = {
   //  Ordre de difficulte CROISSANT par POSITION (cf. LEVELS / design definitif) :
   //    niveau1 agriculteur (le + facile, Riziere) -> niveau2 Francois (Appart)
   //    -> niveau3 rstudio (Serre) -> niveau4 michael (Labo) -> niveau5 cendrine
-  //    (Universite, le + dur des 5) -> jury (megaboss). Les behavior/sprite/shot
-  //    NE CHANGENT PAS d'un boss ; seules HP/score/cadence sont recalibrees pour
-  //    suivre la POSITION dans la progression (palier 18 -> 24 -> 30 -> 38 -> 46).
+  //    (Universite, le + dur des 5) -> jury (megaboss boss-rush).
+  //  v2 (GAMEPLAY.md §4) : les HP paraissent enormes mais le boss n'encaisse
+  //    que des TICKS plafonnes (CONFIG.bossHit) x sa GARDE (guard, multiplicateur
+  //    hors fenetre de punition ; 1 pendant les fenetres). Duree visee : ~25s
+  //    (agriculteur) -> ~2min30 (jury). PHASE 2 a 50% HP : champs p2X lus par
+  //    bosses.js (b.def.p2X || defaut code).
   //  Champs de tuning IA (windTime, revTime, aimTime, ...) lus par bosses.js ;
   //  l'IA a des defauts, donc aucun champ n'est obligatoire pour eviter un crash.
   bosses: {
@@ -288,65 +389,72 @@ window.CONFIG = {
     //  si joueur a >skyMinDist px, chute apres skyDelay) -> stall (cale, immobile
     //  stallTime = PUNITION). Esquive : lob depuis panneaux + saut/dash sous bombes.
     agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
-                    hp: 18, maxHp: 18, touchDamage: 2, shotSpeed: 240, speed: 150, range: 300, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
-                    revTime: 0.5, stallTime: 1.8, skyEvery: 2.2, skyDelay: 0.8, skyMinDist: 160 },
+                    hp: 70, maxHp: 70, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 300, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
+                    //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd ~ 2.5s),
+                    //  sinon AUCUNE bombe ne part en drive (bug v1 : 3.4 > 2.5).
+                    revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, skyMinDist: 160,
+                    p2DriveMul: 1.25, p2SkyEvery: 1.1 },
 
     // niveau2 (Appart) — proprio (IA 'charger').
     //  pace (approche ; 1 cycle/2 tire un TRIPLE missile, milieu DUCKABLE ; paceTime)
     //  -> wind (se cabre, windTime) -> dash (rue dashSpeed pdt dashTime, seisme local)
     //  -> stagger (essouffle = PUNITION, staggerTime) -> throw (eventail 3, throwTime).
     proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
-                    hp: 24, maxHp: 24, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_stake',
-                    paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5 },
+                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_stake',
+                    paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5,
+                    p2StaggerTime: 0.9, p2RewindTime: 0.3 },
 
     // niveau3 (Serre) — rstudio (IA 'errors').
     //  fire (3 salves de triple-missile espacees de burstGap, pdt attackTime) ->
     //  summon (cafards fragiles spawnes EN FACE, summonTime) -> load (immobile =
     //  PUNITION, loadTime). Esquive : dash + petites plateformes.
     rstudio:      { sprite: 'boss_rstudio_move', attackSprite: 'boss_rstudio_atk', behavior: 'errors',
-                    hp: 30, maxHp: 30, touchDamage: 2, shotSpeed: 280, speed: 60, range: 280, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
-                    attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5 },
+                    hp: 170, maxHp: 170, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 280, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
+                    attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5,
+                    p2BurstGap: 0.6 },
 
     // niveau4 (Labo) — michael (IA 'modeles').
     //  garde ses distances (keepMin..keepMax) ; vise (aimTime) puis lache une BOMBE
     //  EN PAPIER sur le joueur ; 1 cycle/3 = overload (eventail 3) ; recalc (ne tire
     //  pas = PUNITION, recalcTime). Esquive : bouger lateralement / double-saut.
     michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
-                    hp: 38, maxHp: 38, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart',
-                    aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440 },
+                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart',
+                    aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440,
+                    p2KeepMin: 180, p2KeepMax: 380 },
 
     // niveau5 (Universite) — cendrine (IA 'paperasse') : LE PLUS DUR DES 5.
     //  pre (annonce la destination du TP, preTime) -> implosion (retrecit+clignote,
     //  implodeTime) -> TP + eventail de formN formulaires + TAMPON-PIEGE (throwTime)
     //  -> window (PUNITION, windowTime). Esquive : dash apres le TP / les tampons.
     cendrine:     { sprite: 'boss_cendrine_move', attackSprite: 'boss_cendrine_atk', behavior: 'paperasse',
-                    hp: 46, maxHp: 46, touchDamage: 2, shotSpeed: 330, speed: 90, range: 320, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
-                    preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4 },
+                    hp: 280, maxHp: 280, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 320, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
+                    preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4,
+                    p2FormN: 6, p2HazardDur: 3.5, p2WindowTime: 0.9 },
 
     // FINAL — jury (IA 'jury') : megaboss 3 phases selon HP. >66% Q&A (eventail 3,
     //  cadence shotEvery) ; 33-66% debat (eventail 5 + anneau de ringN + minion) ;
     //  <33% verdict (eventail de panicN + bombes + MUR A TROU a dasher). enrageTime
     //  = pose marquee au changement de phase. Esquive : lob a distance puis DASH.
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
-                    hp: 64, maxHp: 64, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32,
-                    enrageTime: 0.7, ringN: 8, panicN: 7 },
+                    hp: 450, maxHp: 450, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32,
+                    enrageTime: 0.7, ringN: 8, panicN: 9, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve
   },
 
   // --- Collectibles ---------------------------------------------------
   pickups: {
     sunray:    { sprite: 'pickup_sunray',    score: 50 },             // recharge la jauge soleil
-    cafe:      { sprite: 'pickup_cafe',      heal: 2, score: 30 },    // rend des coeurs
+    cafe:      { sprite: 'pickup_cafe',      heal: 1, score: 30 },    // rend UN coeur (v2 : un soin, pas un full-heal)
     data:      { sprite: 'pickup_data',      score: 75 },             // donnee de terrain
     page:      { sprite: 'pickup_page',      score: 100 },            // page de manuscrit
     publi:     { sprite: 'pickup_publi',     score: 1000 },           // PUBLI cachee (100%)
     croquette: { sprite: 'pickup_croquette', score: 20 },             // recharge le chat
     rollers:   { sprite: 'pickup_rollers',   score: 40, equip: 'rollers' }, // equipement rollers
     velo:      { sprite: 'pickup_velo',      score: 60, equip: 'velo' },     // equipement velo
-    // POWERUPS D'ARME : changent le tir de base (p.weapon). Placement dans les maps
-    //  + sprites pickup_* a venir (passe level design / art) ; fallback propre si absent.
-    arme_spread: { sprite: 'pickup_spread', score: 60, weapon: 'spread' },   // tir en eventail
-    arme_pierce: { sprite: 'pickup_pierce', score: 60, weapon: 'pierce' },   // tir percant
-    arme_bombe:  { sprite: 'pickup_bombe',  score: 60, weapon: 'bombe'  },   // tir explosif
+    // UPGRADES D'ARSENAL (cf. GAMEPLAY.md) : montent un axe COMMUN aux 2 armes,
+    //  plafonne a arsenal.{power,rate}.max, RESET par niveau. Places dans les maps
+    //  via 'e' (puissance) / 'i' (cadence) -> buildLevel. Fallback propre si PNG absent.
+    puissance: { sprite: 'pickup_puissance', score: 60, upgrade: 'power' },  // +1 PUISSANCE (force)
+    cadence:   { sprite: 'pickup_cadence',   score: 60, upgrade: 'rate'  },  // +1 CADENCE (vitesse de tir)
   },
 
   // --- Equipements (objets a ramasser qui changent Laura) -------------
@@ -354,7 +462,9 @@ window.CONFIG = {
   //             a des anims idle/run/jump...).
   //  speedMul : vitesse de course.   jumpMul : hauteur de saut.
   //  override : remplace le sprite d'une pose (ex. run -> 'hero_roll').
-  //  IMPORTANT : si Laura est touchee, elle PERD l'equipement au lieu d'une vie.
+  //  IMPORTANT v2 : ordre des degats = SOLEIL (bouclier) -> EQUIPEMENT -> COEUR.
+  //  L'equipement n'est perdu que si le bouclier solaire n'a pas absorbe le coup
+  //  (cf. damagePlayer) -> on profite enfin du velo/des rollers.
   //  Tout est ignore proprement tant que les PNG d'overlay n'existent pas.
   equipment: {
     // override = remplace le sprite ENTIER de Laura par "Laura sur l'engin"
@@ -385,14 +495,28 @@ window.CONFIG = {
     // lancer du chat : sortie (depart) / entree (retour au sac)
     hero_cat_out:     { sliceX: 5, sliceY: 1, anims: { cat:   { from: 0, to: 4, loop: false, speed: 12 } } },
     hero_cat_in:      { sliceX: 4, sliceY: 1, anims: { cat:   { from: 0, to: 3, loop: false, speed: 12 } } },
-    // une anim de lancer par arme (mappee depuis ammoTypes[].throwSprite) :
-    //  graine -> hero_throw_seed (tir de base) ; gateau -> hero_throw_cake (lob).
+    // pose de lancer plein-corps commune aux deux armes (les feuilles dediees
+    //  hero_throw_seed/cake ont ete retirees des assets).
     hero_throw:       { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
-    hero_throw_seed:  { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
-    hero_throw_cake:  { sliceX: 8, sliceY: 1, anims: { throw: { from: 0, to: 7, loop: false, speed: 18 } } },
+    // CALQUES BRAS de lancer PAR LOCOMOTION (3 frames transparentes, poses par-dessus la
+    //  locomotion via setActionOverlay). run/bike/roll/duck ; idle & saut -> plein-corps hero_throw.
+    hero_run_throw:   { sliceX: 3, sliceY: 1, anims: { throw: { from: 0, to: 2, loop: false, speed: 12 } } },
+    hero_bike_throw:  { sliceX: 3, sliceY: 1, anims: { throw: { from: 0, to: 2, loop: false, speed: 12 } } },
+    hero_roll_throw:  { sliceX: 3, sliceY: 1, anims: { throw: { from: 0, to: 2, loop: false, speed: 12 } } },
+    hero_duck_throw:  { sliceX: 3, sliceY: 1, anims: { throw: { from: 0, to: 2, loop: false, speed: 12 } } },
     // sprites complets "Laura sur l'engin" (remplacent le sprite via equipment.override)
     hero_bike:        { sliceX: 7, sliceY: 1, anims: { idle: { from: 0, to: 6, loop: true, speed: 6 }, run: { from: 0, to: 6, loop: true, speed: 14 }, jump: { from: 3, to: 3 } } },
     hero_roll:        { sliceX: 8, sliceY: 1, anims: { idle: { from: 0, to: 7, loop: true, speed: 6 }, run: { from: 0, to: 7, loop: true, speed: 16 }, jump: { from: 4, to: 4 } } },
+    // Clones "SAC VIDE" (chat parti) : memes feuilles SANS le chat, jouees tant que
+    //  le chat est DEHORS (cf. noCat() dans game.js). Memes sliceX/clips que la base.
+    hero_idle_nocat:  { sliceX: 8, sliceY: 1, anims: { idle:  { from: 0, to: 7, loop: true,  speed: 8  } } },
+    hero_run_nocat:   { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 14 } } },
+    hero_hurt_nocat:  { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 10 } } },
+    hero_jump_nocat:  { sliceX: 8, sliceY: 1, anims: { jump:  { from: 0, to: 7, loop: true,  speed: 10 } } },
+    hero_duck_nocat:  { sliceX: 7, sliceY: 1, anims: { duck:  { from: 0, to: 6, loop: true,  speed: 8  } } },
+    hero_throw_nocat: { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
+    hero_bike_nocat:  { sliceX: 7, sliceY: 1, anims: { idle: { from: 0, to: 6, loop: true, speed: 6 }, run: { from: 0, to: 6, loop: true, speed: 14 }, jump: { from: 3, to: 3 } } },
+    hero_roll_nocat:  { sliceX: 8, sliceY: 1, anims: { idle: { from: 0, to: 7, loop: true, speed: 6 }, run: { from: 0, to: 7, loop: true, speed: 16 }, jump: { from: 4, to: 4 } } },
     cat_run:          { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 16 } } },
     enemy_corbeau:    { sliceX: 6, sliceY: 1, anims: { fly:   { from: 0, to: 5, loop: true,  speed: 8  } } },
     enemy_criquet:    { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 10 }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 14 } } },
@@ -422,6 +546,9 @@ window.CONFIG = {
     pickup_croquette: { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_rollers:   { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_velo:      { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
+    // upgrades d'arsenal (medaillons power-up) : meme bump 4 frames que les autres pickups
+    pickup_puissance: { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
+    pickup_cadence:   { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     // collectibles thematiques 'd' par niveau (re-skin via theme.pickups)
     pickup_graine:    { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_plant:     { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
@@ -432,7 +559,10 @@ window.CONFIG = {
     pickup_champignon:{ sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },   // skin 'p' (Arene)
     // --- Munitions (6 frames : tournent) ---
     ammo_graine:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
+    ammo_graine_fire: { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 18 } } },   // graine enflammee (P3)
+    ammo_cookie:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 14 } } },
     ammo_gateau:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
+    ammo_gateau_enfer:{ sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 18 } } },   // gateau des enfers (P3)
     // --- Monstres "historiques" REGENERES en feuille 6 frames (comme les neufs) :
     //  walk 0-2 / hurt 3 / attack 4-5. caillou est un OBSTACLE (addRock) : il joue
     //  juste 'walk' (1er clip). criquet utilise 'walk' (l'ancien 'hop' est retire).
@@ -460,6 +590,12 @@ window.CONFIG = {
     bg_cloud:         { sliceX: 4, sliceY: 3 },
     sun_goal:         { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     fx_grumble:       { sliceX: 3, anims: { idle: { from: 0, to: 2, loop: true, speed: 8 } } },
+    // ombre de chute d'une bombe : 6 frames qui GROSSISSENT (telegraphe). Le
+    //  moteur regle la frame sur l'avancement de la chute (cf. addBombShadow).
+    fx_bomb_shadow:   { sliceX: 6, anims: { grow: { from: 0, to: 5, loop: false, speed: 8 } } },
+    // onde de choc au sol (seisme localise, cf. api.quake) : 6 frames naissance
+    //  -> pleine vague -> dissipation. Fallback dessine si le PNG manque.
+    fx_quake:         { sliceX: 6, anims: { roll: { from: 0, to: 5, loop: true, speed: 14 } } },
     heart:            { sliceX: 2, anims: { idle: { from: 0, to: 1, loop: true, speed: 3 } } },
     // --- Overlays equipement : idle/run/jump pour se caler sur la pose de Laura ---
     gear_rollers:     { sliceX: 4, anims: { idle: { from: 0, to: 1, loop: true, speed: 4 }, run: { from: 0, to: 3, loop: true, speed: 14 }, jump: { from: 2, to: 2 } } },
@@ -521,7 +657,7 @@ window.CONFIG = {
               'Des rizières à la colloc, de la serre au labo puis à la fac,\n' +
               'jusqu à la soutenance : bats chaque boss pour écrire ta thèse !',
     hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter (relache tot = petit saut)\n' +
-              'ESPACE tir de base   X lob lourd   MAJ dash   C chat   ESC quitter',
+              'ESPACE tir   X lob lourd   MAJ dash   C chat   BAS+SAUT descend d un panneau   ESC quitter',
     start:    'Appuie sur ESPACE pour commencer',
     slots:    'CHOISIS TA SAUVEGARDE',
     overworld:'Choisis un chapitre (ESPACE pour entrer)',
@@ -532,6 +668,13 @@ window.CONFIG = {
     bossWarn: 'Bats le boss pour écrire le chapitre !',
     catEmpty: 'Plus de chat ! (ramasse des croquettes)',
     publi:    'PUBLICATION TROUVEE ! +100%',
+    // v2 : boss (garde/fenetres), checkpoint d'arene, medailles (cf. GAMEPLAY.md)
+    bossOpen:  'OUVERT !',                    // fenetre de vulnerabilite du boss
+    bossGuard: 'GARDE !',                     // 1er tir encaisse en garde (pedagogie)
+    checkpoint:'REPRISE A L ARENE !',         // respawn au checkpoint du boss
+    mention:   'MENTION TRES HONORABLE',      // toutes les medailles d'or
+    feliJury:  'FELICITATIONS DU JURY',       // medaille cachee : niveau sans perdre coeur ni equipement
+    medals:    ['TEMPS', 'DATA', 'SAUVES'],   // noms des 3 medailles (recap + carte)
     // texte affiche a l'ecran "Chapitre gagne" (sans accents).
     //  Ordre = LEVELS niveau1..niveau5 (intro, ch.1, ch.2, ch.3, conclusion).
     chapters: [

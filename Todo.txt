@@ -1,28 +1,22 @@
 GLOBAL:
 - Fixe Boss: assets, gameplay
 - Level design
+- les pieges aux sols par dessus la sprite sol (trou avec pics)
+- Vérifier nouveau gameplay (tir gateaux) et refaire le HUD il est dégueu
+- Toggle sound/music
+- Temps ecris avec ms
 
 
 BUG:
-- Bounding box cailloux et trop gros. Verifier toutes les bounding boxes des trucs sur lesquels on marche.
+Vérifier le time attack
+
+- Fond alpha pour mieux voir les plateformes
 - Mur invisible en début de niveau (bug cailloux)
-
-- Les tirs de gateaux sont pourris (voir rechargemet comme avant)
-- NPC disparaissent quand on revient (tester, fixé normalement)
-
-- Fix Animation laura chat et animation tir
-- Criquets marchent à l'envers et sont trop gros ou de taille variable. Complètement stuck derriere RStudio et manquand dans le niveau 1
-- monstres spawnés derrière boss.
-- Vire le texte cheatcodes
-
-- Vérifier nouveau gameplay (tir gateaux) et refaire le HUD il est dégueu
-
+- Criquets à refaire, trop gros.
 - Virer les tremblements ca pourri l'expérience de jeu
 
 Features:
-- Ajouter des level "hors ecran" - un niveau doit avoir quelques epaisseurs invisibles
 - Maison Start and End level.
-
 
 
 

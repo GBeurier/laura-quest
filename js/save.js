@@ -36,6 +36,13 @@ window.LQ_SAVE = (() => {
       levelsDone: new Array(N_LEVELS).fill(false),
       publis: new Array(N_LEVELS).fill(false),
       dataPct: new Array(N_LEVELS).fill(0),
+      bestTime: new Array(N_LEVELS).fill(0),   // meilleur temps (s) par niveau ; 0 = pas encore fini
+      // v2 MEDAILLES (GAMEPLAY.md §5) : {t,d,s} = palier 0-3 (3=or) par niveau ;
+      //  l'entree [N_LEVELS] = le jury (TEMPS seulement). savedPct = meilleur %
+      //  de passants sauves ; feli = medaille cachee "sans degat".
+      medals: new Array(N_LEVELS + 1).fill(null),
+      savedPct: new Array(N_LEVELS).fill(0),
+      feli: new Array(N_LEVELS).fill(false),
       juryDone: false,
       bestScore: 0,
       totalScore: 0,
@@ -56,6 +63,15 @@ window.LQ_SAVE = (() => {
       while (d.publis.length < N_LEVELS) d.publis.push(false);
       d.dataPct = (d.dataPct || []).slice(0, N_LEVELS);
       while (d.dataPct.length < N_LEVELS) d.dataPct.push(0);
+      d.bestTime = (d.bestTime || []).slice(0, N_LEVELS);
+      while (d.bestTime.length < N_LEVELS) d.bestTime.push(0);
+      // migration v2 : medailles / sauves / sans-degat sur les vieux slots
+      d.medals = (d.medals || []).slice(0, N_LEVELS + 1);
+      while (d.medals.length < N_LEVELS + 1) d.medals.push(null);
+      d.savedPct = (d.savedPct || []).slice(0, N_LEVELS);
+      while (d.savedPct.length < N_LEVELS) d.savedPct.push(0);
+      d.feli = (d.feli || []).slice(0, N_LEVELS);
+      while (d.feli.length < N_LEVELS) d.feli.push(false);
       if (typeof d.unlockedMax !== 'number') d.unlockedMax = 0;
       if (typeof d.cursor !== 'number') d.cursor = 0;
       return d;
