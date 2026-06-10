@@ -59,19 +59,19 @@
         window.addEventListener(ev, focusCv, true));
       cv.addEventListener('focusout', focusCv);
     }
-    const toKey = (k) => ({
-      left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown',
-      space: ' ', enter: 'Enter', shift: 'Shift', escape: 'Escape', tab: 'Tab',
-    }[k] || k);
-    const block = new Set(['/', "'"]);
-    Object.values(C.controls).forEach((arr) => arr.forEach((k) => block.add(toKey(k))));
-    // Touches de triche (CONFIG.cheats) : sinon Firefox/Chrome les capte
-    // (recherche dans la page / "find as you type") au lieu du jeu.
-    if (C.cheats) ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'G', 'h', 'H']
-      .forEach((k) => block.add(k));
+    // Tout ce qui n'est PAS un raccourci navigateur/OS part au jeu, jamais au
+    // navigateur : sinon les touches non mappees (le E de l'ecran de save, une
+    // lettre au hasard dans un menu, '/' ou "'"...) declenchent la "recherche
+    // pendant la frappe" de Firefox qui vole le focus. On laisse filer
+    // Ctrl/Cmd/Alt + touche et les F1-F12 (rafraichir, devtools, plein ecran),
+    // on bloque tout le reste (lettres, chiffres, espace, fleches, ponctuation).
+    const isEditable = (el) => !!el && (el.isContentEditable ||
+      /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || ''));
     window.addEventListener('keydown', (e) => {
+      if (isEditable(document.activeElement)) return;   // ne jamais bloquer une saisie texte
       if (cv && document.activeElement !== cv) focusCv();
-      if (block.has(e.key)) e.preventDefault();
+      if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key)) return;
+      e.preventDefault();
     }, true);
   })();
 
@@ -559,6 +559,18 @@
         _spr: 'hero_idle', _anim: null,
       },
     ]);
+    // Le BOSS n'est pas un MUR : sa masse ne pousse jamais Laura. Sans ca,
+    //  pendant l'invuln post-coup (damagePlayer sort tot : ni degat ni lock),
+    //  la RESOLUTION physique du body continuait de la bulldozer devant le
+    //  tracteur a pleine vitesse jusqu'a hors de l'arene ("coups lourds
+    //  fantomes"). On annule la resolution du couple joueur<->boss DES DEUX
+    //  COTES (meme hook maison que les panneaux one-way) ; les EVENEMENTS de
+    //  collision restent -> le degat de contact heavy fonctionne toujours
+    //  (cf. panneaux cassables : onCollide tire meme sans resolution).
+    p.onBeforePhysicsResolve((col) => {
+      const o = col.target;
+      if (o && o.is && o.is('boss')) col.preventResolution();
+    });
     return p;
   }
 
@@ -596,24 +608,30 @@
     p.knockX = dir * (C.player.knockback || 0);
     p.knockT = C.player.knockTime || 0.2;
   }
-  function damagePlayer(dmg, srcX) {
+  // heavy = ECRASEMENT (contact d'un BOSS, cf. sun.bossTouchPierces) : le coup
+  //  TRAVERSE le surbouclier — il le draine au passage mais ne s'y arrete pas,
+  //  equipement/coeurs encaissent QUAND MEME (se faire rouler dessus par le
+  //  tracteur doit faire tres mal), avec recul et secousse renforces.
+  function damagePlayer(dmg, srcX, heavy) {
     const p = PLAYER;
     if (!dmg || dmg <= 0) return;            // contact INOFFENSIF (passant) : ni recul, ni perte d'equip, ni shake
     if (p._god || p.invuln > 0) return;
     knockPlayer(srcX);                     // recul + (l'anim "hurt" se joue via invuln)
+    if (heavy) p.knockX *= (C.player.heavyKnockMul || 1.6);   // ejecte de sous les roues
     p.invuln = C.player.invulnTime;
+    // v2.2 — TOUTE blessure (absorbee, equipement OU coeur) coupe la regen
+    //  passive hitRegenDelay s (sunRegenLockT, jauge HUD grisee) : sans ca, le
+    //  bouclier se re-arme en continu et on tanke au spam defensif.
+    p.sunRegenLockT = Math.max(p.sunRegenLockT || 0, C.sun.hitRegenDelay || 0);
     // v2 — ORDRE DES DEGATS : SOLEIL -> EQUIPEMENT -> COEURS (GAMEPLAY.md §2).
     // 1) SURBOUCLIER : n'absorbe que si la jauge passe le SEUIL (sun >= hitAbsorb)
     //    — en dessous le soleil est conserve (c'est de la munition) mais ne
-    //    protege plus. Le coup BRISE le bouclier : regen passive coupee
-    //    hitRegenDelay s (sunRegenLockT, cf. boucle de regen + jauge HUD grisee).
+    //    protege plus. Un coup HEAVY draine le bouclier SANS etre arrete.
     const absorb = C.sun.enabled ? (C.sun.hitAbsorb || 0) : 0;
     if (absorb > 0 && p.sun >= absorb) {
       p.sun = Math.max(0, p.sun - absorb);
-      p.sunRegenLockT = C.sun.hitRegenDelay || 0;
       p.sunFlash = 0.5; p.shieldFlash = 0.6;
-      safeShake(7); sfx('hit');
-      return;
+      if (!heavy) { safeShake(7); sfx('hit'); return; }
     }
     // 2) EQUIPEMENT : le coup casse le velo/les rollers a la place d'un coeur.
     //  (perdre coeur OU equipement casse la medaille cachee "sans degat" —
@@ -621,13 +639,13 @@
     if (p.equipped) {
       loseEquip();
       p.medNoHit = false;
-      safeShake(8); sfx('hit');
+      safeShake(heavy ? 11 : 8); sfx('hit');
       return;
     }
     // 3) COEURS.
     p.medNoHit = false;
     p.hp -= dmg;
-    safeShake(6);
+    safeShake(heavy ? 11 : 6);
     sfx('hit');
     if (p.hp <= 0) { p.hp = 0; loseGame(); }
   }
@@ -648,6 +666,18 @@
       area({ offset: vec2(0, SOIL_LIFT * ART) }), body({ isStatic: true }), z(-1), 'solid']), spr);
   }
 
+  // --- PIEDS DES FEUILLES GENEREES (regrid) ---------------------------------
+  //  Les pipelines posent la baseline des pieds AU-DESSUS du bas de frame :
+  //  _monstgen BASE=182 sur CH=192 -> 10px transparents sous les pieds ;
+  //  _bossgen -> 16px ; _bodygen (corps de passants) -> 4px. Laura, elle, touche
+  //  le bas de frame (~1px). Avec anchor('bot') + boite au bas de frame, tout ce
+  //  monde FLOTTAIT de marge x echelle au-dessus du sol. Le fix : remonter la
+  //  BOITE de collision de cette marge (offset local = px source, multiplie par
+  //  l'echelle de l'objet) -> le body pose les PIEDS DESSINES sur le sol et le
+  //  transparent plonge dans la terre. Sans body (static/fly/rocher), on decale
+  //  le pos a la place. Si un pipeline change sa baseline, ajuste ICI.
+  const FEET_PAD = { enemy: 10, boss: 16, passant: 4 };
+
   // --- CAILLOUX (obstacles) -------------------------------------------------
   //  Un caillou n'est PLUS un ennemi : c'est un BLOC solide INDESTRUCTIBLE qui
   //  ne fait AUCUN degat mais BLOQUE le passage. C'est un body isStatic tagge
@@ -662,8 +692,12 @@
     //  ne remplit pas la frame) -> Laura ne bute plus dans le vide ni n'atterrit
     //  sur de l'air au-dessus, et les tirs s'arretent pile sur la pierre. Le mur
     //  de BORD invisible (anti-chute) garde la frame pleine pour bloquer a coup sur.
+    //  Statique (pose manuelle, pas de body qui repose) -> on ENFONCE le pos de la
+    //  marge FEET_PAD (x echelle 0.8) + 2px dans l'herbe ; la collision suit le
+    //  dessin (le bas deborde dans le sol statique, sans effet).
+    const ROCK_SINK = invisible ? 0 : FEET_PAD.enemy * 0.8 / ART + 2;
     const comps = [
-      sprite(spr), artScale(), pos(cx, groundY), anchor('bot'),
+      sprite(spr), artScale(invisible ? 1 : 0.8), pos(cx, groundY + ROCK_SINK), anchor('bot'),
       area(invisible ? {} : { scale: vec2(0.90, 0.82) }), body({ isStatic: true }), z(-1), 'solid', 'rock',
     ];
     if (invisible) comps.push(opacity(0));   // mur de bord invisible (interieurs) : bloque la chute sans afficher de caillou
@@ -817,10 +851,15 @@
       ? pickSkin(pcfg.bodies && pcfg.bodies[psex], def.sprite + '_' + psex)
       : pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
     const visualScale = (def.scale || 1) * psize.scale;
+    // PIEDS (cf. FEET_PAD) : la boite remonte de la marge sous les pieds -> le
+    //  body pose le dessin sur le sol. Sans body (static/fly/shooter), c'est le
+    //  pos qui descend d'autant (en monde : marge source x echelle affichee).
+    const feet = isPersona ? FEET_PAD.passant : FEET_PAD.enemy;
+    const ySpawn = y + (needsBody ? 0 : feet * visualScale / ART);
     const comps = [
       sprite(sname),
       artScale(visualScale),
-      pos(x, y),
+      pos(x, ySpawn),
       anchor('bot'),
       // collisionIgnore -> les monstres ne se bloquent/poussent jamais entre eux
       //  (ils se traversent), mais collisionnent toujours le sol. Le PASSANT
@@ -836,6 +875,7 @@
         scale: isPersona
           ? vec2(0.85 / psize.scale, 0.9 / psize.scale)
           : vec2((def.hit && def.hit.w) || 0.85, (def.hit && def.hit.h) || 0.9),
+        offset: vec2(0, -feet),   // boite calee sur les pieds DESSINES (cf. FEET_PAD)
         collisionIgnore: isPersona ? ['enemy', 'boss', 'player'] : ['enemy'],
       }),
       // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
@@ -854,7 +894,7 @@
       //  sont a z=0). La tete (enfant) suit le corps, donc rien a regler dessus.
       ...(isPersona ? [z(-0.5), kind] : ['enemy', kind]),
       {
-        kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: y, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
+        kind, def, hp: def.hp, dir: (ENEMY_SEQ % 2 ? 1 : -1), t: 0, homeX: x, homeY: ySpawn, stun: 0, knockX: 0, knockT: 0, hopDir: 0,
         passantHead: phead, passantSize: psize.key, passantScale: psize.scale,
         // ANIM facon boss (UNE feuille) : hurtT/atkT pilotent l'etat hurt/attack ;
         //  _spr/_anim memorisent la frame courante (cf. enemyAnim / setAnim).
@@ -1386,7 +1426,15 @@
       artScale(def.scale || 1),    // jury (def.scale) rend plus gros (megaboss a 3 membres) ; autres = 1x
       pos(x, y),
       anchor('bot'),
-      area({ scale: vec2(0.8, 0.92) }),
+      // offset : la feuille boss a 16px transparents sous les pieds (cf. FEET_PAD)
+      //  -> boite remontee d'autant, le body pose les pieds DESSINES sur le sol.
+      // collisionIgnore 'panel' : les decks de panneaux dans l'arene sont les
+      //  PERCHOIRS de Laura (esquive/lob) -> le boss balaie DESSOUS sans etre
+      //  bloque. Sans ca, un deck bas (h3 < hauteur du boss) coincait le
+      //  tracteur en plein 'drive' : edge jamais atteint -> plus de stall ni de
+      //  demi-tour, boss fige qui bombarde (bug boss niveau1). Les BALLES, elles,
+      //  collisionnent toujours les panneaux (couvert inchange).
+      area({ scale: vec2(0.8, 0.92), offset: vec2(0, -FEET_PAD.boss), collisionIgnore: ['panel'] }),
       body(),
       opacity(1),
       'boss',
@@ -1396,6 +1444,12 @@
         hurtT: 0, animWant: 'idle', _spr: sname, _anim: null,
       },
     ]);
+    // cote boss du no-shove joueur<->boss (cf. spawnPlayer) : il TRAVERSE Laura,
+    //  il ne la pousse pas (le degat passe par l'evenement de contact, heavy).
+    b.onBeforePhysicsResolve((col) => {
+      const o = col.target;
+      if (o && o.is && o.is('player')) col.preventResolution();
+    });
     return b;
   }
 
@@ -1404,6 +1458,22 @@
     if (!p || !p.exists()) return;
     if (b.stun > 0) { b.stun -= dt(); setAnim(b, b.spr, 'idle'); return; }
     if (b.knockT > 0) { b.knockT -= dt(); b.move(b.knockX, 0); }
+    // --- v2.1 ARENE : boss en VEILLE tant que Laura n'a pas atteint son arene ---
+    //  Avant ca : aucune IA -> aucune bombe/tir/charge (fini les bombes qui
+    //  pleuvent jusqu'au spawn, cf. agriculteur niveau1 / michael niveau4). Le
+    //  boss se REVEILLE une fois pour toutes des qu'elle entre dans l'arene OU
+    //  qu'elle le touche (hitBoss -> b._awoken, anti-sniping). Les INVITES du
+    //  jury (b.guest) spawnent deja engages -> jamais en veille.
+    if (!b.guest && !b._awoken) {
+      const pad = (b.def.arenaPad != null ? b.def.arenaPad : 2) * TS;
+      if (p.pos.x >= b.homeX - (b.def.range || 300) - pad) b._awoken = true;
+    }
+    if (!b.guest && !b._awoken) {
+      b.flipX = (p.pos.x - b.pos.x) >= 0;     // regarde Laura (sprites boss pointent a gauche)
+      b.animWant = 'idle';
+      bossAnim(b, 'idle');
+      return;
+    }
     // --- v2 garde/fenetres (GAMEPLAY.md §4.1) : prepare l'etat AVANT l'IA ---
     //  guard est RESET chaque frame a la valeur de config ; l'IA le repasse a 1
     //  dans ses etats de punition (bosses.js). vulnT = fenetre forcee (chat),
@@ -1452,6 +1522,7 @@
   function hitBoss(b, bullet) {
     if (bullet && bullet.exists && bullet.exists()) destroy(bullet);
     if (!b.exists()) return;
+    b._awoken = true;                        // etre touche REVEILLE le boss (anti-sniping hors arene)
     // --- v2 (GAMEPLAY.md §4.1) : TICK par canal + GARDE ---------------------
     //  'seed'        : 1 coup / bossHit.seedCd — la volee de graines compte
     //                  pour 1, degat du tick = bullet.bossDmg (arsenal.bossTick).
@@ -1469,7 +1540,10 @@
       if ((b._chCd[ch] || 0) > 0) { if (ch === 'seed') bossTink(b, hx, hy); return; }   // tick absorbe
       b._chCd[ch] = cds[ch];
     }
-    const open = (b.vulnT > 0) || (b.guard == null) || b.guard >= 1;
+    //  Le CHAT ignore la garde (c'est l'ouvre-boite des boss) : sans ca son coup
+    //  RETOUR (apres vulnOpen ecoule) serait ampute par guard et l'aller-retour
+    //  ne ferait pas ses ~2x bossDamage promis (cf. CONFIG.cat).
+    const open = (b.vulnT > 0) || (b.guard == null) || b.guard >= 1 || ch === 'cat';
     const raw = bullet ? (bullet.bossDmg != null ? bullet.bossDmg : (bullet.dmg || 1)) : 1;
     if (!open && ch === 'seed') bossTink(b, hx, hy);   // encaisse en garde : feedback
     b.hp -= raw * (open ? 1 : Math.max(0.05, b.guard));
@@ -1518,14 +1592,26 @@
       area({ scale: vec2(0.9, 0.7) }),
       z(40),
       'cat',
-      { dir, startX, baseY: p.pos.y, hitBosses: new Set(), phase: 'run' },
+      { dir, startX, baseY: p.pos.y, hitOnPass: new Set(), phase: 'run' },
     ]);
     cat.flipX = dir < 0;
     try { cat.play('run'); } catch (e) {}
-    cat.onCollide('enemy', (e) => hitEnemy(e, { exists: () => false, dmg: C.cat.damage }));
-    cat.onCollide('boss', (bo) => {
-      if (cat.hitBosses.has(bo)) return;          // 1 seul coup par boss et par chat
-      cat.hitBosses.add(bo);
+    // ALLER-RETOUR : le chat blesse a CHAQUE passage. A l'ALLER (phase 'run') il
+    //  ne fait que outMul x les degats (l'ennemi survit, affaibli) ; au RETOUR
+    //  (phase 'back'), degats PLEINS (il l'acheve). 1 coup par entite et par
+    //  passage (hitOnPass, vide au demi-tour) -> jamais de multi-hit sur une passe.
+    //  onCollideUpdate (pas onCollide) : si le chat CHEVAUCHE encore la cible au
+    //  moment du demi-tour, le coup du retour partirait jamais avec un simple
+    //  onCollide (pas de nouvelle entree en collision).
+    cat.onCollideUpdate('enemy', (e) => {
+      if (cat.hitOnPass.has(e)) return;
+      cat.hitOnPass.add(e);
+      const mul = (cat.phase === 'run') ? (C.cat.outMul != null ? C.cat.outMul : 0.5) : 1;
+      hitEnemy(e, { exists: () => false, dmg: C.cat.damage * mul });
+    });
+    cat.onCollideUpdate('boss', (bo) => {
+      if (cat.hitOnPass.has(bo)) return;          // 1 coup PAR PASSAGE -> aller + retour = ~2x sur les boss
+      cat.hitOnPass.add(bo);
       // v2 : le chat OUVRE une fenetre de vulnerabilite (l'ouvre-boite des boss),
       //  re-armable au plus tot cat.vulnRelock s plus tard sur le meme boss.
       if ((bo.catVulnLock || 0) <= 0 && (C.cat.vulnOpen || 0) > 0) {
@@ -1541,7 +1627,7 @@
       get('ehot').forEach((h) => { if (h.pos.dist(cat.pos) < C.cat.cleanRadius) destroy(h); });  // nettoie les tirs
       if (cat.phase === 'run') {                 // ALLER : court vers l'avant
         cat.move(cat.dir * sp, 0);
-        if (Math.abs(cat.pos.x - cat.startX) > C.cat.range) { cat.dir = -cat.dir; cat.flipX = cat.dir < 0; cat.phase = 'back'; }
+        if (Math.abs(cat.pos.x - cat.startX) > C.cat.range) { cat.dir = -cat.dir; cat.flipX = cat.dir < 0; cat.phase = 'back'; cat.hitOnPass.clear(); }   // demi-tour : on peut re-frapper (degats PLEINS au retour)
       } else {                                   // RETOUR : revient vers Laura, disparait en la touchant
         const target = (PLAYER && PLAYER.exists()) ? PLAYER.pos.x : cat.startX;
         cat.dir = target >= cat.pos.x ? 1 : -1;
@@ -2283,7 +2369,8 @@
     //  IN-SCENE a la porte d'arene (pas de re-traversee du niveau, pas de rebuild
     //  -> pas de re-farm de pickups), boss reset, chrono qui CONTINUE (la penalite
     //  time-attack est naturelle). Mourir hors boss : ecran lose comme avant.
-    if (LEVEL && LEVEL.checkpoint && LEVEL.bossesAlive > 0 && PLAYER && PLAYER.exists()) {
+    //  DESACTIVABLE en bloc (tous niveaux) via CONFIG.bossCheckpoint.
+    if (C.bossCheckpoint && LEVEL && LEVEL.checkpoint && LEVEL.bossesAlive > 0 && PLAYER && PLAYER.exists()) {
       respawnAtArena();
       return;
     }
@@ -2314,8 +2401,16 @@
     });
     get('ehot').forEach((h) => destroy(h));
     get('quakewave').forEach((q) => destroy(q));
-    flashMsg(C.story.checkpoint);
-    sfx('hit');
+    get('fx').forEach((o) => { if (o.boom !== undefined) destroy(o); });   // bombes encore EN VOL (pas de pluie sur le checkpoint)
+    // KO LISIBLE : sans feedback fort, mourir au contact du boss se lisait comme
+    //  un BUG ("ejectee + vie pleine d'un coup") — la teleport + le refill
+    //  passaient pour un glitch. Jingle de defaite + flash rouge plein ecran +
+    //  message en gros : on COMPREND qu'on est morte et qu'on reprend a l'arene.
+    add([rect(C.width, C.height), pos(0, 0), fixed(), color(200, 30, 30),
+      opacity(0.45), z(190), lifespan(0.55, { fade: 0.45 })]);
+    safeShake(12);
+    flashMsg(C.story.checkpoint, 30);
+    sfx('lose');
   }
 
   function tryReachSun() {
@@ -2324,11 +2419,11 @@
   }
 
   let _msg = null;
-  function flashMsg(txt) {
+  function flashMsg(txt, size) {
     if (!txt) return;
     if (_msg && _msg.exists()) destroy(_msg);
     _msg = add([
-      text(txt, { size: 22, align: 'center' }), pos(C.width / 2, 90), anchor('center'),
+      text(txt, { size: size || 22, align: 'center' }), pos(C.width / 2, 90), anchor('center'),
       fixed(), z(200), color(255, 255, 255), opacity(1), lifespan(1.6, { fade: 0.6 }),
     ]);
   }
@@ -2536,7 +2631,10 @@
     }
 
     PLAYER.onCollide('enemy', (e) => damagePlayer(e.def ? e.def.touchDamage : 1, e.pos.x));
-    PLAYER.onCollide('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x));
+    // contact BOSS = coup LOURD (ecrasement) : traverse le surbouclier (cf.
+    //  damagePlayer heavy + sun.bossTouchPierces) — un tracteur qui te roule
+    //  dessus ne se tanke pas a la jauge de soleil.
+    PLAYER.onCollide('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false));
     PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
     PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
@@ -2586,7 +2684,9 @@
 
       // v2 : pose le CHECKPOINT d'arene la 1re fois que Laura entre dans la zone
       //  du boss (boss encore vivant) -> mourir au boss = respawn ici (loseGame).
-      if (!LEVEL.checkpoint && LEVEL.bossX != null && LEVEL.bossesAlive > 0) {
+      //  Gate par CONFIG.bossCheckpoint (false = jamais de checkpoint, tous
+      //  niveaux : mourir au boss suit le chemin lose normal).
+      if (C.bossCheckpoint && !LEVEL.checkpoint && LEVEL.bossX != null && LEVEL.bossesAlive > 0) {
         const edge = LEVEL.bossX - (LEVEL.bossRange || 300) - TS * 2;
         if (p.pos.x >= edge) {
           LEVEL.checkpoint = { x: Math.max(TS * 1.5, edge - TS), y: columnGroundY(Math.floor(edge / TS)) - 2 };

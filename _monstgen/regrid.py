@@ -5,7 +5,14 @@ EVEN SLICE : on coupe la bande en 6 colonnes egales, on chroma-key le magenta,
 on detoure chaque cellule (bbox), on met TOUTES les frames a une echelle commune
 (hauteur mediane -> targeth, plafonnee pour que la plus grande ne deborde pas),
 puis on repose chaque frame centree, pieds sur une baseline commune, dans une
-cellule CW x CH. Sortie = 6*CW x CH RGBA -> assets/sprites/enemy_<name>.png
+cellule CW x CH. Si une frame est plus LARGE que la cellule a l'echelle commune
+(pose de saut/lunge etiree), on ELARGIT LA CELLULE pour tout le monde au lieu de
+retrecir cette frame : l'ancien clamp par-frame (MAXW) cassait l'echelle entre
+les frames (bug criquet : frames de saut a ~57% de l'echelle de marche). Les
+feuilles qui tenaient deja dans CW ressortent A L'IDENTIQUE. ATTENTION : si la
+cellule s'elargit, les fractions hit {w} de CONFIG.enemies (mesurees sur la
+frame) doivent etre re-derivees (w_new = w_old * 176 / CW_imprime).
+Sortie = 6*CW x CH RGBA -> assets/sprites/enemy_<name>.png
 (+ apercu QA dans _monstgen/final/). game.js slice en 6 (cf. CONFIG.anims).
 
 Usage: python3 _monstgen/regrid.py <in_strip.png> <name> [--frames 6]
@@ -42,22 +49,28 @@ def run(inp, name, N):
     med = heights[len(heights) // 2] or 1
     maxh = max(c.height for c in cells) or 1
     s = min(TARGETH / med, (CH - 6) / maxh)
-    sheet = Image.new('RGBA', (CW * N, CH), (0, 0, 0, 0))
+    # ECHELLE UNIQUE pour toutes les frames. Si la plus large deborde de CW, on
+    #  elargit la cellule (jamais de clamp par-frame -> echelle inter-frames
+    #  garantie). cw_out reste CW pour toutes les feuilles historiques.
+    maxw = max(c.width for c in cells) or 1
+    cw_out = CW
+    if round(maxw * s) > MAXW:
+        cw_out = int(np.ceil(maxw * s)) + (CW - MAXW)   # meme marge laterale qu'avant
+        cw_out += cw_out % 2                            # pair (ART=2 -> taille ecran entiere)
+    sheet = Image.new('RGBA', (cw_out * N, CH), (0, 0, 0, 0))
     for i, c in enumerate(cells):
         nw, nh = max(1, round(c.width * s)), max(1, round(c.height * s))
-        if nw > MAXW:
-            s2 = MAXW / nw
-            nw, nh = MAXW, max(1, round(nh * s2))
         c = c.resize((nw, nh), Image.LANCZOS)
-        sheet.alpha_composite(c, (i * CW + (CW - nw) // 2, BASE - nh))
+        sheet.alpha_composite(c, (i * cw_out + (cw_out - nw) // 2, BASE - nh))
     out = '%s/enemy_%s.png' % (SPR, name)
     sheet.save(out)
     os.makedirs(FINAL, exist_ok=True)
     prev = Image.new('RGBA', sheet.size, (88, 94, 102, 255))
     prev.alpha_composite(sheet)
     prev.convert('RGB').save('%s/%s_preview.png' % (FINAL, name))
-    assert sheet.size == (CW * N, CH) and sheet.mode == 'RGBA'
-    print('wrote %s %s N=%d scale=%.3f' % (out, sheet.size, N, s))
+    assert sheet.size == (cw_out * N, CH) and sheet.mode == 'RGBA'
+    print('wrote %s %s N=%d scale=%.3f cell=%dx%d%s' % (out, sheet.size, N, s, cw_out, CH,
+          '' if cw_out == CW else '  (cellule ELARGIE : re-derive hit.w = w*%d/%d dans CONFIG.enemies)' % (CW, cw_out)))
 
 
 if __name__ == '__main__':

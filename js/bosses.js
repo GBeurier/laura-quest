@@ -75,7 +75,19 @@ window.BOSS_AI = (() => {
   }
   // deplacement horizontal libre borne a l'arene (utilise pour dash/drive/tp)
   function moveDirClamp(b, dir, spd) {
-    const nx = b.pos.x + dir * spd * dt();
+    const x0 = b.pos.x;
+    const step = spd * dt();
+    // DETECTION DE BLOCAGE physique (rocher, mur...) : move() translate tout de
+    //  suite mais la resolution des solides REPOUSSE le corps plus tard dans la
+    //  frame -> on compare la position d'ENTREE de frame a celle de la frame
+    //  precedente. Quasi pas avance plusieurs frames d'affilee malgre la demande
+    //  => on traite l'obstacle comme un BORD (sinon 'drive'/'dash' ne finissent
+    //  jamais : boss fige qui spamme son attaque, cf. bug tracteur niveau1).
+    if (b._mdcDir === dir && b._mdcX != null && step > 0) {
+      b._mdcBlock = (Math.abs(x0 - b._mdcX) < step * 0.2) ? (b._mdcBlock || 0) + 1 : 0;
+    } else b._mdcBlock = 0;
+    b._mdcDir = dir; b._mdcX = x0;
+    const nx = x0 + dir * step;
     const inside = Math.abs(nx - b.homeX) < b.def.range;
     if (inside) b.move(dir * spd, 0);
     // bord atteint si la position depasse range OU si le gate vient de refuser
@@ -83,7 +95,7 @@ window.BOSS_AI = (() => {
     //  "edge" n'etait JAMAIS vrai par auto-deplacement (move() du moteur =
     //  translation immediate par le MEME calcul que nx -> toujours < range)
     //  -> le drive du tracteur ne finissait jamais tout seul.
-    return !inside || Math.abs(b.pos.x - b.homeX) >= b.def.range;
+    return !inside || Math.abs(x0 - b.homeX) >= b.def.range || (b._mdcBlock || 0) >= 4;
   }
   // borne dure de la position au cas ou (securite anti-sortie d'arene)
   function clampHome(b) {
@@ -300,7 +312,7 @@ window.BOSS_AI = (() => {
    *  devient un risque calcule, plus un open bar.
    * ===================================================================== */
   AI.tracteur = function (b, p, api) {
-    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.skyT = 0; b.stallBomb = false; }
+    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.skyT = 0; b.stallBomb = false; b.bombPose = 0; }
     if (b.p2Just) p2Tell(b, api);
     b.tt += dt();
     const revT = b.def.revTime || 0.5;
@@ -308,7 +320,6 @@ window.BOSS_AI = (() => {
     const driveSpd = (b.def.driveSpeed || (b.def.speed || 120) * 1.6) * (b.p2 ? (b.def.p2DriveMul || 1.25) : 1);
     const skyEvery = b.p2 ? (b.def.p2SkyEvery || 2.4) : (b.def.skyEvery || 2.2);  // cadence des bombes en drive
     const skyDelay = b.def.skyDelay || 0.8;     // fenetre de telegraphe (ombre qui grandit)
-    const skyMinDist = b.def.skyMinDist || 160; // bombe SEULEMENT si joueur a distance
 
     if (b.ts === 'rev') {
       // TELEGRAPHE : choisit la direction, vrombit (fumee d'echappement), sur place
@@ -326,17 +337,24 @@ window.BOSS_AI = (() => {
       }
       if (b.tt > revT) { b.ts = 'drive'; b.tt = 0; b.skyT = 0; }
     } else if (b.ts === 'drive') {
-      // traverse l'arene a fond, lache des BOMBES verticales telegraphees
-      b.animWant = 'attack';
+      // traverse l'arene a fond : anim de CONDUITE (feuille _move) + une BOMBE
+      //  telegraphee tous les skyEvery. Pose d'ATTAQUE BREVE (bombPose) a chaque
+      //  bombe seulement -> le tracteur ne joue plus sa feuille d'attaque EN
+      //  BOUCLE pendant tout le trajet (l'anim "conduite" reste propre).
       b.flipX = b.dir > 0;             // oriente le tracteur dans le sens de marche
       b.facing = b.dir;
+      if (b.bombPose > 0) b.bombPose -= dt();
+      b.animWant = (b.bombPose > 0) ? 'attack' : 'idle';
       const edge = moveDirClamp(b, b.dir, driveSpd);
       b.skyT += dt();
       if (b.skyT >= skyEvery) {
         b.skyT = 0;
-        if (Math.abs(p.pos.x - b.pos.x) > skyMinDist) {
-          // bombe qui tombe sur la position du joueur : ombre qui grandit (telegraphe
-          //  skyDelay) puis explose. Esquive : dash/saut lateral sous la bombe.
+        // bombe sur la position du joueur (ombre qui grandit = telegraphe skyDelay),
+        //  lachee MEME quand Laura est tout pres (fini "plus de bombes quand on est
+        //  pres"), mais JAMAIS hors de l'arene (jamais jusqu'au spawn, meme si Laura
+        //  a fui apres avoir reveille le boss). Esquive : dash/saut lateral.
+        if (Math.abs(p.pos.x - b.homeX) < (b.def.range || 300) + api.TS * 6) {
+          b.bombPose = 0.25;
           api.dropBomb(p.pos.x, p.pos.y, skyDelay, 'shot_bomb');
         }
       }

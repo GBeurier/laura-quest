@@ -99,6 +99,32 @@ Le problème n'est pas l'absorption (40, ok), c'est le remboursement instantané
   gâteau des enfers peut faire passer sous le seuil de 40 → renoncer au
   bouclier pour l'offense, exactement le dilemme voulu par la v1.
 
+> **v2.1 (playtest)** : `hitRegenDelay` repassé à **0** — l'autoregen est
+> **continue** même après un coup absorbé (le « bouclier brisé » était ressenti
+> comme un trou de regen frustrant). Le mécanisme reste entièrement câblé :
+> remettre une durée > 0 dans `config.js` (`sun.hitRegenDelay`) le réactive.
+
+> **v2.2** : réactivé à **2 s** et **élargi à TOUTE blessure** (coup absorbé,
+> équipement perdu OU cœur — cf. `damagePlayer`) : la jauge d'énergie est
+> bloquée 2 s après chaque coup encaissé. Sans ça le bouclier se réarmait en
+> continu → spam défensif. Les rayons `o` créditent toujours pendant le lock.
+>
+> **v2.2 (bis) — le CONTACT d'un boss est un coup LOURD** (`sun.bossTouchPierces`,
+> `damagePlayer(heavy)`) : se faire écraser par le tracteur **traverse** le
+> surbouclier — il draine ses 40 de soleil au passage mais équipement/cœurs
+> encaissent QUAND MÊME (`touchDamage` du boss), avec recul ×1.6
+> (`player.heavyKnockMul`) et grosse secousse. Avant ça, un passage de tracteur
+> avec ≥40 de soleil ne coûtait QUE du soleil → « ne fait quasiment rien ».
+> Les tirs/bombes de boss restent absorbables normalement (le bouclier garde
+> son rôle anti-projectiles) ; seul le contact physique perce.
+>
+> **Et le boss n'est PAS un mur** : la résolution physique joueur↔boss est
+> annulée des deux côtés (`onBeforePhysicsResolve` + `preventResolution`,
+> cf. `spawnPlayer`/`spawnBoss`) — le tracteur TRAVERSE Laura. Sans ça, pendant
+> l'invuln post-coup (ni dégât ni lock), son body la bulldozait devant le capot
+> jusqu'à hors de l'arène : des « coups lourds fantômes » sans perte de vie ni
+> lock de regen. Le seul recul légitime est celui du coup (knockback ×1.6).
+
 ### 2.3 Cœurs et soins
 
 - `player.maxHp` reste **5** (review #6/#18 : ne pas durcir la survie deux
@@ -117,8 +143,19 @@ Aujourd'hui mourir au boss = retour carte = retraverser tout le niveau : c'est
   (pas de rebuild du niveau, review #14) : Laura téléportée à l'entrée
   d'arène, cœurs pleins, soleil 50, arsenal/score/chat conservés ; boss remis
   à `maxHp` + machine d'états réinitialisée + repositionné à `homeX` ; tirs
-  ennemis (`ehot`) purgés. Pas de re-spawn des pickups (pas de farm de score),
-  pas d'incohérence de niveau.
+  ennemis (`ehot`), ondes de choc ET **bombes en vol** purgés (pas de pluie sur
+  le checkpoint).
+- **Le KO doit être LISIBLE** (v2.2, playtest : un respawn silencieux se lisait
+  comme un bug « éjectée + vie pleine d'un coup ») : jingle de défaite
+  (`sfx('lose')`), **flash rouge plein écran**, gros message
+  `story.checkpoint` (« K.O. ! REPRISE A L ARENE ») + grosse secousse —
+  cf. `respawnAtArena` (game.js).
+
+> **v2.2 (playtest) : checkpoint DÉSACTIVÉ pour tous les niveaux + jury**
+> (`CONFIG.bossCheckpoint: false`) — même rendu lisible, le respawn restait
+> perçu comme un glitch. Mourir au boss = écran lose / retour carte, comme
+> partout. Tout le mécanisme (pose du checkpoint, `respawnAtArena`, K.O.
+> rouge) reste câblé : repasser le flag à `true` le réactive tel quel.
 - `levelTime` **continue de tourner** entre les essais → la pénalité time
   attack est naturelle, pas besoin de compteur de morts.
 - Mourir hors boss : inchangé (retour carte / écran lose).
@@ -300,6 +337,13 @@ Durée ≈ `HP / DPS_eff`, avec `DPS_eff = (0.4 + 0.6 × guard) × DPS_tick + lo
   pendant le boss devient un placement actif, pas un compteur passif.
 - `check_levels.py` : garder l'interdit `%` en arène ; ne warner que les
   plateformes < h3 (gênent le boss), valider les autres.
+- **Le boss IGNORE les panneaux** (`collisionIgnore: ['panel']`, `spawnBoss`) :
+  les perchoirs de l'arène ne le bloquent jamais — il balaie DESSOUS. Sans ça,
+  un deck h3 (< hauteur de boîte du boss, ~2.9 tuiles) coinçait le tracteur du
+  niveau 1 en plein `drive` : jamais de bord → plus de stall ni de demi-tour,
+  boss figé qui bombarde. Filet de sécurité en plus : `moveDirClamp`
+  (`bosses.js`) traite un blocage physique persistant (rocher, mur) comme un
+  bord → le boss fait demi-tour au lieu de se figer.
 
 ---
 
@@ -343,7 +387,7 @@ en objectifs sans nouveau mode (décision v1 maintenue : pas de menu dédié) :
 |---|---|---|---|
 | Ordre dégâts (`damagePlayer`) | équipement → soleil → cœurs | **soleil → équipement → cœurs** | profiter du vélo/rollers |
 | Absorption bouclier | dès `sun > 0` (coup entier) | **seulement si `sun ≥ 40`** (cran HUD) | fini l'absorb infini à 1 pt de soleil |
-| `sun.hitRegenDelay` | — | **2.5 s** (regen passive ; les rayons `o` créditent toujours) | le bouclier casse, ne se rembourse plus en plein combat |
+| `sun.hitRegenDelay` | — | **2.5 s → 0 (v2.1) → 2 s sur TOUTE blessure (v2.2)** | anti spam défensif du bouclier ; durée réglable dans config.js |
 | `sun.regen` | 22/s | **18/s** | recharge généreuse mais plus gratuite |
 | `player.maxHp` | 5 | **5 (inchangé)** | review : ne pas durcir la survie deux fois ; knob de playtest |
 | `pickups.cafe.heal` | 2 | **1** | soin, pas full-heal |
@@ -352,7 +396,7 @@ en objectifs sans nouveau mode (décision v1 maintenue : pas de menu dédié) :
 | Crumble `x` | `pos.y` seul | **`pl.curPlatform() === t`** | pas d'amorce en traversant/longeant |
 | Tick dégât boss | aucun (90 DPS possible) | **graines 1/0.25 s [1,2,3] ; AoE 1/0.5 s plein** | plafonne le DPS par canal |
 | `b.guard` | — | **0.5→0.35 selon boss hors fenêtre, 1 en fenêtre/`vulnT`** | fenêtres = le jeu ; boss 1 reste tendre |
-| `cat.bossDamage` | 2 | **6 + fenêtre 1.5 s (re-arm 8 s)** | ouvre-boîte tactique, pas un stun-lock |
+| `cat.bossDamage` | 2 | **6 PAR PASSAGE (v2.1 : frappe à l'aller ET au retour, insensible à la garde → ~12/chat) + fenêtre 1.5 s (re-arm 8 s)** | ouvre-boîte tactique, pas un stun-lock |
 | HP boss | 18/24/30/38/46/64 | **70/120/170/210/280/450** | durées cibles 25 s → 2 min 30 |
 | Phase 2 (≤50 % HP) | — | **par boss, cf. §4.3** | le 1v1 évolue en cours de combat |
 | Jury | 3 phases solo | **3 phases + 2 interludes boss-rush** (coût singletons assumé) | l'envie du Todo |

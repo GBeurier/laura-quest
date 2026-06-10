@@ -22,9 +22,11 @@ Vérifie pour chaque niveau :
   5. gating de la publi 'P' : atteignable AVEC l'équipement prévu du
      niveau, PAS atteignable en double saut nu (niveaux 2-5) ;
   6. arène de boss : sol plat, pas de fosse '%' (ERREUR) ni de monstre dans
-     le rayon du boss ; plateformes : seules celles à h<3 au-dessus du sol
-     sont warnées (gênent le boss) — les h>=3 sont VOULUES depuis la passe
-     v2 (postes de lob one-way, GAMEPLAY.md §4.6) et restent silencieuses ;
+     le rayon du boss ; plateformes : les panneaux ne BLOQUENT plus le boss
+     (collisionIgnore 'panel' dans spawnBoss — fix boss niveau1 coincé sous
+     un deck h3) ; les h>=3 sont VOULUES (postes de lob one-way, GAMEPLAY.md
+     §4.6) et restent silencieuses ; on warne encore les h<3 (le boss les
+     traverse VISUELLEMENT + esquive verticale impossible si bas) ;
   7. départ : pas d'ennemi ni de fosse à <5 colonnes de '@'.
 
 NOTE v2 (GAMEPLAY.md §3) : les plateformes '-'/'x' sont désormais
@@ -47,7 +49,7 @@ KNOWN = SOLID | ITEMS | GROUND_CHARS | FLYERS | set('@B*^% ')
 
 # équipement disponible par niveau + portée du boss (px -> tuiles)
 META = {
-    'niveau1': dict(W=148, R=10, g=9,  gear=[],          boss_range=300 / 48),
+    'niveau1': dict(W=148, R=13, g=11, gear=[],          boss_range=300 / 48),
     'niveau2': dict(W=260, R=14, g=12, gear=['velo'],    boss_range=300 / 48),
     'niveau3': dict(W=280, R=14, g=12, gear=['rollers'], boss_range=280 / 48),
     'niveau4': dict(W=300, R=14, g=12, gear=['velo'],    boss_range=300 / 48),
@@ -233,8 +235,10 @@ class Level:
                     self.warn(f'{ch!r} en ({g-1},{c}) dans l\'arène du boss')
                 # v2 (GAMEPLAY.md §4.6) : les plateformes h>=3 DANS l'arène sont
                 # VOULUES (poste de lob one-way + esquive verticale) -> silence.
-                # On ne warne QUE les plateformes basses (0 < h < 3, gênent le
-                # boss) ; le `0 <` exclut le sol et d'éventuels solides sous lui.
+                # Le boss IGNORE les panneaux (collisionIgnore 'panel', spawnBoss)
+                # -> aucune hauteur ne le bloque ; on warne les basses (0 < h < 3 :
+                # il les traverse VISUELLEMENT, et le perchoir est inutilisable).
+                # Le `0 <` exclut le sol et d'éventuels solides sous lui.
                 for r in range(self.R):
                     if self.at(r, c) in SOLID and 0 < g - r < 3 and self.at(r - 1, c) != 'B':
                         self.warn(f'plateforme basse h{g-r} en ({r},{c}) dans l\'arène (gêne le boss ?)')

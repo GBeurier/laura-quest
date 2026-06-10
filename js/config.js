@@ -153,6 +153,7 @@ window.CONFIG = {
     startAmmo: 'graine',  // tir de base
     knockback: 300,       // recul quand Laura touche un monstre / un tir
     knockTime: 0.22,      // duree du recul
+    heavyKnockMul: 1.6,   // multiplicateur du recul sur un coup LOURD (contact boss, ejecte de sous les roues)
     // DASH : ruee horizontale courte avec i-frames (esquive). GRATUIT (cf.
     //  GAMEPLAY.md : le deplacement ne taxe pas l'energie), simple cooldown.
     //  Direction = sens courant de Laura. cost=0 -> jamais bloque.
@@ -208,8 +209,13 @@ window.CONFIG = {
     scale: 0.62,      // taille du chat (1 = taille du sprite) -> plus petit que Laura
     spawnAhead: 42,   // distance devant Laura ou le chat est pose au sol
     catchDist: 26,    // distance a Laura ou le chat est "rattrape" (disparait) au retour
-    damage: 4,        // degats vs ennemis ordinaires (one-shot la plupart)
-    bossDamage: 6,    // degats vs boss (1 seul coup par chat)
+    // ALLER-RETOUR (cf. deployCat) : le chat blesse a l'ALLER **puis** au RETOUR.
+    //  A l'aller il ne fait que outMul x les degats (l'ennemi survit, affaibli) ;
+    //  au RETOUR il fait les degats PLEINS (= il l'acheve). Sur un BOSS il frappe
+    //  AUX DEUX passages -> ~2x bossDamage par chat ("2x plus sur les boss").
+    damage: 4,        // degats PLEINS vs ennemis ordinaires (passage RETOUR)
+    outMul: 0.5,      // multiplicateur des degats a l'ALLER (0.5 = moitie ; 1 = aller = retour)
+    bossDamage: 6,    // degats vs boss PAR PASSAGE, INSENSIBLES a la garde (cf. hitBoss) -> aller + retour = 2x par chat
     // v2 : le chat est l'OUVRE-BOITE des boss — le toucher OUVRE une fenetre de
     //  vulnerabilite (vulnOpen s, degats x1 au lieu de la garde), rouvrable au
     //  plus tot vulnRelock s plus tard sur le meme boss. cf. hitBoss/deployCat.
@@ -240,11 +246,16 @@ window.CONFIG = {
     // SURBOUCLIER v2 (cf. GAMEPLAY.md §2) : un coup n'est absorbe que si
     //  sun >= hitAbsorb (en dessous, le soleil est CONSERVE — c'est de la
     //  munition — mais ne protege plus : equipement puis coeur encaissent).
-    //  Apres un coup absorbe, la regen PASSIVE est coupee hitRegenDelay s
-    //  ("bouclier brise", jauge grisee + cran HUD a hitAbsorb) ; les rayons 'o'
-    //  creditent toujours pendant le lock. cf. damagePlayer.
+    //  v2.2 : apres TOUTE blessure (absorbee, equipement ou coeur), la regen
+    //  PASSIVE est coupee hitRegenDelay s ("bouclier brise", jauge grisee +
+    //  cran HUD a hitAbsorb) -> pas de spam defensif au bouclier ; les rayons
+    //  'o' creditent toujours pendant le lock. cf. damagePlayer.
     hitAbsorb: 40,        // soleil draine par coup absorbe (= aussi le SEUIL mini pour proteger)
-    hitRegenDelay: 2.5,   // s sans regen passive apres un coup absorbe (bouclier brise)
+    hitRegenDelay: 2,     // s sans regen passive apres une blessure (v2.2, anti spam bouclier).
+                          //  0 = autoregen continue. C'EST le reglage de la duree -> ajuste ici.
+    bossTouchPierces: true, // v2.2 : le CONTACT d'un boss (ecrasement) TRAVERSE le surbouclier —
+                          //  il draine hitAbsorb ET blesse quand meme (equipement/coeurs, recul
+                          //  renforce). false = retour a l'absorption totale. cf. damagePlayer.
     bossDropEvery: 9,     // rayons plus RARES pendant un boss (le passif fait le gros)
   },
 
@@ -293,6 +304,13 @@ window.CONFIG = {
   //  passe a 1 et le boss est surligne dore. cf. hitBoss (game.js).
   bossHit: { seedCd: 0.25, aoeCd: 0.5 },
 
+  // --- Checkpoint d'arene (v2) : mourir PENDANT un boss resparne a l'entree
+  //  de l'arene (vie pleine, boss reset, chrono qui continue, K.O. rouge).
+  //  DESACTIVE (demande playtest) pour TOUS les niveaux + jury : mourir au
+  //  boss = ecran lose / retour carte, comme partout. Le mecanisme reste
+  //  cable (respawnAtArena, game.js) -> repasser a true pour le reactiver.
+  bossCheckpoint: false,
+
   // --- Onde de choc au sol (seisme LOCALISE des boss, cf. api.quake) --------
   //  Remplace les tremblements d'ecran de telegraphe (Todo "virer les
   //  tremblements") : vague de poussiere qui parcourt le sol et blesse le
@@ -318,7 +336,9 @@ window.CONFIG = {
     ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200, hit: { w: 0.72, h: 0.82 } },
     // nouveaux archetypes (variete / difficulte)
     corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180, scale: 0.32, hit: { w: 0.90, h: 0.95 } },
-    criquet:  { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'jump',    speed: 150, jumpForce: 560, jumpEvery: 1.1, aggro: 520, anim: 'walk', score: 140, hit: { w: 0.92, h: 0.82 } },
+    //  criquet : feuille re-griddee en cellule LARGE 302px (regrid.py, frames de
+    //  saut etirees a la meme echelle que la marche) -> hit.w re-derive (0.92*176/302).
+    criquet:  { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'jump',    speed: 150, jumpForce: 560, jumpEvery: 1.1, aggro: 520, scale: 0.6, anim: 'walk', score: 140, hit: { w: 0.54, h: 0.82 } },
 
     // --- NOUVEAUX ARCHETYPES (design definitif) ------------------------
     //  6 familles par niveau : IMMOBILE (static) / VEHICULE (patrol) / VOLANT
@@ -351,7 +371,7 @@ window.CONFIG = {
     dossiers:     { sprite: 'enemy_dossiers',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9, hit: { w: 0.86, h: 0.84 } },
 
     // minions de boss (reutilisent des sprites existants)
-    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60, hit: { w: 0.92, h: 0.82 } },
+    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60, hit: { w: 0.54, h: 0.82 } },   // sprite criquet -> meme hit.w re-derive (cellule 302)
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120, hit: { w: 0.88, h: 0.83 } },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
@@ -385,14 +405,17 @@ window.CONFIG = {
     //  Edite ces nombres + reload pour ajuster le game feel. 2e ligne = reglages IA. ===
 
     // niveau1 (Riziere) — agriculteur (IA 'tracteur') : LE PLUS FACILE.
-    //  rev (vrombit, revTime) -> drive (traverse, lache une BOMBE tous les skyEvery
-    //  si joueur a >skyMinDist px, chute apres skyDelay) -> stall (cale, immobile
-    //  stallTime = PUNITION). Esquive : lob depuis panneaux + saut/dash sous bombes.
+    //  rev (vrombit, revTime) -> drive (traverse, lache une BOMBE tous les skyEvery,
+    //  chute apres skyDelay) -> stall (cale, immobile stallTime = PUNITION). La bombe
+    //  tombe desormais MEME quand Laura est tout pres (plus de skyMinDist) ; c'est la
+    //  GARDE D'ARENE (bossBehavior) qui empeche le bombardement hors combat. arenaPad
+    //  = marge d'entree d'arene (en TUILES) avant que le boss se reveille.
+    //  Esquive : lob depuis panneaux + saut/dash sous bombes.
     agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
                     hp: 70, maxHp: 70, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 300, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
                     //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd ~ 2.5s),
                     //  sinon AUCUNE bombe ne part en drive (bug v1 : 3.4 > 2.5).
-                    revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, skyMinDist: 160,
+                    revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, arenaPad: 2,
                     p2DriveMul: 1.25, p2SkyEvery: 1.1 },
 
     // niveau2 (Appart) — proprio (IA 'charger').
@@ -671,7 +694,7 @@ window.CONFIG = {
     // v2 : boss (garde/fenetres), checkpoint d'arene, medailles (cf. GAMEPLAY.md)
     bossOpen:  'OUVERT !',                    // fenetre de vulnerabilite du boss
     bossGuard: 'GARDE !',                     // 1er tir encaisse en garde (pedagogie)
-    checkpoint:'REPRISE A L ARENE !',         // respawn au checkpoint du boss
+    checkpoint:'K.O. ! REPRISE A L ARENE',    // mort pendant un boss -> respawn au checkpoint (jingle + flash rouge)
     mention:   'MENTION TRES HONORABLE',      // toutes les medailles d'or
     feliJury:  'FELICITATIONS DU JURY',       // medaille cachee : niveau sans perdre coeur ni equipement
     medals:    ['TEMPS', 'DATA', 'SAUVES'],   // noms des 3 medailles (recap + carte)
