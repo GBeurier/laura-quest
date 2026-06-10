@@ -92,10 +92,15 @@ const LEVEL_MAPS = window.LEVEL_MAPS || {};
 window.LEVELS = {
 
   // --- INTRODUCTION : L'agriculteur fou — RIZIERES DE CAMARGUE, plein jour ----
-  //  Installation de la manip + recolte de donnees. Le niveau le PLUS FACILE :
-  //  densite allegee, beaucoup d'air. Monstres : caillou '^', tracteur 'T',
-  //  corbeau 'V', criquet 'J', ademe 'R', random agri 'N'. Pickups 'd'=graines,
-  //  'p'=plants. Ciel bleu clair, tint verte de Camargue (parallax par defaut).
+  //  Installation de la manip + recolte de donnees. Le niveau INTRODUCTIF : le
+  //  plus LONG mais le plus FACILE. Long couloir tres aere ou les ennemis sont
+  //  introduits UN A UN, bien espaces (densite ~6 monstres + 5 passants, vs une
+  //  vingtaine ailleurs) : ~30 cases de tuto sans danger au depart, puis criquet
+  //  'J', corbeau 'V', tracteur 'T', ademe 'R' presentes a tour de role avec de
+  //  l'air entre chaque. Caillou '^' pour apprendre le saut, powerup eventail 'e'
+  //  en recompense. Monstres : caillou '^', tracteur 'T', corbeau 'V', criquet
+  //  'J', ademe 'R', random agri 'N'. Pickups 'd'=graines, 'p'=plants. Ciel bleu
+  //  clair, tint verte de Camargue (parallax par defaut).
   niveau1: {
     boss: 'agriculteur',
     theme: {

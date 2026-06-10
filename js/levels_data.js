@@ -1,17 +1,16 @@
 // AUTO-GENERE par gen_levels_data.py -- EDITE les niveaux dans levels/*.txt, PAS ici.
 window.LEVEL_MAPS = {
   "niveau1": [
-    "                                                                                                ",
-    "                              P                                                                 ",
-    "                            xxxx                                                                ",
-    "                  o     ----                                                                    ",
-    "              ----                      o            d                    xxx                   ",
-    "          ----              d                    ----              d                            ",
-    "     d                            p         ----            p              c         --         ",
-    "                                               xx                                 --            ",
-    "   @  N   ^N   TVN R  N  TJVN  e N  TNRV %  NJT dN V   NRT  NpVJ N T   N  VRN T           B   *",
-    "================================================================================================",
-    ""
+    "",
+    "                              P",
+    "                            xxxx",
+    "                  o     ----",
+    "              ----                      o     d                                           o                     o                   d",
+    "          ----                                      d                 p        d                                   p",
+    "      d                           p                       c                   ----                  d             ----        p   c",
+    "                        o                                       d                                         d",
+    "   @     N      ^       N           J               V             N       T                 e       J   N         R           V   N       B     *",
+    "===================================================================================================================================================="
   ],
   "niveau2": [
     "",
