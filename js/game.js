@@ -727,19 +727,32 @@
     return deck.pop();
   }
 
+  // TAILLE d'un PNJ. Source de verite = le REGISTRE window.NPC (js/npc.js, cle =
+  //  sprite de tete) : sa lettre `taille` P/M/G/TG -> categorie. CONFIG.theme.passant
+  //  .sizeScale (pcfg.sizeScale) donne le facteur d'echelle de chaque categorie.
+  //  Repli si la tete n'est pas au registre : ancien decoupage headSizes (theme), puis
+  //  'moyen'. cf. CLAUDE.md (PNJ).
+  const NPC_SIZE_KEY = { P: 'petit', M: 'moyen', G: 'grand', TG: 'tresGrand',
+    petit: 'petit', moyen: 'moyen', grand: 'grand', tresGrand: 'tresGrand' };
   function passantSize(headName, pcfg) {
     const sizes = (pcfg && pcfg.sizeScale) || {};
-    const groups = (pcfg && pcfg.headSizes) || {};
-    const m = /^head_npc_([fh])_([0-9]+)$/.exec(headName || '');
-    const sex = m && m[1];
-    const num = m ? Number(m[2]) : null;
-    const bySex = (sex && groups[sex]) || {};
-    const order = ['petit', 'moyen', 'grand', 'tresGrand'];
-    let key = bySex.default || 'moyen';
-    if (num != null) {
-      for (let i = 0; i < order.length; i++) {
-        const k = order[i];
-        if ((bySex[k] || []).indexOf(num) !== -1) { key = k; break; }
+    // 1) registre PNJ (source de verite)
+    const rec = (window.NPC && headName && window.NPC[headName]) || null;
+    let key = rec && NPC_SIZE_KEY[rec.taille];
+    // 2) repli legacy : tranches headSizes par sexe (theme.passant), puis 'moyen'
+    if (!key) {
+      const groups = (pcfg && pcfg.headSizes) || {};
+      const m = /^head_npc_([fh])_([0-9]+)$/.exec(headName || '');
+      const sex = m && m[1];
+      const num = m ? Number(m[2]) : null;
+      const bySex = (sex && groups[sex]) || {};
+      const order = ['petit', 'moyen', 'grand', 'tresGrand'];
+      key = bySex.default || 'moyen';
+      if (num != null) {
+        for (let i = 0; i < order.length; i++) {
+          const k = order[i];
+          if ((bySex[k] || []).indexOf(num) !== -1) { key = k; break; }
+        }
       }
     }
     return { key, scale: sizes[key] || 1 };

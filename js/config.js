@@ -73,12 +73,13 @@ window.CONFIG = {
     //  - heads  : tetes "South Park" de face, par sexe ; UNE choisie AU HASARD
     //             par exemplaire au moment du spawn (a la creation du niveau).
     //  - femaleRatio : proba de tirer un corps/tete 'f' (0..1).
-    //  - sizeScale / headSizes : 4 tailles de passant. headSizes range chaque
-    //             tete (= chaque personne) dans une categorie ; sizeScale donne
-    //             le facteur applique. ATTENTION : SEUL LE CORPS change de taille
-    //             -> la TETE garde toujours la meme taille (les grands/petits ont
-    //             juste un corps plus/moins grand, cf. attachHead qui compense le
-    //             scale du parent). C'est voulu : pas de grosse tete sur grand corps.
+    //  - sizeScale : facteur d'echelle des 4 tailles de PNJ (petit/moyen/grand/
+    //             tresGrand). QUELLE personne a quelle taille = registre js/npc.js
+    //             (window.NPC, lettre `taille` P/M/G/TG par tete). ATTENTION : SEUL
+    //             LE CORPS change de taille -> la TETE garde toujours la meme taille
+    //             (les grands/petits ont juste un corps plus/moins grand, cf.
+    //             attachHead qui compense le scale du parent). C'est voulu : pas de
+    //             grosse tete sur grand corps.
     //  - headScale   : taille de la tete (constante, independante de la taille du corps).
     //  - headLocal   : position de la tete dans le repere du CORPS (px @ART,
     //             ancre tete = 'bot' -> c'est le point du COU ; la tete pousse
@@ -99,15 +100,10 @@ window.CONFIG = {
       heads:  { h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
                 f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)) },
       sizeScale: { petit: 1, moyen: 1.14, grand: 1.28, tresGrand: 1.42 },
-      headSizes: {
-        f: { default: 'petit', moyen: [1, 3, 4, 7, 8, 10, 16, 17] },
-        h: {
-          petit: [4, 10, 12, 6, 19],
-          moyen: [1, 2, 3, 5, 11, 13, 15, 17, 20, 21],
-          grand: [8, 9, 16, 18],
-          tresGrand: [7, 14],
-        },
-      },
+      // La TAILLE de chaque personne (lettre P/M/G/TG) vit desormais dans le
+      //  REGISTRE des PNJ -> js/npc.js (window.NPC, une entree par tete). Ici on
+      //  ne garde que le FACTEUR d'echelle de chaque lettre (sizeScale, tuning
+      //  global). cf. CLAUDE.md (PNJ) et passantSize() dans game.js.
     },
   },
 

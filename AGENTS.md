@@ -15,7 +15,7 @@ There is no package manager manifest or formal build step beyond asset embedding
 
 ## Coding Style & Naming Conventions
 
-Use plain JavaScript in the existing global style: `window.CONFIG`, `window.LEVELS`, IIFEs, semicolons, and 2-space indentation. Keep configuration data in `js/config.js` and level layout data in `js/level.js` rather than hard-coding gameplay changes in `game.js`. Follow existing asset names such as `boss_rstudio_move.png`, `pickup_data.png`, and `head_npc_f_1.png`; if animation frame counts change, update the matching `CONFIG.anims` `sliceX` entry. Do not edit `js/assets_data.js` by hand.
+Use plain JavaScript in the existing global style: `window.CONFIG`, `window.LEVELS`, IIFEs, semicolons, and 2-space indentation. Keep configuration data in `js/config.js`, level layout data in `js/level.js`, and per-NPC identity (the ex-"passants": prenom/nom/taille `P`/`M`/`G`/`TG`/portrait source/phrases, keyed by head sprite) in `js/npc.js` (`window.NPC`), rather than hard-coding gameplay changes in `game.js`. Follow existing asset names such as `boss_rstudio_move.png`, `pickup_data.png`, and `head_npc_f_1.png`; if animation frame counts change, update the matching `CONFIG.anims` `sliceX` entry. Do not edit `js/assets_data.js` by hand.
 
 ## Testing Guidelines
 
