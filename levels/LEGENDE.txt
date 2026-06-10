@@ -40,6 +40,11 @@ EQUIPEMENT (+ rapide, saute + haut ; perdu si touchee)
   L         rollers
   Y         velo
 
+POWERUPS D'ARME (changent le tir de base ; monter en TIER = ramasser des 'd')
+  e         eventail (3 tirs en cone)
+  i         percant (traverse les ennemis)
+  b         bombe (tir droit explosif a petite zone)
+
 MONSTRES — sol / poursuite
   A         assureur/huissier (te poursuit)
   J         criquet (saute vers toi)

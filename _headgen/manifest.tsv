@@ -1,6 +1,6 @@
 # name	src	sex
 head_npc_f_1	Collegues (1).png	f
-head_npc_f_2	Collegues (10).jpeg	f
+head_npc_f_2	new_heads/female (9).png	f
 head_npc_f_3	Collegues (2).png	f
 head_npc_f_4	Collegues (9).jpeg	f
 head_npc_f_5	Plateau (3).png	f
@@ -13,9 +13,14 @@ head_npc_f_11	Stagiaire (6).jpg	f
 head_npc_f_12	Plateau (10).png	f
 head_npc_f_13	Plateau (4).png	f
 head_npc_f_14	Plateau (8).png	f
-head_npc_f_15	Stagiaire (4).jpg	f
+head_npc_f_15	new_heads/female.png	f
 head_npc_f_16	Stagiaire (8).jpg	f
 head_npc_f_17	Collegues (5).jpeg	f
+head_npc_f_18	new_heads/female (1).png	f
+head_npc_f_19	new_heads/female (4).png	f
+head_npc_f_20	new_heads/female (6).png	f
+head_npc_f_21	new_heads/female (7).png	f
+head_npc_f_22	new_heads/female (8).png	f
 head_npc_h_1	Stagiaire (1).png	h
 head_npc_h_2	Collegues (11).jpeg	h
 head_npc_h_3	Collegues (3).png	h
@@ -36,4 +41,8 @@ head_npc_h_17	Stagiaire (2).jpg	h
 head_npc_h_18	Stagiaire (3).jpg	h
 head_npc_h_19	Stagiaire (7).jpg	h
 head_npc_h_20	Stagiaire (9).jpg	h
-head_npc_h_21	riziere.jpg	h
+head_npc_h_21	new_heads/male.jpg	h
+head_npc_h_22	new_heads/male (1).png	h
+head_npc_h_23	new_heads/male (2).png	h
+head_npc_h_24	new_heads/male (1).jpg	h
+head_npc_h_25	new_heads/male (2).jpg	h

@@ -89,6 +89,12 @@ window.CONFIG = {
       femaleRatio: 17 / 38,
       headScale: 0.9,
       headLocal: [0, -90], headBob: 1, headRot: 3,
+      //  - deadHeadDrop / deadHeadScale : CADAVRE. Quand le passant tombe, le corps
+      //    s'affale (sprite <body>_dead) -> le cou descend. On fait DESCENDRE la
+      //    tete zombie (drop = px @ART ajoutes au cou, repere corps -> suit la
+      //    taille du corps) pour qu'elle TOUCHE le corps, et on la RETRECIT un peu
+      //    (scale, multiplie la taille de tete) pour epouser la perspective affalee.
+      deadHeadDrop: 34, deadHeadScale: 0.85,
       bodies: { h: ['body_champ_h'], f: ['body_champ_f'] },
       heads:  { h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
                 f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)) },
@@ -213,39 +219,46 @@ window.CONFIG = {
   enemies: {
     // NB: 'caillou' n'est plus un ennemi -> c'est un OBSTACLE solide sans degat
     //     (cf. addRock dans game.js ; pose par '^' dans la map + auto aux 2 bords).
-    camion:   { sprite: 'enemy_camion',   hp: 6,        touchDamage: 2, move: 'patrol',  speed: 130, range: 130, aggro: 460, score: 250 },
-    assureur: { sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 80,  range: 110, aggro: 380, score: 150 },
-    ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200 },
+    camion:   { sprite: 'enemy_camion',   hp: 6,        touchDamage: 2, move: 'patrol',  speed: 130, range: 130, aggro: 460, score: 250, hit: { w: 0.86, h: 0.84 } },
+    assureur: { sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 80,  range: 110, aggro: 380, score: 150, hit: { w: 0.88, h: 0.83 } },
+    ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200, hit: { w: 0.72, h: 0.82 } },
     // nouveaux archetypes (variete / difficulte)
-    corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180, scale: 0.32 },
-    criquet:  { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'jump',    speed: 150, jumpForce: 560, jumpEvery: 1.1, aggro: 520, anim: 'walk', score: 140 },
+    corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180, scale: 0.32, hit: { w: 0.90, h: 0.95 } },
+    criquet:  { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'jump',    speed: 150, jumpForce: 560, jumpEvery: 1.1, aggro: 520, anim: 'walk', score: 140, hit: { w: 0.92, h: 0.82 } },
 
     // --- NOUVEAUX ARCHETYPES (design definitif) ------------------------
     //  6 familles par niveau : IMMOBILE (static) / VEHICULE (patrol) / VOLANT
     //  (fly) / SOL (chase) / TIR (shooter) / RANDOM (passant). Chaque feuille
     //  enemy_<kind> = 6 frames (walk 0-2 / hurt 3 / attack 4-5, cf. anims).
     //  scale = taille a l'ecran (humanoide/engin ~1 ; petits insectes < 0.5).
+    //  hit = boite de COLLISION en FRACTION de la frame, mesuree sur le DESSIN
+    //   reel des frames de marche (cf. analyse des PNG). { w, h } : largeur et
+    //   hauteur ; la boite reste CENTREE (insensible au flip) et son BAS reste
+    //   cale au bas de la frame (= sol, pas de changement de physique). A defaut
+    //   spawnEnemy retombe sur 0.85x0.9. C'est surtout vital pour les GROS
+    //   sprites (immobiles, tourelles, vehicules) dont le sujet ne remplit pas la
+    //   frame : sans ca on se prenait des degats / on butait dans le vide.
     //  VOLANT
-    moustique:    { sprite: 'enemy_moustique',    hp: 1, touchDamage: 1, move: 'fly',     speed: 120, range: 160, amp: 42, anim: 'walk', score: 120, scale: 0.45 },
-    abeille:      { sprite: 'enemy_abeille',      hp: 1, touchDamage: 1, move: 'fly',     speed: 130, range: 150, amp: 36, anim: 'walk', score: 130, scale: 0.5  },
+    moustique:    { sprite: 'enemy_moustique',    hp: 1, touchDamage: 1, move: 'fly',     speed: 120, range: 160, amp: 42, anim: 'walk', score: 120, scale: 0.45, hit: { w: 0.90, h: 0.92 } },
+    abeille:      { sprite: 'enemy_abeille',      hp: 1, touchDamage: 1, move: 'fly',     speed: 130, range: 150, amp: 36, anim: 'walk', score: 130, scale: 0.5 , hit: { w: 0.86, h: 0.87 } },
     //  SOL (rampe vite, bas)
-    cafard:       { sprite: 'enemy_cafard',       hp: 1, touchDamage: 1, move: 'chase',   speed: 165, range: 90,  aggro: 500, anim: 'walk', score: 100, scale: 0.5 },
+    cafard:       { sprite: 'enemy_cafard',       hp: 1, touchDamage: 1, move: 'chase',   speed: 165, range: 90,  aggro: 500, anim: 'walk', score: 100, scale: 0.5, hit: { w: 0.92, h: 0.68 } },
     //  VEHICULE (va-et-vient, gros degats)
-    transpalette: { sprite: 'enemy_transpalette', hp: 6, touchDamage: 2, move: 'patrol',  speed: 150, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0 },
-    livreur:      { sprite: 'enemy_livreur',      hp: 6, touchDamage: 2, move: 'patrol',  speed: 120, range: 130, aggro: 460, anim: 'walk', score: 260, scale: 1.0 },
-    coursier:     { sprite: 'enemy_coursier',     hp: 6, touchDamage: 2, move: 'patrol',  speed: 140, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0 },
+    transpalette: { sprite: 'enemy_transpalette', hp: 6, touchDamage: 2, move: 'patrol',  speed: 150, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.68, h: 0.80 } },
+    livreur:      { sprite: 'enemy_livreur',      hp: 6, touchDamage: 2, move: 'patrol',  speed: 120, range: 130, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.82 } },
+    coursier:     { sprite: 'enemy_coursier',     hp: 6, touchDamage: 2, move: 'patrol',  speed: 140, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.85 } },
     //  TIR (shooter)
-    imprimante:   { sprite: 'enemy_imprimante',   hp: 4, touchDamage: 1, move: 'shooter', shotEvery: 2.0, range: 440, shotSpeed: 260, anim: 'walk', score: 230, scale: 0.95 },
-    chips:        { sprite: 'enemy_chips',        hp: 2, touchDamage: 1, move: 'shooter', shotEvery: 2.4, range: 400, shotSpeed: 230, anim: 'walk', score: 160, scale: 0.7  },
-    tuyau:        { sprite: 'enemy_tuyau',        hp: 3, touchDamage: 1, move: 'shooter', shotEvery: 1.8, range: 420, shotSpeed: 240, anim: 'walk', score: 200, scale: 0.9  },
+    imprimante:   { sprite: 'enemy_imprimante',   hp: 4, touchDamage: 1, move: 'shooter', shotEvery: 2.0, range: 440, shotSpeed: 260, anim: 'walk', score: 230, scale: 0.95, hit: { w: 0.92, h: 0.78 } },
+    chips:        { sprite: 'enemy_chips',        hp: 2, touchDamage: 1, move: 'shooter', shotEvery: 2.4, range: 400, shotSpeed: 230, anim: 'walk', score: 160, scale: 0.7 , hit: { w: 0.92, h: 0.88 } },
+    tuyau:        { sprite: 'enemy_tuyau',        hp: 3, touchDamage: 1, move: 'shooter', shotEvery: 1.8, range: 420, shotSpeed: 240, anim: 'walk', score: 200, scale: 0.9 , hit: { w: 0.92, h: 0.82 } },
     //  IMMOBILE (static, degat au contact / petite attaque de proximite)
-    sac:          { sprite: 'enemy_sac',          hp: 3, touchDamage: 1, move: 'static',  anim: 'walk', score: 120, scale: 0.8 },
-    fontaine:     { sprite: 'enemy_fontaine',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9 },
-    dossiers:     { sprite: 'enemy_dossiers',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9 },
+    sac:          { sprite: 'enemy_sac',          hp: 3, touchDamage: 1, move: 'static',  anim: 'walk', score: 120, scale: 0.8, hit: { w: 0.92, h: 0.86 } },
+    fontaine:     { sprite: 'enemy_fontaine',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9, hit: { w: 0.58, h: 0.84 } },
+    dossiers:     { sprite: 'enemy_dossiers',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9, hit: { w: 0.86, h: 0.84 } },
 
     // minions de boss (reutilisent des sprites existants)
-    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60 },
-    chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120 },
+    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60, hit: { w: 0.92, h: 0.82 } },
+    chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120, hit: { w: 0.88, h: 0.83 } },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
     //  PERDRE un TIER (cf. registerKill dans game.js) -> on est cense les
@@ -269,24 +282,58 @@ window.CONFIG = {
   //  Champs de tuning IA (windTime, revTime, aimTime, ...) lus par bosses.js ;
   //  l'IA a des defauts, donc aucun champ n'est obligatoire pour eviter un crash.
   bosses: {
-    // niveau1 (Riziere) — LE PLUS FACILE
-    agriculteur:  { sprite: 'boss_agriculteur_move',  attackSprite: 'boss_agriculteur_atk',  behavior: 'tracteur',  hp: 18, maxHp: 18, touchDamage: 2, shotEvery: 1.5, shotSpeed: 240, speed: 150,range: 300, dashSpeed: 0,   score: 1000, name: 'L AGRICULTEUR FOU',
-                    shot: 'shot_fork', revTime: 0.5, stallTime: 1.5, forkEvery: 0.45,
-                    skyEvery: 2.0, skyDelay: 0.6, skyMinDist: 150 },
-    // niveau2 (Appart) — Francois le proprio
-    proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',   hp: 24, maxHp: 24, touchDamage: 2, shotEvery: 1.35, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO',
-                    shot: 'shot_stake', windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5 },
-    // niveau3 (Serre) — RStudio
-    rstudio:      { sprite: 'boss_rstudio_move',      attackSprite: 'boss_rstudio_atk',      behavior: 'errors',    hp: 30, maxHp: 30, touchDamage: 2, shotEvery: 1.2, shotSpeed: 280, speed: 60, range: 280, dashSpeed: 0,   score: 1700, name: 'RSTUDIO',
-                    shot: 'shot_error', attackTime: 4, loadTime: 2 },
-    // niveau4 (Labo) — Michael le directeur de these
-    michael:      { sprite: 'boss_michael_move',      attackSprite: 'boss_michael_atk',      behavior: 'modeles',   hp: 38, maxHp: 38, touchDamage: 2, shotEvery: 1.05, shotSpeed: 300, speed: 80, range: 300, dashSpeed: 0,   score: 2100, name: 'MICHAEL LE DIRECTEUR',
-                    shot: 'shot_chart', aimTime: 0.6, recalcTime: 1.0, waveCount: 6 },
-    // niveau5 (Universite) — LE PLUS DUR DES 5
-    cendrine:     { sprite: 'boss_cendrine_move',     attackSprite: 'boss_cendrine_atk',     behavior: 'paperasse', hp: 46, maxHp: 46, touchDamage: 2, shotEvery: 0.9, shotSpeed: 330, speed: 90, range: 320, dashSpeed: 0,   score: 2600, name: 'CENDRINE LA RESPONSABLE',
-                    shot: 'shot_form', preTime: 0.4, throwTime: 0.3, windowTime: 1.2 },
-    // FINAL — megaboss multi-phases
-    jury:         { sprite: 'boss_jury_move',         attackSprite: 'boss_jury_atk',         behavior: 'jury',      hp: 64, maxHp: 64, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, dashSpeed: 0,   score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32 },
+    // === FINETUNING : pour chaque boss, TOUS les params de timing lus par
+    //  js/bosses.js sont exposes ici (avant, beaucoup n'avaient qu'un defaut code
+    //  en dur, et certaines valeurs ici etaient PERIMEES et ecrasaient l'IA).
+    //  Edite ces nombres + reload pour ajuster le game feel. 2e ligne = reglages IA. ===
+
+    // niveau1 (Riziere) — agriculteur (IA 'tracteur') : LE PLUS FACILE.
+    //  rev (vrombit, revTime) -> drive (traverse, lache une BOMBE tous les skyEvery
+    //  si joueur a >skyMinDist px, chute apres skyDelay) -> stall (cale, immobile
+    //  stallTime = PUNITION). Esquive : lob depuis panneaux + saut/dash sous bombes.
+    agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
+                    hp: 18, maxHp: 18, touchDamage: 2, shotSpeed: 240, speed: 150, range: 300, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
+                    revTime: 0.5, stallTime: 1.8, skyEvery: 2.2, skyDelay: 0.8, skyMinDist: 160 },
+
+    // niveau2 (Appart) — proprio (IA 'charger').
+    //  pace (approche ; 1 cycle/2 tire un TRIPLE missile, milieu DUCKABLE ; paceTime)
+    //  -> wind (se cabre, windTime) -> dash (rue dashSpeed pdt dashTime, seisme local)
+    //  -> stagger (essouffle = PUNITION, staggerTime) -> throw (eventail 3, throwTime).
+    proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
+                    hp: 24, maxHp: 24, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_stake',
+                    paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5 },
+
+    // niveau3 (Serre) — rstudio (IA 'errors').
+    //  fire (3 salves de triple-missile espacees de burstGap, pdt attackTime) ->
+    //  summon (cafards fragiles spawnes EN FACE, summonTime) -> load (immobile =
+    //  PUNITION, loadTime). Esquive : dash + petites plateformes.
+    rstudio:      { sprite: 'boss_rstudio_move', attackSprite: 'boss_rstudio_atk', behavior: 'errors',
+                    hp: 30, maxHp: 30, touchDamage: 2, shotSpeed: 280, speed: 60, range: 280, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
+                    attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5 },
+
+    // niveau4 (Labo) — michael (IA 'modeles').
+    //  garde ses distances (keepMin..keepMax) ; vise (aimTime) puis lache une BOMBE
+    //  EN PAPIER sur le joueur ; 1 cycle/3 = overload (eventail 3) ; recalc (ne tire
+    //  pas = PUNITION, recalcTime). Esquive : bouger lateralement / double-saut.
+    michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
+                    hp: 38, maxHp: 38, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart',
+                    aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440 },
+
+    // niveau5 (Universite) — cendrine (IA 'paperasse') : LE PLUS DUR DES 5.
+    //  pre (annonce la destination du TP, preTime) -> implosion (retrecit+clignote,
+    //  implodeTime) -> TP + eventail de formN formulaires + TAMPON-PIEGE (throwTime)
+    //  -> window (PUNITION, windowTime). Esquive : dash apres le TP / les tampons.
+    cendrine:     { sprite: 'boss_cendrine_move', attackSprite: 'boss_cendrine_atk', behavior: 'paperasse',
+                    hp: 46, maxHp: 46, touchDamage: 2, shotSpeed: 330, speed: 90, range: 320, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
+                    preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4 },
+
+    // FINAL — jury (IA 'jury') : megaboss 3 phases selon HP. >66% Q&A (eventail 3,
+    //  cadence shotEvery) ; 33-66% debat (eventail 5 + anneau de ringN + minion) ;
+    //  <33% verdict (eventail de panicN + bombes + MUR A TROU a dasher). enrageTime
+    //  = pose marquee au changement de phase. Esquive : lob a distance puis DASH.
+    jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
+                    hp: 64, maxHp: 64, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32,
+                    enrageTime: 0.7, ringN: 8, panicN: 7 },
   },
 
   // --- Collectibles ---------------------------------------------------

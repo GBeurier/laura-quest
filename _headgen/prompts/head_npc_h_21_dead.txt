@@ -1,0 +1,32 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+The ATTACHED image is a cute 16-bit SNES pixel-art cartoon HEAD (a friendly living character, seen straight from the front on a flat magenta background). Your job: redraw THIS EXACT SAME head as a stylized cartoon ZOMBIE version of itself.
+
+KEEP THE IDENTITY: same hairstyle, same hair parting and length, same face shape, same glasses (if any), same facial hair (if any), same head size, SAME front view, SAME scale and SAME centered position as the attached head. It must read as "the same person, but undead".
+
+ZOMBIE TREATMENT (cute cartoon, NOT realistic, NOT scary-gory):
+- skin turned a sickly pale GREEN-GREY (desaturated, slightly greenish), with darker grey-green shading;
+- eyes sunken with dark hollow rings around them; dead eyes = pale/whitish or pale-yellow blank irises, a tired empty stare;
+- mouth slightly droopy / slack, a flat or faintly grimacing neutral expression;
+- hair the same shape but DULLED / greyed / desaturated.
+
+ABSOLUTELY NO BLOOD: no blood, no red splatter, no dripping, no open wounds, no gashes, no scars, no bruises, no exposed bone, no stitches, no red marks of any kind. It must stay clean, cute and bloodless — just a greenish sleepy zombie head.
+
+PIXEL-ART STYLE: keep the exact retro 16-bit SNES look of the attached image. Crisp visible square pixels, bold dark outline, limited palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D, NO photo-realism.
+
+HEAD ONLY: head + hair + a short bare neck stump at the very bottom. NO shoulders, NO torso, NO body, NO clothes. ONE single head, centered, with generous empty margin all around.
+
+BACKGROUND: fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid, NO text, NO numbers, NO watermark, NO border box, NO second head. NEVER use magenta/pink on the head, hair or skin.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_headgen/raw/head_npc_h_26_dead_sheet.png
+
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images.
+Other agents may generate images at the same time. Use only the generated_images
+subdirectory for YOUR OWN Codex session id (the session id printed in your header),
+or otherwise verify the candidate file was produced by your own image_gen call.
+If you cannot unambiguously identify your own generated PNG, do not copy anything:
+print FAIL_UNSAFE_COPY instead.
+
+Generate the head (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_headgen/raw/head_npc_h_26_dead_sheet.png (<W>x<H>)

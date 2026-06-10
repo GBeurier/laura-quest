@@ -518,9 +518,13 @@
   //  du niveau (anti-chute, cf. buildLevel).
   function addRock(cx, groundY, invisible) {
     const spr = variant('enemy_caillou');
+    // COLLISION : le caillou VISIBLE prend une boite calee sur le dessin (le sujet
+    //  ne remplit pas la frame) -> Laura ne bute plus dans le vide ni n'atterrit
+    //  sur de l'air au-dessus, et les tirs s'arretent pile sur la pierre. Le mur
+    //  de BORD invisible (anti-chute) garde la frame pleine pour bloquer a coup sur.
     const comps = [
       sprite(spr), artScale(), pos(cx, groundY), anchor('bot'),
-      area(), body({ isStatic: true }), z(-1), 'solid', 'rock',
+      area(invisible ? {} : { scale: vec2(0.90, 0.82) }), body({ isStatic: true }), z(-1), 'solid', 'rock',
     ];
     if (invisible) comps.push(opacity(0));   // mur de bord invisible (interieurs) : bloque la chute sans afficher de caillou
     const r = add(comps);
@@ -647,8 +651,15 @@
       //  (figurant) ignore EN PLUS le joueur ET le boss : c'est un decor inerte
       //  qui n'interagit avec rien -- il encaisse seulement les balles (cf. la
       //  tag 'passant' ciblee par onCollide, plus bas).
+      // COLLISION : le passant garde sa boite generique (0.85x0.9, compensee par
+      //  la taille du corps). Les autres prennent leur boite mesuree def.hit
+      //  (cf. CONFIG.enemies) -> CENTREE (insensible au flip) et BAS cale au bas
+      //  de frame (anchor 'bot' => aucun changement de portance au sol). A defaut
+      //  (def.hit absent) : 0.85x0.9 comme avant.
       area({
-        scale: isPersona ? vec2(0.85 / psize.scale, 0.9 / psize.scale) : vec2(0.85, 0.9),
+        scale: isPersona
+          ? vec2(0.85 / psize.scale, 0.9 / psize.scale)
+          : vec2((def.hit && def.hit.w) || 0.85, (def.hit && def.hit.h) || 0.9),
         collisionIgnore: isPersona ? ['enemy', 'boss', 'player'] : ['enemy'],
       }),
       // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
@@ -926,8 +937,18 @@
     if (!e || !e.exists() || e.dead) return;
     e.dead = true;
     try { e.stop(); } catch (_) {}            // fige l'anim de marche
-    try { e.unuse('body'); } catch (_) {}     // plus de gravite
-    try { e.unuse('area'); } catch (_) {}     // inerte : les balles le traversent
+    // CHIRURGIE DE COMPOSANTS DIFFEREE D'UN TICK : corpsify arrive depuis un
+    //  onCollide, donc EN PLEIN parcours de la grille de collision du moteur.
+    //  destroy() y est sur (le moteur re-teste !exists() sur chaque paire),
+    //  mais unuse() est IMMEDIAT : retirer 'area' ici supprime worldArea /
+    //  collisionIgnore sous les pieds du parcours -> TypeError sporadiques.
+    //  wait(0) repousse le retrait a la phase timers (hors parcours). Entre
+    //  temps le corps est deja inerte cote gameplay (dead + untag ce frame).
+    wait(0, () => {
+      if (!e.exists()) return;
+      try { e.unuse('body'); } catch (_) {}   // plus de gravite
+      try { e.unuse('area'); } catch (_) {}   // inerte : les balles le traversent
+    });
     e.untag('passant');                       // hors IA / souffle de zone passant
     e.tag('corpse');
     e.z = -0.6;                               // toujours sous les vivants
@@ -1404,6 +1425,9 @@
           case 'k': spawnPickup('croquette', cx, y + TS / 2); break;
           case 'L': spawnPickup('rollers', cx, y + TS / 2); break;
           case 'Y': spawnPickup('velo', cx, y + TS / 2); break;
+          case 'e': spawnPickup('arme_spread', cx, y + TS / 2); break;   // powerup arme : eventail
+          case 'i': spawnPickup('arme_pierce', cx, y + TS / 2); break;   // powerup arme : percant
+          case 'b': spawnPickup('arme_bombe', cx, y + TS / 2); break;    // powerup arme : bombe
           case '^': addRock(cx, groundY); break;
           case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
           case 'T': spawnEnemy('camion', cx, groundY); break;

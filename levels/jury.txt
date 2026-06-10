@@ -3,9 +3,9 @@
                   o                       o                 
               ----                    ----                  
          k              c        d              k           
-                  ----      ----        ----                
-      d                                            p        
+                  ----      ----        ----    --          
+      d                                     --     p        
                                                             
-  @  N N N^ dNN N  N NcN N N  N NpN N  N N NcN  N    B    * 
+  @  N N N^ dNN N  N NcN N N  N NpN N  N N Nc        B    * 
 ============================================================
 

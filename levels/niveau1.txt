@@ -4,8 +4,8 @@
                   o     ----                                                                    
               ----                      o            d                    xxx                   
           ----              d                    ----              d                            
-     d                            p         ----            p              c                    
-                                               xx                                               
-   @  N   ^N   TVN R  N  TJVN    N  TNRV    NJT dN V   NRT  NpVJ N T   N  VRN T  JN  V    B   * 
+     d                            p         ----            p              c         --         
+                                               xx                                 --            
+   @  N   ^N   TVN R  N  TJVN  e N  TNRV %  NJT dN V   NRT  NpVJ N T   N  VRN T           B   *
 ================================================================================================
 

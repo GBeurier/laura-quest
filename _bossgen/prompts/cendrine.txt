@@ -7,11 +7,11 @@ LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, l
 BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
 
 CHARACTER (identical in every frame of BOTH sheets):
-An OLD, ANGRY female university administrator/secretary. Severe grey hair in a tight bun, cat-eye glasses on a beaded chain, pursed furious red lips, a buttoned mauve cardigan over a blouse, a long grey skirt. Comedic stern-bureaucrat villain. She wields a big rubber office STAMP (tampon).
+CENDRINE, a severe female administrative manager. Strict tight bun, sharp glasses, stern pursed mouth, beige tailored suit / tailleur beige with skirt and jacket, sensible shoes, several folders / dossiers tucked under one arm. Comedic bureaucratic boss, rigid posture, no purple outfit.
 
-SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (standing rigid and disapproving, tapping a stack of forms, glaring left over her glasses); frame 6 a HURT pose (gasping, glasses knocked askew, recoiling, papers puffing up). cp the result to /home/delete/laura_quest/_bossgen/raw/cendrine_move_sheet.png
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (standing rigid and disapproving, clutching folders under her arm, glaring left over her glasses); frame 6 a HURT pose (recoiling, glasses knocked askew, folders and papers puffing up, impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/cendrine_move_sheet.png
 
-SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 ready, frames2-3 raise the big rubber stamp high, frame4 SLAM it forward/down to the LEFT, frame5 a fan of official forms scatters left, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/cendrine_atk_sheet.png
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 ready with folders under arm, frames2-3 pull a dossier / form from the stack, frame4 fling official folders and papers to the LEFT, frame5 point angrily left while papers scatter, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/cendrine_atk_sheet.png
 
 Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
   MOVE: /home/delete/laura_quest/_bossgen/raw/cendrine_move_sheet.png (<W>x<H>)

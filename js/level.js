@@ -62,8 +62,8 @@
 //  tete au hasard par 'N' au build du niveau. Un sprite absent est simplement
 //  ignore -> pas de crash pendant une generation partielle.
 const PASSANT_HEADS = {
-  h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
-  f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)),
+  h: Array.from({ length: 25 }, (_, i) => 'head_npc_h_' + (i + 1)),
+  f: Array.from({ length: 22 }, (_, i) => 'head_npc_f_' + (i + 1)),
 };
 const PASSANT = (biome) => ({
   femaleRatio: PASSANT_HEADS.f.length / (PASSANT_HEADS.f.length + PASSANT_HEADS.h.length),

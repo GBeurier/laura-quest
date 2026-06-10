@@ -19,7 +19,15 @@ LAYOUT: EXACTLY 2 frames in a SINGLE horizontal row, a uniform grid of 2 equal c
 
 BACKGROUND: fill the ENTIRE image (including the gap) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid, NO text, NO numbers, NO watermark, NO border box. NEVER use magenta/pink on the head, hair or skin.
 
-cp the generated PNG to /home/delete/laura_quest/_headgen/raw/head_npc_h_22_sheet.png
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_headgen/raw/head_npc_h_22_sheet.png
+
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images.
+Other agents may generate images at the same time. Use only the generated_images
+subdirectory for YOUR OWN Codex session id (the session id printed in your header),
+or otherwise verify the candidate file was produced by your own image_gen call.
+If you cannot unambiguously identify your own generated PNG, do not copy anything:
+print FAIL_UNSAFE_COPY instead.
 
 Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
   SHEET: /home/delete/laura_quest/_headgen/raw/head_npc_h_22_sheet.png (<W>x<H>)

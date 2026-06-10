@@ -7,11 +7,11 @@ LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, l
 BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
 
 CHARACTER (identical in every frame of BOTH sheets):
-A CRAZED, manic farmer with wild bulging eyes and a huge manic toothy grin, a straw hat askew, dirty green/khaki overalls over a plaid shirt, work gloves. Unhinged comedic energy. He wields a PITCHFORK.
+An ANGRY farmer riding a rusty red TRACTOR, clearly the boss vehicle. Farmer: furious face, straw hat, plaid shirt, dirty overalls, work gloves. Tractor: rust-red body, black exhaust chimney / smokestack, two very large dark wheels with pale hubs, chunky fenders, small steering wheel, grime. The farmer sits high on the tractor, leaning left, shouting. Keep the tractor visible and dominant in every frame.
 
-SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (twitching, pitchfork shaking in his grip, manic grin, head jittering, facing left); frame 6 a HURT pose (jolting backward, eyes spinning, hat flying up, impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/agriculteur_move_sheet.png
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (tractor chugging in place, big wheels rocking slightly, smokestack puffing, farmer shaking a fist while facing left); frame 6 a HURT pose (tractor jolts backward, farmer almost falls from seat, hat flying up, sparks and impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/agriculteur_move_sheet.png
 
-SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 ready, frames2-3 rear the pitchfork back over the shoulder, frame4 thrust it forward to the LEFT like a spear, frame5 full lunge LEFT, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/agriculteur_atk_sheet.png
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 engine idles, frames2-3 tractor revs with smoke from the chimney, frame4 tractor lunges / rams to the LEFT, frame5 wheel spin and front grill thrust left, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/agriculteur_atk_sheet.png
 
 Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
   MOVE: /home/delete/laura_quest/_bossgen/raw/agriculteur_move_sheet.png (<W>x<H>)

@@ -7,11 +7,11 @@ LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, l
 BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
 
 CHARACTER (identical in every frame of BOTH sheets):
-FRANCOIS, a greedy comedic URBAN APARTMENT LANDLORD (slumlord). A smug middle-aged man in a slightly-too-tight cheap blazer over a shirt (or a buttoned cardigan), a thin pencil mustache, slicked-back hair, a big jangling RING OF KEYS on his belt, clutching a rolled-up EVICTION / unpaid-rent notice. Smarmy money-grubbing grin, beady eyes, a little pot belly. NOT a farmer.
+FRANCOIS, a grumpy rural LANDOWNER / property boss, not a farmer. Short stocky middle-aged man with a big round pot belly, red scowling face, small slick hair, thin moustache, expensive BORDEAUX / burgundy suit straining over the belly, white shirt, dark shoes, gold watch, bunch of keys at the belt, holding a rolled property deed or land contract. Renfrogne, greedy, territorial, comedic villain.
 
-SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (rubbing his fingers together for money, jangling his keys, smug greedy grin, glaring to the left); frame 6 a HURT pose (recoiling, keys and papers flying up, eyes turned to X, a couple of impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_move_sheet.png
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (squaring his shoulders, belly jutting forward, jangling keys, glaring to the left); frame 6 a HURT pose (recoiling backward, belly bouncing, keys and deed flying up, eyes squeezed shut, impact stars). cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_move_sheet.png
 
-SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 stand, frames2-3 lean back brandishing the rolled-up notice and keys, frame4 hurl it forward to the LEFT, frame5 charge-lunge LEFT shoulder-first like a pushy bully, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_atk_sheet.png
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 stand, frames2-3 wind up with the rolled land contract and keys, frame4 thrust / shove the contract hard to the LEFT, frame5 shoulder-charge LEFT with belly first, frame6 recover. cp the result to /home/delete/laura_quest/_bossgen/raw/proprietaire_atk_sheet.png
 
 Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
   MOVE: /home/delete/laura_quest/_bossgen/raw/proprietaire_move_sheet.png (<W>x<H>)

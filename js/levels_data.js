@@ -7,9 +7,9 @@ window.LEVEL_MAPS = {
     "                  o     ----                                                                    ",
     "              ----                      o            d                    xxx                   ",
     "          ----              d                    ----              d                            ",
-    "     d                            p         ----            p              c                    ",
-    "                                               xx                                               ",
-    "   @  N   ^N   TVN R  N  TJVN    N  TNRV    NJT dN V   NRT  NpVJ N T   N  VRN T  JN  V    B   * ",
+    "     d                            p         ----            p              c         --         ",
+    "                                               xx                                 --            ",
+    "   @  N   ^N   TVN R  N  TJVN  e N  TNRV %  NJT dN V   NRT  NpVJ N T   N  VRN T           B   *",
     "================================================================================================",
     ""
   ],
@@ -22,7 +22,7 @@ window.LEVEL_MAPS = {
     "            ---                 ---                        --",
     "",
     "                                                     Y  --",
-    "   @  N       NAM SH   N    MSANHK     MSN  A  HN  SM d  NAKHSM  N      SAMHN   p NS  MA KHN  S  M    B   * ",
+    "   @  N    i  NAM SH   N    MSANHK     MSN  A  HN  SM d  NAKHSM  N   %  SAMHN   p NS  MA KHN          B   * ",
     "============================================================================================================",
     ""
   ],
@@ -32,10 +32,10 @@ window.LEVEL_MAPS = {
     "",
     "                         d                         o                                     d",
     "             o          ---          p            ---                         M         ---          o",
-    "            ---                     ---                                                             ---",
-    "",
+    "            ---                     ---                                                             ---   --",
+    "                                                                                                      --",
     "                                                                       L",
-    "   @  N       NW FMU  N   F WN U MF  N    WFJUNM   F N dW U FNM     NFWU   NMF    WNUpF   MNJ F W UN   F M    B   * ",
+    "   @  N    b  NW FMU  N   F WN U MF  N    WFJUNM   F N dW U FNM     NFWU % NMF    WNUpF   MNJ F W UN          B   * ",
     "====================================================================================================================",
     ""
   ],
@@ -48,7 +48,7 @@ window.LEVEL_MAPS = {
     "            ---                     ---                    --",
     "",
     "                                                     Y  --",
-    "   @  N      N G  FEIN     NGF  E   IN F G N  EK FN   GI  NEF   dN G  FI EN    NGF    NEI  F GpN   K FEN  GI  N F  E    B   * ",
+    "   @  N   e  N G  FEIN     NGF  E   IN F G N  EK FN   GI  NEF   dN G  FI EN    NGF %  NEI  F GpN   K FEN  GI  N         B   * ",
     "==============================================================================================================================",
     ""
   ],
@@ -64,7 +64,7 @@ window.LEVEL_MAPS = {
     "              ---                     ---                     ---               M",
     "",
     "                                                                                        L",
-    "   @  N       NCIMD    N   DC MIN   D   CNI M D NK  C  DIdMN    DCNI  M   DN C  I NDM   p CNDI   M  N DCIK  N MD  C NI  D  M    B   * ",
+    "   @  N    i  NCIMD    N   DC MIN   D   CNI M D NK  C  DIdMN    DCNI  M % DN C  I NDM   p CNDI   M  N DCIK  N MD  C NI          B   * ",
     "======================================================================================================================================",
     ""
   ],
@@ -74,10 +74,10 @@ window.LEVEL_MAPS = {
     "                  o                       o                 ",
     "              ----                    ----                  ",
     "         k              c        d              k           ",
-    "                  ----      ----        ----                ",
-    "      d                                            p        ",
+    "                  ----      ----        ----    --          ",
+    "      d                                     --     p        ",
     "                                                            ",
-    "  @  N N N^ dNN N  N NcN N N  N NpN N  N N NcN  N    B    * ",
+    "  @  N N N^ dNN N  N NcN N N  N NpN N  N N Nc        B    * ",
     "============================================================",
     ""
   ]

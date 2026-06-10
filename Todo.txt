@@ -1,4 +1,6 @@
 - Fixe Boss: assets, gameplay
+
+
 - Level design
 - Fix Animation laura chat et animation tir
 - Ajouter des level "hors ecran" - un niveau doit avoir quelques epaisseurs invisibles
@@ -7,7 +9,11 @@
 - monstres spawnés derrière boss.
 - NPC disparaissent quand on revient (tester, fixé normalement)
 - Maison Start and End level.
-
+- Vérifier nouveau gameplay (tir gateaux) et refaire le HUD il est dégueu
+- Vire le texte cheatcodes
+- Virer les tremblements ca pourri l'expérience de jeu
+- Mur invisible en début de niveau (bug cailloux)
+- Les tirs de gateaux sont pourris (voir rechargemet comme avant)
 
 
 
