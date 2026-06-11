@@ -1,0 +1,23 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+The ATTACHED image is a finished pixel-art SPRITE SHEET of "Laura", a cute cartoon girl explorer (blonde ponytail, blue top, shorts, boots, RED BACKPACK with a small WHITE/CREAM FLUFFY CAT poking its head out of the top), shown as 8 frames of a side-on RUN cycle, facing RIGHT.
+
+YOUR ONE JOB: draw a NEW 6-frame sheet of the SAME character doing a fast horizontal DASH (a short burst of speed used as a dodge):
+- frame 1 = crouched push-off (knees bent, body coiling forward),
+- frames 2-4 = full-speed horizontal LUNGE: body leaning HARD forward (~45 degrees), ponytail and backpack straps streaming straight back, legs trailing behind, arms tucked — three slight pose variations of the same lunge,
+- frame 5 = braking (front foot planted, body still leaning),
+- frame 6 = recovering upright.
+Do NOT draw speed lines or dust (the game adds them) — POSES ONLY.
+
+FAITHFULNESS IS EVERYTHING — copy the reference identity exactly: SAME body proportions, SAME palette, SAME outline style, SAME 16-bit SNES pixel-art look, SAME scale as the attached sheet, SAME facing direction (RIGHT). Keep the red backpack AND the cat poking out of it identical to the reference in every frame.
+
+LAYOUT (critical): ONE horizontal row of EXACTLY 6 equal cells, Laura at the same scale and on the same ground baseline in every cell, centered in her cell, with a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch; nothing crosses into a neighbour).
+
+BACKGROUND: fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO floor line, NO gradient, NO grid, NO text, NO numbers, NO watermark, NO border. NEVER use magenta or pink on Laura, the backpack or the cat.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_catfreegen/raw/hero_dash_sheet.png
+CRITICAL: do NOT pick "the newest PNG" globally from ~/.codex/generated_images — use only the generated_images subdirectory for YOUR OWN Codex session id (printed in your header). If you cannot unambiguously identify your own PNG, copy nothing and print FAIL_UNSAFE_COPY.
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_catfreegen/raw/hero_dash_sheet.png (<W>x<H>)

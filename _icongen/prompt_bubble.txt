@@ -1,0 +1,30 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+Generate ONE empty COMIC-BOOK SPEECH BUBBLE sprite for a cute retro platformer game UI.
+
+PIXEL-ART STYLE: retro 16-bit SNES look. Crisp visible square pixels, BOLD dark outline (dark warm grey, almost black), limited palette, flat cel shading. NO smooth gradients, NO anti-aliasing, NO 3D, NO drop shadow.
+
+THE BUBBLE:
+- A classic BD / comic-strip speech bubble ("phylactere"), seen flat, facing the viewer.
+- WIDE rounded rectangle shape, landscape orientation, aspect ratio about 3:2 (clearly wider than tall).
+- The bubble BODY fills the WHOLE width of the image and roughly the TOP 80% of the image height.
+- A SHORT pointed triangular TAIL grows from the MIDDLE of the BOTTOM edge and points STRAIGHT DOWN, ending near the bottom of the image (the tail is the remaining ~20% of the height).
+- Fill: plain WHITE (very slightly warm white is fine), completely EMPTY inside. NO text, NO letters, NO dots, NO icon, NO shading pattern inside - the game draws the text itself at runtime.
+- Outline: thick, even, dark, with chunky pixel corners. A simple 1-px lighter inner highlight along the top inside edge is allowed, nothing more.
+
+LAYOUT: ONE single bubble, centered, with a small empty margin around it. Image size around 600x420.
+
+BACKGROUND: fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO gradient, NO grid, NO text, NO numbers, NO watermark, NO border box. NEVER use magenta/pink on the bubble itself.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_icongen/raw/ui_bubble.png
+
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images.
+Other agents may generate images at the same time. Use only the generated_images
+subdirectory for YOUR OWN Codex session id (the session id printed in your header),
+or otherwise verify the candidate file was produced by your own image_gen call.
+If you cannot unambiguously identify your own generated PNG, do not copy anything:
+print FAIL_UNSAFE_COPY instead.
+
+Generate the image (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_icongen/raw/ui_bubble.png (<W>x<H>)

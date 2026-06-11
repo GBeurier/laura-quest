@@ -1,0 +1,21 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+The ATTACHED image is a finished pixel-art SPRITE SHEET (6 frames in one horizontal row) of a BOSS for a lighthearted cartoon platformer: "Francois the landlord" — a fat, pompous French landlord in a plum/burgundy three-piece suit, slicked dark hair, thick mustache, a big golden KEY RING with several keys hanging from his belt, holding a rolled-up LEASE document (cream scroll with a red band) in one hand. He FACES LEFT.
+
+YOUR ONE JOB: redraw this sheet with the SAME character (identical identity, palette, outline, scale, LEFT facing) but with BETTER frames:
+- frames 1-5 = a TRUE LOOPING idle/menace cycle: he shifts his weight from foot to foot and breathes (chest/belly rising), SLAPPING the rolled lease impatiently against his open palm. The lease stays LOW (waist height) in the SAME hand during ALL five frames — NO progressive arm raise, NO one-way gesture: frame 5 must flow naturally back into frame 1.
+- frame 6 = the HURT/KO pose: knocked back, head thrown back, eyes shut, mouth open, a few golden keys flying off his belt, small stars — similar to the reference's last frame.
+IMPORTANT FIXES vs the reference: NO white blob/artifact on the belly (his waistcoat must be clean, uniform plum/burgundy with its buttons), and consistent body size/position across the 5 cycle frames (no jumping silhouette).
+
+PIXEL-ART STYLE: retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky READABLE shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D. Caricatured, expressive, a bit comedic.
+
+LAYOUT (critical): EXACTLY 6 frames in a SINGLE horizontal row, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell, centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes. The character FACES LEFT.
+
+BACKGROUND: fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. NEVER use magenta or pink anywhere on the character.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_bossgen/raw/proprietaire_move_v2_sheet.png
+CRITICAL: do NOT pick "the newest PNG" globally from ~/.codex/generated_images — use only the generated_images subdirectory for YOUR OWN Codex session id (printed in your header). If you cannot unambiguously identify your own PNG, copy nothing and print FAIL_UNSAFE_COPY.
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete any files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_bossgen/raw/proprietaire_move_v2_sheet.png (<W>x<H>)

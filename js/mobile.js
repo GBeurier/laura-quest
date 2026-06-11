@@ -192,11 +192,15 @@
     armFullscreen();
 
     // Boucle legere : visibilite selon la scene (gamepad complet en jeu, reduit en menu).
+    let wasInGame = null;
     const tick = () => {
       const sc = (typeof getSceneName === 'function') ? getSceneName() : null;
       const inGame = (sc === 'game' || sc == null);
-      root.classList.toggle('lq-menu', !inGame);
-      if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
+      if (inGame !== wasInGame) {            // ecrit le DOM seulement au changement de scene
+        wasInGame = inGame;
+        root.classList.toggle('lq-menu', !inGame);
+        if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

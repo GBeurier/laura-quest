@@ -57,6 +57,10 @@
  *      enemies: { criquet: ['enemy_criquet', 'enemy_criquet2'] }, // MONSTRES (liste = variantes)
  *    }
  *  Un sprite absent est ignore -> retour au defaut. cf. CLAUDE.md.
+ *
+ *  MUSIQUE (optionnel) : la piste d'un niveau = sa cle (niveau1.mid...) ;
+ *  une cle `music: 'autrepiste'` a cote de `boss:` la remplace. Piste
+ *  absente de assets/music/ = silence. cf. CLAUDE.md (Musique).
  * ===================================================================== */
 
 // --- PASSANTS par biome (figurants 'N', cf. theme.passant / SPRITES.md) ------
@@ -65,8 +69,8 @@
 //  tete au hasard par 'N' au build du niveau. Un sprite absent est simplement
 //  ignore -> pas de crash pendant une generation partielle.
 const PASSANT_HEADS = {
-  h: Array.from({ length: 25 }, (_, i) => 'head_npc_h_' + (i + 1)),
-  f: Array.from({ length: 22 }, (_, i) => 'head_npc_f_' + (i + 1)),
+  h: Array.from({ length: 26 }, (_, i) => 'head_npc_h_' + (i + 1)),
+  f: Array.from({ length: 23 }, (_, i) => 'head_npc_f_' + (i + 1)),
 };
 const PASSANT = (biome) => ({
   femaleRatio: PASSANT_HEADS.f.length / (PASSANT_HEADS.f.length + PASSANT_HEADS.h.length),
@@ -138,7 +142,9 @@ window.LEVELS = {
       sky: [196, 188, 206],
       tint: [222, 212, 224],
       layers: [
-        { sprite: 'bg_appart', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
+        // panorama coupe en 2 tranches (4444 px > MAX_TEXTURE_SIZE 4096 de pas
+        //  mal de GPU mobiles) ; seq = morceaux consecutifs (cf. addBandLayer)
+        { sprite: ['bg_appart_a', 'bg_appart_b'], seq: true, band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       tiles: { '=': ['tile_sol_appart'], '-': ['tile_shelf_biblo'], 'x': ['tile_shelf_biblo'] },
       panelLeg: 'shelf_leg',
@@ -162,7 +168,7 @@ window.LEVELS = {
       sky: [196, 226, 200],
       tint: [206, 236, 200],
       layers: [
-        { sprite: 'bg_serre', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
+        { sprite: ['bg_serre_a', 'bg_serre_b'], seq: true, band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       tiles: { '=': ['tile_sol_serre'] },
       indoor: true,
@@ -186,7 +192,7 @@ window.LEVELS = {
       sky: [170, 184, 200],
       tint: [200, 212, 230],
       layers: [
-        { sprite: 'bg_labo', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
+        { sprite: ['bg_labo_a', 'bg_labo_b'], seq: true, band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       tiles: { '=': ['tile_sol_labo'], '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
       panelLeg: 'shelf_leg',
@@ -211,7 +217,7 @@ window.LEVELS = {
       sky: [228, 220, 198],
       tint: [232, 226, 210],
       layers: [
-        { sprite: 'bg_couloir', band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
+        { sprite: ['bg_couloir_a', 'bg_couloir_b'], seq: true, band: true, parallax: 0.40, anchor: 'bot', y: 'ground', z: -22 },
       ],
       tiles: { '=': ['tile_sol_couloir'], '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
       panelLeg: 'shelf_leg',

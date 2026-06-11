@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a static browser game built on the vendored KAPLAY engine. `index.html` is the entry point and works under `file://`. Core game code lives in `js/`: `game.js` handles scenes and gameplay, `config.js` contains tuning and story text, `level.js` stores ASCII maps, `bosses.js` defines boss AI, `save.js` manages `localStorage`, and `mobile.js` handles touch support. `engine/kaplay.js` is third-party engine code. Runtime media belongs in `assets/sprites/` and `assets/sounds/`; sprite specs are in `SPRITES.md`. `js/assets_data.js` is generated from those assets. Tooling and asset pipelines live in `tools/` and `_...gen/` work directories.
+This is a static browser game built on the vendored KAPLAY engine. `index.html` is the entry point and works under `file://`. Core game code lives in `js/`: `game.js` handles scenes and gameplay, `config.js` contains tuning and story text, `level.js` stores ASCII maps, `bosses.js` defines boss AI, `save.js` manages `localStorage` (slots + global prefs like audio mute), `music.js` is a dependency-free chiptune MIDI player (`window.LQ_MUSIC`), and `mobile.js` handles touch support. `engine/kaplay.js` is third-party engine code. Runtime media belongs in `assets/sprites/`, `assets/sounds/` and `assets/music/` (`.mid`, one track per level plus per-screen tracks mapped in `CONFIG.music`); sprite specs are in `SPRITES.md`. `js/assets_data.js` is generated from those assets. Tooling and asset pipelines live in `tools/` and `_...gen/` work directories. Audio shortcuts: `S` toggles sound effects, `M` toggles music (persisted via `LQ_SAVE` prefs).
 
 ## Build, Test, and Development Commands
 
@@ -15,7 +15,7 @@ There is no package manager manifest or formal build step beyond asset embedding
 
 ## Coding Style & Naming Conventions
 
-Use plain JavaScript in the existing global style: `window.CONFIG`, `window.LEVELS`, IIFEs, semicolons, and 2-space indentation. Keep configuration data in `js/config.js`, level layout data in `js/level.js`, and per-NPC identity (the ex-"passants": prenom/nom/taille `P`/`M`/`G`/`TG`/portrait source/phrases, keyed by head sprite) in `js/npc.js` (`window.NPC`), rather than hard-coding gameplay changes in `game.js`. Follow existing asset names such as `boss_rstudio_move.png`, `pickup_data.png`, and `head_npc_f_1.png`; if animation frame counts change, update the matching `CONFIG.anims` `sliceX` entry. Do not edit `js/assets_data.js` by hand.
+Use plain JavaScript in the existing global style: `window.CONFIG`, `window.LEVELS`, IIFEs, semicolons, and 2-space indentation. Keep configuration data in `js/config.js`, level layout data in `js/level.js`, and per-NPC identity (the ex-"passants" — on-screen they are called "POTE" in level 1, "COLLEGUE" after: prenom/nom/taille `P`/`M`/`G`/`TG`/portrait source/`level` of belonging (0..4, drawn first in their own level; jury = everyone)/`phrases` shown in rare comic speech bubbles, keyed by head sprite) in `js/npc.js` (`window.NPC`), rather than hard-coding gameplay changes in `game.js`. Follow existing asset names such as `boss_rstudio_move.png`, `pickup_data.png`, and `head_npc_f_1.png`; if animation frame counts change, update the matching `CONFIG.anims` `sliceX` entry. Do not edit `js/assets_data.js` by hand.
 
 ## Testing Guidelines
 

@@ -1,14 +1,12 @@
 GLOBAL:
 - Fixe Boss: assets, gameplay
 - Level design
-- les pieges aux sols par dessus la sprite sol (trou avec pics)
-- Vérifier nouveau gameplay (tir gateaux) et refaire le HUD il est dégueu
+
 - Toggle sound/music
-- Temps ecris avec ms
 
 
 BUG:
-Vérifier le time attack
+Vérifier le time attack bug timing.
 
 - Fond alpha pour mieux voir les plateformes
 - Mur invisible en début de niveau (bug cailloux)
@@ -17,12 +15,7 @@ Vérifier le time attack
 
 Features:
 - Maison Start and End level.
-
-
-
-
-
-
+- Bad option: champignon hallucinogen > retourne caméra 5 sec
 
 
 

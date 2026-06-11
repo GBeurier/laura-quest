@@ -345,6 +345,31 @@ Durée ≈ `HP / DPS_eff`, avec `DPS_eff = (0.4 + 0.6 × guard) × DPS_tick + lo
   (`bosses.js`) traite un blocage physique persistant (rocher, mur) comme un
   bord → le boss fait demi-tour au lieu de se figer.
 
+### 4.7 VERROU D'ARÈNE (v2.3) — le combat est sans retour
+
+Diagnostic playtest : l'arène n'était **pas délimitée** — on sortait à gauche,
+le bouclier remontait à 18/s hors de portée (le boss reste clampé à
+`homeX±range` et éveillé pour toujours), et on revenait blindé. Boucle infinie
+sans coût. **Pas intended** → verrouillage :
+
+- Dès que Laura **entre** dans l'arène (trigger position, `PLAYER.onUpdate`),
+  `addArenaGates` (`game.js`) pose 1–2 **murs invisibles pleine hauteur qui ne
+  bloquent QUE le joueur** (même hook maison que les panneaux one-way) +
+  pilier doré pulsant (le verrou se VOIT) + message `story.arenaClose`.
+  Mur gauche toujours ; mur droit seulement si la poche entre l'arène et le
+  bord jouable dépasse 3 tuiles (niveau3/4/jury).
+- Trigger **position, pas `b._awoken`** : un lob qui réveille le boss de loin
+  ne doit pas enfermer Laura dehors.
+- Levés à la **victoire** (`hitBoss`, qui purge aussi bombes en vol / tampons
+  temporaires / ondes / tirs — on ne meurt plus après « BOSS BATTU ! ») et au
+  respawn d'arène. L'étoile `*` est DERRIÈRE le mur droit en niveau3/4/jury :
+  le teardown est obligatoire.
+- Ceinture côté `bosses.js` : helper `inArena` — **toutes** les attaques
+  ciblées sur `p.pos` (bombes de michael/jury/tracteur p2, tampons de
+  cendrine/jury) ne partent que si le joueur est dans l'arène +6 tuiles.
+- Les caches de pickups pré-arène restent DEHORS : on fait le plein AVANT
+  d'entrer, puis le combat est sans retour.
+
 ---
 
 ## 5. Time attack & farme — la difficulté opt-in

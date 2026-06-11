@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
+
+The ATTACHED image is a finished pixel-art SPRITE SHEET of "Laura", a cute cartoon girl explorer (blonde ponytail, blue top, shorts, boots, RED BACKPACK), shown as 6 frames in ONE horizontal row on flat magenta: a fast horizontal DASH (crouched push-off, then full-speed forward lunge, then braking and recovering). She wears a red backpack and a small WHITE/CREAM FLUFFY CAT pokes its head out of the top of the backpack.
+
+YOUR ONE JOB: redraw this EXACT sheet but REMOVE THE CAT. The backpack must look NORMAL and CLOSED/EMPTY (just the red backpack, its flap and straps) with NO animal, NO cat head, NO ears, NO paws, NO tail anywhere.
+
+FAITHFULNESS IS EVERYTHING — copy the input as closely as you can: SAME number of frames (6), SAME poses in the SAME order, SAME body proportions, SAME size, SAME scale and SAME vertical position of Laura in each frame, SAME palette, SAME outline style, SAME facing direction (RIGHT). Change ONLY the backpack (cat removed).
+
+LAYOUT: ONE horizontal row of EXACTLY 6 equal cells with a WIDE empty magenta gap between consecutive frames (separate islands, never touching).
+
+BACKGROUND: fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO floor line, NO gradient, NO grid, NO text, NO numbers, NO watermark. NEVER use magenta or pink on Laura or the backpack.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  /home/delete/laura_quest/_catfreegen/raw/hero_dash_nc_sheet.png
+CRITICAL: do NOT pick "the newest PNG" globally from ~/.codex/generated_images — use only the generated_images subdirectory for YOUR OWN Codex session id (printed in your header). If you cannot unambiguously identify your own PNG, copy nothing and print FAIL_UNSAFE_COPY.
+
+Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_catfreegen/raw/hero_dash_nc_sheet.png (<W>x<H>)

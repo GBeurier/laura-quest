@@ -34,6 +34,10 @@
   <!-- Sauvegardes (3 slots) + IA des boss -->
   <script src="js/save.js"></script>
   <script src="js/bosses.js"></script>
+  <!-- Lecteur MIDI chiptune (window.LQ_MUSIC). APRES assets_data.js ET config.js
+       (il capture window.ASSETS.music + window.CONFIG a son chargement),
+       AVANT game.js (qui libere window.ASSETS). -->
+  <script src="js/music.js"></script>
   <!-- Manette tactile (web mobile) : detection + overlay. AVANT game.js car il
        pose window.LQ_TOUCH que kaplay() lit pour activer le letterbox mobile. -->
   <script src="js/mobile.js"></script>

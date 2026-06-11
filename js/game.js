@@ -87,6 +87,17 @@
     if (!C.audio || !C.audio.enabled) return;
     try { play(name, Object.assign({ volume: C.audio.volume }, opts || {})); } catch (e) {}
   };
+  // Musique d'ecran : delegue au lecteur MIDI chiptune (js/music.js). Chaque
+  //  scene annonce SA piste (cf. C.music) ; rejouer la piste deja en cours est
+  //  un no-op cote lecteur (pas de coupure quand deux scenes partagent une
+  //  piste, ex. title <-> slots ; une mort repasse par lose/map -> la piste
+  //  du niveau, elle, REDEMARRE). Sans nom (scene non mappee) -> silence.
+  //  Le mute (touche M) est gere par le lecteur (C.audio.music + setEnabled).
+  const playMusic = (name) => {
+    const M = window.LQ_MUSIC;
+    if (!M) return;
+    try { name ? M.play(name) : M.stop(); } catch (e) {}
+  };
   const keysDown = (arr) => arr.some((k) => isKeyDown(k));
   // Tactile assiste (js/mobile.js) : les armes en cloche s'auto-visent et se
   //  tirent en tapotant (pas de charge/visee manuelle au doigt).
@@ -168,16 +179,73 @@
     const key = a.play || Object.keys(a.anims)[0];
     if (key) { try { o.play(key); } catch (e) {} }
   }
-  if (C.audio && C.audio.enabled) {
+  // Les sons sont TOUJOURS charges, meme si le jeu demarre mute (pref S) : le
+  //  mute est un gate au play() (cf. sfx), reversible a chaud par la touche S.
+  if (C.audio) {
     ['shoot', 'jump', 'hit', 'pickup', 'spell', 'boss', 'win', 'lose']
       .forEach((n) => { try { loadSound(n, SND_SRC(n)); } catch (e) {} });
   }
+
+  // --- FONTS TTF embarquees (assets/fonts/*.ttf -> window.ASSETS.fonts) ------
+  //  Servies en data-URI -> FontFace marche meme en file://. Utilisees pour le
+  //  TEXTE A ACCENTS (bulles BD des PNJ) : font_bubble = Comic Neue Bold
+  //  (latin, OFL), font_bubble_kh = Noto Sans Khmer (OFL), toutes deux
+  //  SUBSETTEES (cf. CLAUDE.md). KAPLAY passe la chaine font telle quelle a
+  //  ctx.font -> on peut EMPILER 'font_bubble,font_bubble_kh' et le navigateur
+  //  fait le repli PAR GLYPHE (khmer -> Noto, grec/symboles -> font systeme).
+  //  Une font absente du bundle est juste ignoree (FONTS_LOADED filtre).
+  const FONTS_LOADED = new Set();
+  Object.entries((window.ASSETS && window.ASSETS.fonts) || {}).forEach(([n, src]) => {
+    try { loadFont(n, src); FONTS_LOADED.add(n); } catch (e) {}
+  });
+
+  // --- MUET : S = bruitages (C.audio.enabled), M = musique (C.audio.music).
+  //  Ecouteur DOM (PAS onKeyPress : les handlers KAPLAY enregistres hors scene
+  //  sont perdus au premier go(), ceux d'une scene meurent avec elle) -> actif
+  //  PARTOUT (toutes scenes, pause comprise). Capte aussi les touches synthetiques
+  //  de mobile.js (bubbles). Pref persistee via LQ_SAVE ('lauraquest_prefs').
+  if (C.audio) {
+    const SV = window.LQ_SAVE;
+    const prefs = (SV && SV.loadPrefs) ? SV.loadPrefs() : {};
+    if (prefs.sfx === false) C.audio.enabled = false;
+    if (prefs.music === false) C.audio.music = false;
+    const toggles = {};
+    (C.controls.muteSfx || []).forEach((k) => { toggles[k] = 'sfx'; });
+    (C.controls.muteMusic || []).forEach((k) => { toggles[k] = 'music'; });
+    document.addEventListener('keydown', (e) => {
+      if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+      const what = toggles[(e.key || '').toLowerCase()];
+      if (!what) return;
+      if (what === 'sfx') {
+        C.audio.enabled = !C.audio.enabled;
+        if (SV && SV.setPref) SV.setPref('sfx', C.audio.enabled);
+        flashMsg(C.audio.enabled ? 'SON : OUI' : 'SON : COUPE');
+        if (C.audio.enabled) sfx('pickup');       // petit bip temoin au retour du son
+      } else {
+        C.audio.music = !C.audio.music;
+        if (SV && SV.setPref) SV.setPref('music', C.audio.music);
+        if (window.LQ_MUSIC && LQ_MUSIC.setEnabled) LQ_MUSIC.setEnabled(C.audio.music);
+        flashMsg(C.audio.music ? 'MUSIQUE : OUI' : 'MUSIQUE : COUPEE');
+      }
+    });
+  }
+  // Tous les load* ont capture leur data-URI : on relache les ~25 Mo de strings
+  //  base64 de window.ASSETS (sinon retenus a vie). Personne ne le relit apres
+  //  (hasSprite/variant lisent LOADED/SPRITE_NAMES, captures plus haut).
+  window.ASSETS = null;
 
   // ---------------------------------------------------------------------
   //  ETAT PARTAGE
   // ---------------------------------------------------------------------
   let PLAYER = null;
   let LEVEL = null;     // { width, height, bossesAlive, sun, dataTotal, pageTotal, hasPubli }
+  // References directes (PERF) : get(tag) parcourt TOUS les objets racine a
+  //  chaque appel -> on garde une ref au chat et la liste des boss du niveau,
+  //  testees via exists() (O(1)). Reset par buildLevel a chaque scene game.
+  let CAT_REF = null;   // le chat deploye (un seul a la fois)
+  let BOSS_LIST = [];   // boss du niveau + invites (spawnBoss les enregistre)
+  const EHOTS = new Set();   // tirs ennemis vivants (enemyBullet les enregistre)
+  const catOut = () => !!(CAT_REF && CAT_REF.exists());
   let SAVE = null;      // slot courant (objet de save.js)
   let SLOT = 0;         // index du slot courant
   let CUR_IDX = 0;      // index du niveau dans C.levels
@@ -212,7 +280,7 @@
   // SAC VIDE : tant que le chat est DEHORS (deploye), Laura porte un sac vide -> on
   //  joue la variante "<spr>_nocat" si elle existe (sinon on garde le sprite avec chat).
   function noCat(spr) {
-    return (get('cat').length && hasSprite(spr + '_nocat')) ? spr + '_nocat' : spr;
+    return (catOut() && hasSprite(spr + '_nocat')) ? spr + '_nocat' : spr;
   }
 
   // setAnim pour Laura : un equipement peut remplacer le sprite d'une pose
@@ -271,7 +339,7 @@
   function nearestTarget(p) {
     let best = null, bd = Infinity;
     ['enemy', 'boss'].forEach((tag) => get(tag).forEach((e) => {
-      if (!e.exists()) return;
+      if (!e.exists() || e.paused) return;   // pause = culle hors-ecran : ne pas auto-viser l'invisible
       const d = Math.abs(e.pos.x - p.pos.x) + Math.abs(e.pos.y - p.pos.y) * 0.4;
       if (d < bd) { bd = d; best = e; }
     }));
@@ -363,9 +431,13 @@
       b.onCollide('boss', (e) => through(e, hitBoss));
       b.onCollide('solid', () => destroy(b));
     } else {
-      b.onCollide('enemy', (e) => hitEnemy(e, b));
-      b.onCollide('passant', (e) => hitEnemy(e, b));   // figurant : seule interaction = prendre une balle
-      b.onCollide('boss', (e) => hitBoss(e, b));
+      // garde !b.exists() : deux cibles qui CHEVAUCHENT la balle la meme frame
+      //  declenchaient 2 onCollide -> la balle deja consommee blessait (et
+      //  tuait des passants) une 2e fois. 1 balle = 1 coup (le multi-hit
+      //  legitime passe par `pierce`).
+      b.onCollide('enemy', (e) => { if (b.exists()) hitEnemy(e, b); });
+      b.onCollide('passant', (e) => { if (b.exists()) hitEnemy(e, b); });   // figurant : seule interaction = prendre une balle
+      b.onCollide('boss', (e) => { if (b.exists()) hitBoss(e, b); });
       b.onCollide('solid', () => destroy(b));
     }
     // Pose de lancer : tient un peu PLUS longtemps que la cadence (throwHold > rate)
@@ -483,12 +555,14 @@
   // PROJECTILE ennemi/boss. v2 : le sprite de boss est PASSE PAR L'APPELANT
   //  (bosses.js fournit b.def.shot en 6e arg de api.bullet) — plus de global
   //  BOSS_SHOT_SPRITE : avec les boss INVITES du jury, plusieurs boss vivent en
-  //  meme temps et un global serait ecrase par le dernier spawn. Tirs 'enemy'
-  //  (ADEME, tampons, chutes du ciel) -> 'shot_paper'. Si le PNG manque,
-  //  retour propre a la forme generique (cercle rouge boss / rectangle creme).
+  //  meme temps et un global serait ecrase par le dernier spawn. Tirs 'enemy' :
+  //  sprite PAR TIREUR (def.shot des shooters, cf. CONFIG.enemies — le sachet de
+  //  chips crache une chip, le tuyau une goutte...), repli 'shot_paper' si le
+  //  tireur n'en declare pas. Si le PNG manque, retour propre a la forme
+  //  generique (cercle rouge boss / rectangle creme).
   function enemyBullet(x, y, target, speed, kind, spr) {
     const dir = target.pos.sub(vec2(x, y)).unit();
-    const sname = (kind === 'boss') ? spr : 'shot_paper';
+    const sname = (kind === 'boss') ? spr : (spr || 'shot_paper');
     const comps = (sname && hasSprite(sname))
       ? [sprite(sname), artScale(), rotate(Math.atan2(dir.y, dir.x) * 180 / Math.PI)]
       : ((kind === 'boss')
@@ -504,6 +578,8 @@
       'ehot',
       { dmg: 1 },
     ]);
+    EHOTS.add(b);
+    b.onDestroy(() => EHOTS.delete(b));
     b.onCollide('solid', () => destroy(b));
     // POLISH (dette tech) : rotation + petite trainee -> projectiles moins "plats".
     let trailT = 0;
@@ -656,14 +732,36 @@
   // tile_soil a ~7px transparents en haut (bord feutre) -> la terre opaque
   //  demarrerait SOUS la surface marchable et laisserait voir une bande de ciel.
   //  On REMONTE donc le VISUEL du sol de SOIL_LIFT px pour que la terre couvre la
-  //  surface, tout en gardant la COLLISION pile a la surface (Laura marche au bon
-  //  endroit) : pos remonte de SOIL_LIFT (monde), et area.offset redescend le
-  //  collider d'autant. NB l'offset d'area est en repere LOCAL (multiplie par
-  //  l'echelle 1/ART de l'objet) -> on compense en *ART.
+  //  surface. La COLLISION, elle, n'est PLUS portee par la tuile : buildLevel pose
+  //  des colliders FUSIONNES par segment horizontal de '=' (cf. addGroundColliders)
+  //  pile a la surface -> meme geometrie, mais des centaines de body/area en moins.
+  //  La tuile n'est qu'un sprite, cache hors-ecran (KAPLAY ne cull pas tout seul).
   const SOIL_LIFT = 8;
   function addSolid(x, y, spr) {
     playIfAnim(add([sprite(spr), artScale(), pos(x, y - SOIL_LIFT), anchor('topleft'),
-      area({ offset: vec2(0, SOIL_LIFT * ART) }), body({ isStatic: true }), z(-1), 'solid']), spr);
+      offscreen({ hide: true, distance: TS * 2 }), z(-1), 'soiltile']), spr);
+  }
+
+  // COLLISION DU SOL FUSIONNEE : un collider invisible par SEGMENT horizontal de
+  //  '=' (plafonne a MERGE_MAX tuiles pour garder le broadphase local) au lieu
+  //  d'un body+area PAR tuile. L'union des rectangles est EXACTEMENT celle des
+  //  tuiles d'avant (surface marchable, couvert anti-tir, murs inchanges), mais
+  //  le moteur ne parcourt plus ~600 objets physiques par frame sur les grands
+  //  niveaux. '=' n'est jamais retire de la grille (seuls les panneaux 'x'
+  //  explosent) -> les colliders n'ont pas besoin de suivre la grille.
+  const MERGE_MAX = 16;
+  function addGroundColliders(grid) {
+    grid.forEach((grow, r) => {
+      let c = 0;
+      while (c < grow.length) {
+        if (grow[c] !== '=') { c++; continue; }
+        let len = 1;
+        while (len < MERGE_MAX && grow[c + len] === '=') len++;
+        add([rect(len * TS, TS), pos(c * TS, r * TS), anchor('topleft'), opacity(0),
+          area(), body({ isStatic: true }), 'solid']);
+        c += len;
+      }
+    });
   }
 
   // --- PIEDS DES FEUILLES GENEREES (regrid) ---------------------------------
@@ -727,14 +825,15 @@
     const sname = pickSkin(th.hazard, 'hazard');
     const deco = [];
     if (sname && hasSprite(sname)) {
-      const o = add([sprite(sname), artScale(HAZ_SCALE), pos(cx, groundY + HAZ_DROP), anchor('top'), z(-0.5), 'hazarddeco']);
+      const o = add([sprite(sname), artScale(HAZ_SCALE), pos(cx, groundY + HAZ_DROP), anchor('top'),
+        z(-0.5), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']);
       playIfAnim(o, sname);
       deco.push(o);
     } else {                                       // bouche-trou : trou sombre + lisere de danger
       deco.push(add([rect(TS * 1.2, TS * 0.5), pos(cx, groundY + HAZ_DROP), anchor('top'),
-        color(32, 16, 20), opacity(0.97), z(-0.5), 'hazarddeco']));
+        color(32, 16, 20), opacity(0.97), z(-0.5), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
       deco.push(add([rect(TS * 1.0, TS * 0.12), pos(cx, groundY + HAZ_DROP), anchor('top'),
-        color(150, 40, 40), opacity(0.95), z(-0.45), 'hazarddeco']));
+        color(150, 40, 40), opacity(0.95), z(-0.45), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
     }
     // COLLISION : bande a la SURFACE (la gueule de la fosse), NON solide. Large ~
     //  la fosse visible (degat en passant dessus). deco rattache -> detruit avec
@@ -766,16 +865,22 @@
   function addPanelDeco(x, y, spr, tint) {
     const cx = x + TS / 2, c = Math.round(x / TS), objs = [];
     const legH = columnGroundY(c) - (y + CAP_LIP);
+    // CULLING (draw seulement) : marge verticale = surplus des cartes hautes,
+    //  comme les ombres (castColumnShade) — l'ancre d'un deck cache AU-DESSUS de
+    //  l'ecran est hors-cadre mais ses pieds descendent DANS le cadre.
+    const decoMargin = TS * 2 + Math.max(0, (LEVEL ? LEVEL.height : 0) - C.height);
     // PIED de la plateforme : panneau solaire par defaut, ou support d'etagere
     //  pour les niveaux interieurs (LEVEL.theme.panelLeg, ex. 'shelf_leg').
     const leg = (LEVEL && LEVEL.theme && LEVEL.theme.panelLeg) || 'panel_leg';
     if (legH > 4 && hasSprite(leg)) {                         // pieds etires jusqu'au sol
       const comps = [sprite(leg), pos(cx, y + CAP_LIP), anchor('top'),
-        scale(vec2(1 / ART, (legH / LEG_NAT_H) / ART)), z(-1.2), 'paneldeco'];
+        scale(vec2(1 / ART, (legH / LEG_NAT_H) / ART)), z(-1.2),
+        offscreen({ hide: true, distance: decoMargin }), 'paneldeco'];
       if (tint) comps.push(color(tint[0], tint[1], tint[2]));
       objs.push(add(comps));
     }
-    const capComps = [sprite(spr), artScale(), pos(cx, y - CAP_WALK_Y), anchor('top'), z(-1), 'paneldeco'];
+    const capComps = [sprite(spr), artScale(), pos(cx, y - CAP_WALK_Y), anchor('top'), z(-1),
+      offscreen({ hide: true, distance: decoMargin }), 'paneldeco'];
     if (tint) capComps.push(color(tint[0], tint[1], tint[2]));
     const cap = add(capComps);
     objs.push(cap);
@@ -804,7 +909,10 @@
     t.deco = deco.objs; t.cap = deco.cap;
     // cassable : ne s'amorce qu'en MARCHANT dessus (curPlatform), plus au simple
     //  contact (sinon le traverser par en dessous l'armait — review v2 #12).
-    if (breakable) t.onCollide('player', (pl) => { if (pl.curPlatform && pl.curPlatform() === t) startCrumblePanel(t); });
+    //  onCollideUpdate (pas onCollide) : traverser le panneau par en dessous
+    //  PUIS atterrir dessus sans s'en separer ne re-declenche pas d'entree en
+    //  collision -> avec onCollide le panneau ne s'amorcait jamais dans ce cas.
+    if (breakable) t.onCollideUpdate('player', (pl) => { if (pl.curPlatform && pl.curPlatform() === t) startCrumblePanel(t); });
     return t;
   }
 
@@ -926,6 +1034,18 @@
   //  les tetes dans une pioche melangee (Fisher-Yates) propre a chaque sexe ;
   //  on epuise toute la liste avant de remelanger et reboucler. Les pioches
   //  sont remises a zero a chaque niveau (buildLevel).
+  //  POOL PAR NIVEAU (cle `level` du registre js/npc.js) : chaque PNJ peut
+  //  "appartenir" a un niveau (0..4 = index dans C.levels). Les tetes DU
+  //  niveau courant sont placees en FIN de pioche (pop() les sort d'abord),
+  //  le pool general complete ensuite si la map demande plus de PNJ. Au JURY
+  //  (et hors registre / level vide), pas de tri : tout le monde est la.
+  function shuffleInPlace(a) {
+    for (let i = a.length - 1; i > 0; i--) {   // Fisher-Yates (rand du moteur)
+      const j = Math.floor(rand(0, i + 1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
   function pickHead(pool, key) {
     const ok = (pool || []).filter(hasSprite);
     if (!ok.length) return null;
@@ -933,11 +1053,10 @@
     const k = key || 'all';
     let deck = HEAD_DECKS[k];
     if (!deck || !deck.length) {
-      deck = ok.slice();
-      for (let i = deck.length - 1; i > 0; i--) {   // Fisher-Yates (rand du moteur)
-        const j = Math.floor(rand(0, i + 1));
-        const tmp = deck[i]; deck[i] = deck[j]; deck[j] = tmp;
-      }
+      const isJury = C.levels[CUR_IDX] === 'jury';
+      const own = isJury ? [] : ok.filter((n) => window.NPC && window.NPC[n] && window.NPC[n].level === CUR_IDX);
+      const rest = ok.filter((n) => own.indexOf(n) === -1);
+      deck = shuffleInPlace(rest).concat(shuffleInPlace(own));
       HEAD_DECKS[k] = deck;
     }
     return deck.pop();
@@ -1014,6 +1133,106 @@
     return h;
   }
 
+  // ---------------------------------------------------------------------
+  //  BULLES BD des PNJ (cle `phrases` du registre js/npc.js)
+  // ---------------------------------------------------------------------
+  //  De temps en temps, UN PNJ visible "dit" une de ses phrases dans une
+  //  bulle BD au-dessus de sa tete. Volontairement RARE : une seule bulle a
+  //  la fois + pause aleatoire entre deux (cf. CONFIG.theme.passant.bubble),
+  //  encore plus rare au jury (gap x juryGapMult, la scene est bondee). Le
+  //  scheduler vit dans scene('game') (npcBubbleLoop). La bulle est un objet
+  //  MONDE de premier niveau (pas un enfant) : le texte reste net (echelle 1,
+  //  pas de compensation @ART) et suit le PNJ a la main ; elle meurt avec lui
+  //  (corpsify/save posent e.dead), a la fin du timer ou s'il sort de l'ecran.
+  //  Le font bitmap rend mal les accents (cf. CLAUDE.md) -> on translitere la
+  //  phrase a l'affichage (e accentue -> e ; ecritures non latines best-effort).
+  const stripAccents = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  function npcPhrases(e) {
+    const rec = window.NPC && e.passantHead && window.NPC[e.passantHead];
+    return (rec && rec.phrases && rec.phrases.length) ? rec.phrases : null;
+  }
+
+  // Y MONDE du sommet de la tete d'un PNJ (point d'accroche de la bulle).
+  //  h.pos = point du COU en repere CORPS (suit l'echelle du parent), h.height
+  //  = hauteur native du PNG de tete, multipliee par les echelles tete+corps.
+  function npcHeadTop(e) {
+    const h = e.head;
+    const ps = (e.scale && e.scale.y != null) ? e.scale.y : 1;
+    if (!h || !h.exists()) return e.pos.y - TS * 2.1 * (e.passantScale || 1);
+    const hs = (h.scale && h.scale.y != null) ? h.scale.y : 1;
+    return e.pos.y + (h.pos.y - h.height * hs) * ps;
+  }
+
+  // Pile de fonts de la bulle : on garde celles du bundle effectivement
+  //  chargees. null = aucune -> repli font bitmap + translitteration.
+  function bubbleFont(cfg) {
+    const want = ((cfg && cfg.font) || 'font_bubble,font_bubble_kh').split(',');
+    const ok = want.map((s) => s.trim()).filter((n) => FONTS_LOADED.has(n));
+    return ok.length ? ok.join(',') : null;
+  }
+
+  function npcBubble(e, phrase, dur) {
+    const pad = 9, tail = 13;
+    const cfg = (LEVEL && LEVEL.theme && LEVEL.theme.passant && LEVEL.theme.passant.bubble) || {};
+    // Avec les fonts TTF embarquees, la phrase s'affiche TELLE QUELLE (accents,
+    //  khmer...) ; sans elles, repli font bitmap + accents translitteres.
+    const fnt = bubbleFont(cfg);
+    const topts = { size: 13, width: 175, align: 'center' };
+    if (fnt) topts.font = fnt;
+    const b = add([pos(e.pos.x, npcHeadTop(e)), z(60), 'bubble', { t: 0 }]);
+    const label = b.add([
+      text(fnt ? phrase : stripAccents(phrase), topts),
+      color(40, 32, 26), anchor('center'), pos(0, 0), z(2),
+    ]);
+    const w = Math.max(label.width + pad * 2, 36), h = label.height + pad * 2;
+    if (hasSprite('ui_bubble')) {
+      // sprite BD etire pour couvrir le corps (w x h) + la queue (le PNG remplit
+      //  bodyFrac de sa hauteur avec le corps de bulle, le reste = la queue ;
+      //  mesure sur assets/sprites/ui_bubble.png).
+      const bodyFrac = 0.76, H = h / bodyFrac;
+      const sp = b.add([sprite('ui_bubble'), anchor('bot'), pos(0, 0), z(0), scale(1)]);
+      sp.scale = vec2(w / sp.width, H / sp.height);
+      label.pos = vec2(0, -(H - h / 2));
+    } else {
+      // repli sans sprite : carte blanche arrondie + losange en guise de queue
+      b.add([rect(14, 14), rotate(45), anchor('center'), pos(0, -tail + 4), color(255, 255, 252), outline(3, rgb(46, 38, 34)), z(0)]);
+      b.add([rect(w, h, { radius: 8 }), anchor('bot'), pos(0, -tail), color(255, 255, 252), outline(3, rgb(46, 38, 34)), z(1)]);
+      label.pos = vec2(0, -(tail + h / 2));
+    }
+    b.onUpdate(() => {
+      b.t += dt();
+      if (b.t > dur || !e.exists() || e.dead || e.paused || e.hidden) { destroy(b); return; }
+      // suit le PNJ, mais reste DANS le cadre camera : un PNJ en bord d'ecran
+      //  garde sa bulle lisible (la queue glisse un peu de sa tete, assume)
+      const cx = getCam().x, half = w / 2 + 6;
+      b.pos = vec2(
+        Math.max(cx - C.width / 2 + half, Math.min(cx + C.width / 2 - half, e.pos.x)),
+        npcHeadTop(e) - 4);
+    });
+    return b;
+  }
+
+  // Scheduler (appele par scene('game')) : compte a rebours -> tire UN PNJ a
+  //  l'ecran qui a des phrases -> bulle -> nouveau compte a rebours.
+  function npcBubbleLoop(levelKey) {
+    const cfg = (LEVEL && LEVEL.theme && LEVEL.theme.passant && LEVEL.theme.passant.bubble) || {};
+    const mult = (levelKey === 'jury') ? (cfg.juryGapMult != null ? cfg.juryGapMult : 2.5) : 1;
+    const gap = () => rand(cfg.gapMin != null ? cfg.gapMin : 9, cfg.gapMax != null ? cfg.gapMax : 20) * mult;
+    let cur = null, t = gap() * 0.5;          // 1re bulle plus tot (on decouvre la feature)
+    onUpdate(() => {
+      if (cur && cur.exists()) return;        // UNE bulle a la fois
+      t -= dt();
+      if (t > 0) return;
+      const cands = get('passant').filter((o) => o.exists() && !o.dead && !o.paused && !o.hidden && npcPhrases(o));
+      if (!cands.length) { t = 1.5; return; } // personne d'eloquent a l'ecran -> retente bientot
+      const e = cands[Math.floor(rand(0, cands.length))];
+      const ph = npcPhrases(e);
+      cur = npcBubble(e, ph[Math.floor(rand(0, ph.length))], cfg.dur != null ? cfg.dur : 4);
+      t = gap();
+    });
+  }
+
   // Va-et-vient horizontal : avance dans e.dir et rebrousse aux bords de la
   //  bande [center-half, center+half]. center suit le joueur (poursuite) ou un
   //  point fixe (patrouille locale).
@@ -1077,7 +1296,7 @@
         e.t += dt();
         if (Math.abs(toP) < e.def.range && e.t >= e.def.shotEvery) {
           e.t = 0; e.atkT = 0.35;   // fenetre d'anim 'attack' au moment du tir
-          enemyBullet(e.pos.x, e.pos.y - TS * 0.6, p, e.def.shotSpeed, 'enemy');
+          enemyBullet(e.pos.x, e.pos.y - TS * 0.6, p, e.def.shotSpeed, 'enemy', e.def.shot);
         }
         e.flipX = e.facing < 0;
         break;
@@ -1147,8 +1366,12 @@
     // MORALITE : abattre un figurant n'affaiblit plus l'arme (cf. GAMEPLAY.md :
     //  la morale n'est PAS une ressource de combat). Reste une stat (kills) qui
     //  pese sur le score-conscience / les medailles "sauves".
-    flashMsg('PASSANT ABATTU');
+    flashMsg(npcNoun() + ' ABATTU');
   }
+
+  // Nom AFFICHE des PNJ : des "POTES" au niveau 1, des "COLLEGUES" ensuite
+  //  (le tag interne reste 'passant', cf. CLAUDE.md). Pas d'accents (font bitmap).
+  const npcNoun = () => (CUR_IDX === 0 ? 'POTE' : 'COLLEGUE');
 
   // Le CHAT sauve un figurant qu'il croise (cf. GAMEPLAY.md) : +score, +compteur
   //  "sauves", le PNJ s'envole en se dissipant (pas de cadavre). Meme regle que
@@ -1396,6 +1619,59 @@
     if (!b._guardMsgDone) { b._guardMsgDone = true; bossFloaty(b, C.story.bossGuard, [185, 185, 185]); }
   }
 
+  // --- VERROU D'ARENE (v2.3) -----------------------------------------------
+  //  Reponse au playtest "on entre/sort de l'arene a volonte -> regen gratuite
+  //  (bouclier soleil 18/s hors de portee du boss), boucle sans risque" : des
+  //  que Laura ENTRE dans l'arene du boss (trigger POSITION dans PLAYER.onUpdate),
+  //  des murs invisibles bloquant LE JOUEUR SEULEMENT ferment l'arene.
+  //  - Gauche : toujours (1 tuile avant le bord d'arene = la ou le clamp du boss
+  //    s'arrete). Droite : seulement si la poche entre l'arene et le bord jouable
+  //    depasse 3 tuiles (niveau3/4/jury — ailleurs le bord du niveau suffit).
+  //  - PLEINE HAUTEUR de map : couvre les rangees hors ecran (niveau5) et les
+  //    sauts rollers/velo. Le boss, les monstres, le chat, les projectiles et
+  //    les bombes TRAVERSENT (meme hook maison que les panneaux one-way).
+  //  - Trigger sur LA POSITION et pas b._awoken : un lob qui reveille le boss de
+  //    loin (anti-sniping de hitBoss) ne doit pas enfermer Laura DEHORS.
+  //  - Leves a la VICTOIRE (hitBoss — l'etoile '*' est DERRIERE le mur droit en
+  //    niveau3/4/jury : teardown obligatoire) et au respawn d'arene (Laura
+  //    reapparait dehors ; ils se re-arment a la re-entree).
+  //  Les caches de pickups pre-arene restent volontairement DEHORS : on fait le
+  //  plein AVANT d'entrer, puis le combat est sans retour (l'anti-exploit vise).
+  function addArenaGates() {
+    if (!LEVEL || LEVEL.gates || LEVEL.bossX == null) return;
+    const bx = LEVEL.bossX, r = LEVEL.bossRange || 300;
+    const mk = (col) => {
+      const gx = col * TS, gy = columnGroundY(col);
+      const g = add([rect(TS, LEVEL.height), pos(gx, 0), anchor('topleft'), opacity(0),
+        area(), body({ isStatic: true }), 'arenagate']);
+      g.onBeforePhysicsResolve((c2) => {
+        const o = c2.target;
+        if (!o || !o.is || !o.is('player')) c2.preventResolution();
+      });
+      // VISUEL : pilier d'energie dore translucide qui pulse — le verrou doit se
+      //  VOIR (un mur invisible serait lu comme un bug de collision).
+      const vis = add([rect(10, gy), pos(gx + TS / 2, 0), anchor('top'),
+        color(255, 206, 71), opacity(0.3), z(30), 'arenagatefx', { t: 0 }]);
+      vis.onUpdate(() => { vis.t += dt(); vis.opacity = 0.2 + 0.16 * Math.abs(Math.sin(vis.t * 3)); });
+      g.onDestroy(() => {
+        if (vis.exists()) destroy(vis);
+        addPoof(gx + TS / 2, gy - TS * 0.5); addPoof(gx + TS / 2, gy - TS * 1.6);
+      });
+      addPoof(gx + TS / 2, gy - TS * 0.5); addPoof(gx + TS / 2, gy - TS * 1.6);
+      return g;
+    };
+    const gates = [mk(Math.floor((bx - r) / TS) - 1)];
+    if (LEVEL.maxX - (bx + r) > TS * 3) gates.push(mk(Math.ceil((bx + r) / TS)));
+    LEVEL.gates = gates;
+    flashMsg(C.story.arenaClose);
+    sfx('boss');
+  }
+  function openArenaGates() {
+    if (!LEVEL || !LEVEL.gates) return;
+    LEVEL.gates.forEach((g) => { if (g.exists()) destroy(g); });
+    LEVEL.gates = null;
+  }
+
   const BOSS_API = {
     TS: TS,
     bullet: enemyBullet,
@@ -1410,8 +1686,16 @@
     dropBomb: dropBomb,                       // bombe qui tombe + explose (dette tech 2)
     hazard: (atX, groundY, dur, delay) => {   // tampon-piege au sol temporaire (Cendrine / jury)
       const dl = delay || 0;
-      if (dl > 0) addImpactMarker(atX, groundY, dl);
-      wait(dl, () => { const h = spawnHazard(atX, groundY); if (h && dur) h.use(lifespan(dur, { fade: 0.3 })); });
+      // RECALE LA CIBLE SUR LA SURFACE (meme logique que dropBomb) : l'IA vise
+      //  p.pos.y, or Laura saute en permanence -> sans ca le piege (et sa
+      //  hitbox) restait SUSPENDU en l'air a la hauteur du saut.
+      const gy = surfaceTopAt(atX);
+      const fy = (gy != null) ? gy : groundY;
+      if (dl > 0) addImpactMarker(atX, fy, dl);
+      wait(dl, () => {
+        const h = spawnHazard(atX, fy);
+        if (h && dur) { h.temp = true; h.use(lifespan(dur, { fade: 0.3 })); }   // temp -> purge a la mort du boss
+      });
     },
   };
 
@@ -1442,6 +1726,10 @@
         key, def, spr: sname, sprAtk: aname, hp: def.hp, maxHp: def.maxHp || def.hp,
         t: 0, dir: -1, homeX: x, stun: 0, knockX: 0, knockT: 0,
         hurtT: 0, animWant: 'idle', _spr: sname, _anim: null,
+        // garde posee DES LE SPAWN (meme formule que bossBehavior) : sans ca le
+        //  tir qui REVEILLE un boss endormi passait a degats pleins sans tink
+        //  (hitBoss traite guard == null comme une fenetre ouverte).
+        guard: (def.guard != null) ? def.guard : 0.35,
       },
     ]);
     // cote boss du no-shove joueur<->boss (cf. spawnPlayer) : il TRAVERSE Laura,
@@ -1450,6 +1738,7 @@
       const o = col.target;
       if (o && o.is && o.is('player')) col.preventResolution();
     });
+    BOSS_LIST.push(b);   // ref directe pour le HUD (cf. buildHUD, plus de get('boss') par frame)
     return b;
   }
 
@@ -1501,7 +1790,12 @@
       try { b.unuse('color'); } catch (_) {}
     }
     if (b._openMsgT > 0) b._openMsgT -= dt();
-    if (b.hurtT > 0) { b.hurtT -= dt(); b.animWant = 'hurt'; }
+    // FLINCH : hurtT n'ecrase l'anim QUE sur les poses passives (idle). Pendant
+    //  une attaque (feuille _atk), l'ecraser faisait STROBOSCOPER le boss sous
+    //  tir soutenu : swap _atk -> _move 0.12s a chaque tick, puis play() qui
+    //  REDEMARRE le clip d'attaque a la frame 0 — le jet/la charge ne depassait
+    //  jamais la frame ~2. Le flash d'opacite (hitBoss) suffit comme feedback.
+    if (b.hurtT > 0) { b.hurtT -= dt(); if (b.animWant === 'idle') b.animWant = 'hurt'; }
     // Garde le boss SUR le sol jouable : empeche une IA (teleport de Cendrine,
     //  charges, va-et-vient) de l'envoyer au-dela du bord droit -> chute dans
     //  le vide -> boss injoignable -> niveau infinissable.
@@ -1512,10 +1806,16 @@
     bossAnim(b, b.animWant || 'idle');
   }
 
-  // Bascule entre les DEUX feuilles du boss : 'attack' -> feuille _atk (si elle
-  //  existe), tout le reste (idle/hurt) -> feuille de deplacement.
+  // Bascule entre les DEUX feuilles du boss : 'attack' ET les clips dedies de la
+  //  feuille _atk ('windup'/'dash'/'throw', poses par l'IA charger) -> feuille
+  //  _atk ; tout le reste (idle/hurt) -> feuille de deplacement. Un clip dedie
+  //  ABSENT de la feuille (autres boss, vieux PNG) retombe sur 'attack' — sans
+  //  ce repli, play() jetterait (avale par setAnim) et la feuille resterait
+  //  FIGEE sur sa frame courante.
+  const BOSS_ATK_CLIPS = { attack: 1, windup: 1, dash: 1, throw: 1 };
   function bossAnim(b, want) {
-    const useAtk = want === 'attack' && b.sprAtk;
+    const useAtk = BOSS_ATK_CLIPS[want] && b.sprAtk;
+    if (useAtk && want !== 'attack' && !animHasClip(b.sprAtk, want)) want = 'attack';
     setAnim(b, useAtk ? b.sprAtk : b.spr, want);
   }
 
@@ -1534,6 +1834,13 @@
     const ch = (bullet && bullet.channel) || 'seed';
     const hx = (bullet && bullet.pos) ? bullet.pos.x : b.pos.x;
     const hy = (bullet && bullet.pos) ? bullet.pos.y : b.pos.y - TS;
+    // INVULNERABLE (jury en interlude 'invite' : l'IA pose guard = 0 chaque
+    //  frame, contrat bosses.js) : AUCUN degat — ni le plancher des 5%, ni le
+    //  chat. Tink gris = feedback "ca ne sert a rien". Ne consomme pas de tick.
+    //  guard <= 0 est ABSOLU : une fenetre vulnT ouverte par le chat juste avant
+    //  l'interlude ne doit pas le percer (l'echappatoire !(vulnT>0) laissait le
+    //  jury "en concertation" encaisser des degats pleins pendant 1.5s).
+    if (b.guard != null && b.guard <= 0) { bossTink(b, hx, hy); return; }
     const cds = { seed: BH.seedCd || 0.25, aoe: BH.aoeCd || 0.5, aoe2: BH.aoeCd || 0.5 };
     if (cds[ch] != null) {
       if (!b._chCd) b._chCd = {};
@@ -1565,6 +1872,16 @@
       for (let i = 0; i < 14; i++) addPoof(b.pos.x + rand(-30, 30), b.pos.y - rand(0, TS * 2));
       spawnPickup('cafe', b.pos.x, b.pos.y - TS);
       destroy(b);
+      if (LEVEL.bossesAlive === 0) {
+        // VICTOIRE PROPRE : purge les dangers residuels (bombe encore en vol,
+        //  tampons temporaires, ondes, tirs) — mourir 0.5s APRES "BOSS BATTU !"
+        //  se vivait comme une injustice. Meme menage que respawnAtArena.
+        get('ehot').forEach((h) => destroy(h));
+        get('quakewave').forEach((q) => destroy(q));
+        get('fx').forEach((o) => { if (o.boom !== undefined) destroy(o); });
+        get('hazard').forEach((h) => { if (h.temp) destroy(h); });
+        openArenaGates();          // verrou d'arene leve (l'etoile '*' est parfois derriere)
+      }
       safeShake(14);
       sfx('boss');
       flashMsg('BOSS BATTU !  Va ecrire ton chapitre (->)');
@@ -1577,7 +1894,7 @@
   function deployCat() {
     const p = PLAYER;
     if (!p || !p.exists()) return;
-    if (get('cat').length) return;            // un seul chat a la fois
+    if (catOut()) return;                     // un seul chat a la fois
     if (p.catCharges <= 0) { flashMsg(C.story.catEmpty); return; }
     p.catCharges--;
     p.catRegenT = 0;                          // (re)demarre le compteur de recharge auto a chaque lancer
@@ -1594,6 +1911,7 @@
       'cat',
       { dir, startX, baseY: p.pos.y, hitOnPass: new Set(), phase: 'run' },
     ]);
+    CAT_REF = cat;
     cat.flipX = dir < 0;
     try { cat.play('run'); } catch (e) {}
     // ALLER-RETOUR : le chat blesse a CHAQUE passage. A l'ALLER (phase 'run') il
@@ -1614,7 +1932,9 @@
       cat.hitOnPass.add(bo);
       // v2 : le chat OUVRE une fenetre de vulnerabilite (l'ouvre-boite des boss),
       //  re-armable au plus tot cat.vulnRelock s plus tard sur le meme boss.
-      if ((bo.catVulnLock || 0) <= 0 && (C.cat.vulnOpen || 0) > 0) {
+      //  Sauf boss INVULNERABLE (jury en interlude, guard=0) : pas d'ouverture
+      //  (ni de relock gaspille) sur un boss qu'on ne peut pas toucher.
+      if ((bo.catVulnLock || 0) <= 0 && (C.cat.vulnOpen || 0) > 0 && !(bo.guard != null && bo.guard <= 0)) {
         bo.vulnT = Math.max(bo.vulnT || 0, C.cat.vulnOpen);
         bo.catVulnLock = C.cat.vulnRelock || 8;
         bossFloaty(bo, C.story.bossOpen, [255, 210, 90]);
@@ -1624,7 +1944,7 @@
     cat.onCollide('passant', (e) => savePassant(e));   // le chat SAUVE les figurants qu'il croise
     cat.onUpdate(() => {
       const sp = C.cat.speed;
-      get('ehot').forEach((h) => { if (h.pos.dist(cat.pos) < C.cat.cleanRadius) destroy(h); });  // nettoie les tirs
+      EHOTS.forEach((h) => { if (h.exists() && h.pos.dist(cat.pos) < C.cat.cleanRadius) destroy(h); });  // nettoie les tirs (Set direct, pas de scan get())
       if (cat.phase === 'run') {                 // ALLER : court vers l'avant
         cat.move(cat.dir * sp, 0);
         if (Math.abs(cat.pos.x - cat.startX) > C.cat.range) { cat.dir = -cat.dir; cat.flipX = cat.dir < 0; cat.phase = 'back'; cat.hitOnPass.clear(); }   // demi-tour : on peut re-frapper (degats PLEINS au retour)
@@ -1655,6 +1975,10 @@
     if (!hasSprite(spr)) return null;                  // asset absent -> on ignore (pas de crash)
     const it = add([
       sprite(variant(spr)), artScale(), pos(x, y), anchor('center'), area(),
+      // PERF : meme culling que les mobs (hors-ecran = ni dessin, ni bob, ni
+      //  collision ; seul le joueur les ramasse et il est toujours a l'ecran).
+      //  Marge verticale = surplus des cartes hautes (pickups des decks caches).
+      offscreen({ hide: true, pause: true, unpause: true, distance: TS * 5 + Math.max(0, (LEVEL ? LEVEL.height : 0) - C.height) }),
       'pickup', kind, { kind, def, baseY: y, t: rand(0, 6.28) },
     ]);
     it.onUpdate(() => { it.t += dt() * 3; it.pos.y = it.baseY + Math.sin(it.t) * 4; });
@@ -1761,10 +2085,14 @@
 
   // BANDEAU repete (sol, collines, ciel...) : N copies fixes que l'on fait
   //  coulisser modulo leur largeur -> defilement infini sans couture.
+  //  seq:true -> la liste `sprite` = les MORCEAUX CONSECUTIFS d'un panorama
+  //  (decoupe en tranches <= 4096 px : MAX_TEXTURE_SIZE de pas mal de GPU
+  //  mobiles), repetes DANS L'ORDRE (periode = largeur cumulee). Sans seq,
+  //  liste = variantes (une au hasard, comportement historique). Les copies
+  //  entierement hors-cadre sont masquees (hidden) : KAPLAY ne cull pas seul.
   function addBandLayer(spec, th) {
     const list = Array.isArray(spec.sprite) ? spec.sprite : [spec.sprite];
-    const sname = pickSkin(list, list[0]);
-    if (!sname || !hasSprite(sname)) return;
+    const seq = !!spec.seq && list.length > 1 && list.every(hasSprite);
     const par = spec.parallax != null ? spec.parallax : 1;
     const z0  = spec.z != null ? spec.z : -20;
     const op  = spec.opacity != null ? spec.opacity : 1;
@@ -1772,17 +2100,29 @@
     const y   = (spec.y == null || spec.y === 'ground') ? HORIZON_Y : spec.y;
     const sc  = (spec.scale || 1) / ART;
     const tw0 = spec.tileW || 320;
-    const count = Math.ceil(C.width / tw0) + 2;
+    const n   = seq ? list.length : 1;
+    // seq : morceaux larges (panorama) -> 3 groupes couvrent toujours l'ecran.
+    const count = seq ? 3 * n : Math.ceil(C.width / tw0) + 2;
+    const sname0 = seq ? null : pickSkin(list, list[0]);
+    if (!seq && (!sname0 || !hasSprite(sname0))) return;
     const objs = [];
     for (let i = 0; i < count; i++) {
+      const sname = seq ? list[i % n] : sname0;
       const o = add([sprite(sname), scale(sc), pos(-9999, y), anchor(anc), fixed(), z(z0), opacity(op), 'bg'].concat(layerTint(spec, th)));
       playIfAnim(o, sname);
       objs.push(o);
     }
     objs[0].onUpdate(() => {
-      const tw = spec.tileW || ((objs[0].width || 0) * sc) || tw0;
-      const off = (((getCam().x * par) % tw) + tw) % tw;
-      for (let i = 0; i < objs.length; i++) objs[i].pos.x = i * tw - off;
+      const tw = spec.tileW || ((objs[0].width || 0) * sc) || tw0;   // largeur d'UN morceau
+      const period = tw * n;
+      const off = (((getCam().x * par) % period) + period) % period;
+      for (let i = 0; i < objs.length; i++) {
+        const x = Math.floor(i / n) * period + (i % n) * tw - off;
+        objs[i].pos.x = x;
+        // copie surement hors-cadre -> pas de draw. Marge d'UNE largeur de
+        //  morceau de chaque cote : couvre toute ancre (bot/top = centre-x).
+        objs[i].hidden = (x - tw > C.width) || (x + tw < 0);
+      }
     });
   }
 
@@ -1826,6 +2166,10 @@
   // ---------------------------------------------------------------------
   function buildLevel(def) {
     ENEMY_SEQ = 0;
+    PLAYER = null;     // sans ca, le garde-fou "Pas de @ dans la map" etait mort des la 2e partie
+    CAT_REF = null;    // refs de la partie precedente (les objets sont detruits par go())
+    BOSS_LIST = [];
+    EHOTS.clear();     // filet : si la teardown de scene ne declenche pas onDestroy
     HEAD_DECKS = {};   // nouveau niveau -> nouvelles pioches de tetes (sans remise)
     let cols = 0;
     const rows = def.map;
@@ -1893,7 +2237,6 @@
           case 'Y': spawnPickup('velo', cx, y + TS / 2); break;
           case 'e': spawnPickup('puissance', cx, y + TS / 2); break;     // upgrade arsenal : +1 PUISSANCE
           case 'i': spawnPickup('cadence', cx, y + TS / 2); break;       // upgrade arsenal : +1 CADENCE
-          case 'b': spawnPickup('puissance', cx, y + TS / 2); break;     // (ancien 'bombe') -> PUISSANCE
           case '^': addRock(cx, groundY); break;
           case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
           case 'T': spawnEnemy('camion', cx, groundY); break;
@@ -1930,6 +2273,9 @@
         }
       }
     });
+
+    // COLLISION du sol '=' : colliders fusionnes par segment (cf. addGroundColliders).
+    addGroundColliders(LEVEL.grid);
 
     // OMBRES PROJETEES sous les panneaux (cf. castColumnShade) : une par colonne.
     for (let c = 0; c < cols; c++) castColumnShade(c);
@@ -2038,12 +2384,37 @@
       R(x, y, w, h, { radius: 10, fill: false, outline: { width: 2, color: rgb(210, 155, 72) } });
     }
 
+    // CACHE DE LAYOUT TEXTE : drawText refait un formatText (layout complet,
+    //  boucle glyphes, allocations) A CHAQUE appel — et inkT dessine chaque
+    //  label 9 fois (contour 8 directions + face) -> ~80-100 layouts/frame.
+    //  On met en cache le texte FORMATE (couleur/opacite bakees dans les
+    //  glyphes) et on ne paye plus que 9 drawFormattedText par label, chacun
+    //  translate via la pile de transfos -> pixels strictement identiques.
+    //  Cache dans la closure de buildHUD = reset a chaque entree de scene.
+    const ftCache = new Map();
+    function fmtCached(s, sz, anchor, col, op) {
+      const k = s + '|' + sz + '|' + anchor + '|' + col.r + ',' + col.g + ',' + col.b + '|' + op;
+      let ft = ftCache.get(k);
+      if (!ft) {
+        if (ftCache.size > 300) ftCache.clear();   // borne anti-croissance (timer/score = cles changeantes)
+        ft = formatText({ text: s, pos: vec2(0, 0), anchor: anchor, size: sz, color: col, opacity: op });
+        ftCache.set(k, ft);
+      }
+      return ft;
+    }
     function inkT(s, x, y, sz, fill, anchor, op) {
       op = (op == null) ? 1 : op;
+      anchor = anchor || 'left';
       const o = sz >= 16 ? 2.0 : 1.6;
-      for (let a = 0; a < 8; a++)
-        drawText({ text: s, pos: vec2(x + Math.cos(a * Math.PI / 4) * o, y + Math.sin(a * Math.PI / 4) * o), anchor: anchor || 'left', size: sz, color: COL.ink, opacity: op });
-      drawText({ text: s, pos: vec2(x, y), anchor: anchor || 'left', size: sz, color: fill, opacity: op });
+      const ftInk = fmtCached(s, sz, anchor, COL.ink, op);
+      for (let a = 0; a < 8; a++) {
+        pushTransform();
+        pushTranslate(x + Math.cos(a * Math.PI / 4) * o, y + Math.sin(a * Math.PI / 4) * o);
+        drawFormattedText(ftInk);
+        popTransform();
+      }
+      const ftFill = fmtCached(s, sz, anchor, fill, op);
+      pushTransform(); pushTranslate(x, y); drawFormattedText(ftFill); popTransform();
     }
 
     function icon(name, x, y, tpx, opt) {
@@ -2271,9 +2642,18 @@
       //  PULSE en dore pendant une fenetre de vulnerabilite ("tape maintenant").
       //  Boss INVITE (boss-rush du jury) : mini-barre dessous.
       // =====================================================================
-      const bossesUp = get('boss');
-      const boss = bossesUp.find((bb) => !bb.guest) || bossesUp[0];
-      const guest = bossesUp.find((bb) => bb.guest && bb !== boss);
+      let boss = null, anyBoss = null, guest = null;
+      for (let i = 0; i < BOSS_LIST.length; i++) {
+        const bb = BOSS_LIST[i];
+        if (!bb.exists()) continue;
+        if (!anyBoss) anyBoss = bb;
+        if (!boss && !bb.guest) boss = bb;
+      }
+      if (!boss) boss = anyBoss;
+      for (let i = 0; i < BOSS_LIST.length; i++) {
+        const bb = BOSS_LIST[i];
+        if (bb.exists() && bb.guest && bb !== boss) { guest = bb; break; }
+      }
       if (boss && (boss.hp < boss.maxHp || Math.abs(boss.pos.x - p.pos.x) < W * 0.62)) {
         const open = (boss.vulnT > 0) || (boss.guard != null && boss.guard >= 1);
         if (open) {
@@ -2291,8 +2671,6 @@
 
     return layer;
   }
-
-  function updateHUD() { /* le HUD lit l'etat du joueur en direct dans onDraw */ }
 
   // ---------------------------------------------------------------------
   //  FIN DE NIVEAU / SAUVEGARDE
@@ -2397,11 +2775,14 @@
       b._guest = null; b._chCd = null; b._guardMsgDone = false;
       if (b._baseScale) { b.scale = b._baseScale.clone(); }   // cendrine morte mi-implosion
       b.opacity = 1; b.animWant = 'idle';
+      // NB : unuse('color') est sur meme depuis un onCollide — la regle "jamais
+      //  d'unuse en plein onCollide" ne vise que area/body (parcours de collision).
       if (b._openVis) { b._openVis = false; try { b.unuse('color'); } catch (_) {} }
     });
     get('ehot').forEach((h) => destroy(h));
     get('quakewave').forEach((q) => destroy(q));
     get('fx').forEach((o) => { if (o.boom !== undefined) destroy(o); });   // bombes encore EN VOL (pas de pluie sur le checkpoint)
+    openArenaGates();   // Laura respawne DEHORS : le verrou se re-arme a la re-entree
     // KO LISIBLE : sans feedback fort, mourir au contact du boss se lisait comme
     //  un BUG ("ejectee + vie pleine d'un coup") — la teleport + le refill
     //  passaient pour un glitch. Jingle de defaite + flash rouge plein ecran +
@@ -2424,8 +2805,20 @@
     if (_msg && _msg.exists()) destroy(_msg);
     _msg = add([
       text(txt, { size: size || 22, align: 'center' }), pos(C.width / 2, 90), anchor('center'),
-      fixed(), z(200), color(255, 255, 255), opacity(1), lifespan(1.6, { fade: 0.6 }),
+      fixed(), z(950), color(255, 255, 255), opacity(1), lifespan(1.6, { fade: 0.6 }),
     ]);
+    // Les toggles S/M marchent PENDANT la pause (listener DOM) mais lifespan
+    //  est gele par getTreeRoot().paused -> le toast restait fige a l'ecran.
+    //  Le draw, lui, continue : on double le fondu a l'horloge REELLE via
+    //  onDraw (hidden apres expiration ; lifespan detruit l'objet a la
+    //  reprise). z(950) : au-dessus de la boite pause (z 900).
+    const m = _msg;
+    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    m.onDraw(() => {
+      const el = (((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0) / 1000;
+      if (el > 2.2) m.hidden = true;
+      else if (el > 1.6) m.opacity = Math.min(m.opacity, 1 - (el - 1.6) / 0.6);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -2434,11 +2827,13 @@
   scene('game', (levelKey) => {
     CUR_IDX = C.levels.indexOf(levelKey);
     const def = LEVELS[levelKey];
+    playMusic((def && def.music) || levelKey);   // piste du niveau (niveau1.mid... ou override LEVELS[x].music)
     buildLevel(def);
     if (!PLAYER) { add([text('Pas de @ dans la map !', { size: 24 }), pos(40, 40)]); return; }
     spawnStartVehicle();
+    npcBubbleLoop(levelKey);   // bulles BD des PNJ (rares, cf. theme.passant.bubble)
 
-    const hud = buildHUD();
+    buildHUD();
     // Cam fixe en Y. Un niveau plus HAUT que l'ecran (rangees ajoutees EN HAUT,
     //  cf. niveau5) garde EXACTEMENT le meme cadrage du sol : on descend la cam
     //  du surplus de hauteur -> tout l'espace ajoute devient du HORS-CHAMP en haut
@@ -2634,7 +3029,13 @@
     // contact BOSS = coup LOURD (ecrasement) : traverse le surbouclier (cf.
     //  damagePlayer heavy + sun.bossTouchPierces) — un tracteur qui te roule
     //  dessus ne se tanke pas a la jauge de soleil.
-    PLAYER.onCollide('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false));
+    //  onCollideUPDATE (pas onCollide) : la resolution joueur<->boss est annulee
+    //  des deux cotes (no-shove) -> les hitboxes peuvent rester SUPERPOSEES sans
+    //  nouvel evenement d'entree. Avec onCollide, dasher DANS le boss pendant
+    //  les i-frames permettait de camper a l'interieur et de tirer a bout
+    //  portant sans plus jamais subir le contact (meme piege moteur que le coup
+    //  retour du chat). Le tick effectif reste ~1 coup lourd/s (gate p.invuln).
+    PLAYER.onCollideUpdate('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false));
     PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
     PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
@@ -2692,6 +3093,10 @@
           LEVEL.checkpoint = { x: Math.max(TS * 1.5, edge - TS), y: columnGroundY(Math.floor(edge / TS)) - 2 };
         }
       }
+      // v2.3 VERROU D'ARENE : Laura ENTRE dans l'arene (>= 1 tuile apres le bord
+      //  gauche -> jamais dans la colonne du mur) avec le boss vivant -> on ferme.
+      if (!LEVEL.gates && LEVEL.bossX != null && LEVEL.bossesAlive > 0 &&
+          p.pos.x >= LEVEL.bossX - (LEVEL.bossRange || 300) + TS) addArenaGates();
       // DASH : ruee horizontale TRANSITOIRE via move() (PAS via p.vel, qui est
       //  PERSISTE par le body de KAPLAY -> l'ancienne ecriture de vel.x ne se
       //  remettait jamais a 0 et Laura glissait sans fin). La gravite (vel.y)
@@ -2717,7 +3122,7 @@
       }
 
       // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
-      const canCat = p.catCharges > 0 && !get('cat').length;
+      const canCat = p.catCharges > 0 && !catOut();
       if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
       if (!keysDown(C.controls.cat)) p.catLock = false;
 
@@ -2778,18 +3183,26 @@
       setActionOverlay(p, actOvSpr, actClip, actReplay);            // (de)pose le calque d'action
 
       if (actBody) { if (actReplay) p._anim = null; setAnim(p, noCat(actBody), actClip); }
-      else if (p.dashT > 0) heroAnim(p, hasSprite('hero_dash') ? 'hero_dash' : 'hero_run', hasSprite('hero_dash') ? 'dash' : 'run');
+      // DASH : feuille dediee hero_dash (elan penche) si embarquee — mais PAS en
+      //  velo/rollers (on reste sur l'engin : heroAnim applique l'override 'run').
+      else if (p.dashT > 0) {
+        const dashSpr = !p.equipped && hasSprite('hero_dash');
+        heroAnim(p, dashSpr ? 'hero_dash' : 'hero_run', dashSpr ? 'dash' : 'run');
+      }
       else if (duckSpr) {                               // scrub manuel : frame = progression
         const ds = noCat('hero_duck');                 // sac vide si le chat est dehors
         if (p._spr !== ds) { p.use(sprite(ds)); p._spr = ds; p._anim = null; }
         const lastF = ((C.anims.hero_duck && C.anims.hero_duck.sliceX) || 7) - 1;
         p.frame = Math.max(0, Math.min(lastF, Math.round(p.duckProg * lastF)));
       }
+      // HURT AVANT le saut : une blessure prise EN L'AIR (bombe, piquet en
+      //  cloche, contact pendant un saut) doit se voir — avant, la branche
+      //  aerienne masquait la pose hurt et le seul feedback etait le clignotement.
+      else if (p.invuln > C.player.invulnTime - 0.25) heroAnim(p, 'hero_hurt', 'hurt');
       // En velo, le saut ne change PAS d'anim : on reste sur le velo (cycle de
       //  pedalage course/idle), pas de pose de saut figee.
       else if (!p.isGrounded() && p.equipped === 'velo') heroAnim(p, moving ? 'hero_run' : 'hero_idle', moving ? 'run' : 'idle');
       else if (!p.isGrounded()) heroAnim(p, 'hero_jump', 'jump');
-      else if (p.invuln > C.player.invulnTime - 0.25) heroAnim(p, 'hero_hurt', 'hurt');
       else if (moving) heroAnim(p, 'hero_run', 'run');
       else heroAnim(p, 'hero_idle', 'idle');
       p.flipX = p.facing < 0;
@@ -2836,8 +3249,6 @@
       const half = C.width / 2;
       const cx = Math.max(half, Math.min(LEVEL.width - half, p.pos.x));
       setCam(cx, camY);
-
-      updateHUD(hud);
     });
   });
 
@@ -2960,6 +3371,7 @@
   }
 
   scene('title', () => {
+    playMusic((C.music || {}).title);
     setCam(C.width / 2, C.height / 2);
     if (hasSprite('bg_title')) add([sprite('bg_title', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(143, 208, 240), z(-10)]);
@@ -3035,6 +3447,7 @@
 
   // --- SELECTION DE SAUVEGARDE (3 slots) ------------------------------
   scene('slots', () => {
+    playMusic((C.music || {}).slots);
     setCam(C.width / 2, C.height / 2);
     if (hasSprite('bg_save')) add([sprite('bg_save', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(120, 196, 232), z(-10)]);
@@ -3108,8 +3521,8 @@
       persist();
       go('overworld');
     };
-    onKeyPress('left', () => { cur = (cur + 2) % 3; render(); });
-    onKeyPress('right', () => { cur = (cur + 1) % 3; render(); });
+    onKeys(C.controls.left, () => { cur = (cur + 2) % 3; render(); });    // fleches ET Q/D (annonces a l'ecran titre)
+    onKeys(C.controls.right, () => { cur = (cur + 1) % 3; render(); });
     onKeyPress('e', () => { SAVEAPI.erase(cur); render(); });
     onConfirm(pick);
     onBack(() => go('title'));   // ESC : retour ecran titre
@@ -3118,6 +3531,7 @@
   // --- CARTE DU MONDE (overworld facon Dora) --------------------------
   scene('overworld', () => {
     if (!SAVE) { go('title'); return; }
+    playMusic((C.music || {}).overworld);
     setCam(C.width / 2, C.height / 2);
 
     // --- palette + helpers (carte-tresor) ------------------------------
@@ -3260,8 +3674,8 @@
     });
 
     const move = (d) => { const n = cur + d; if (n >= 0 && n <= SAVE.unlockedMax && n < nodes.length) { cur = n; SAVE.cursor = cur; persist(); } };
-    onKeyPress('left', () => move(-1));
-    onKeyPress('right', () => move(1));
+    onKeys(C.controls.left, () => move(-1));     // fleches ET Q/D (annonces a l'ecran titre)
+    onKeys(C.controls.right, () => move(1));
     const enter = () => { if (cur <= SAVE.unlockedMax) go('game', nodes[cur].key); };
     onConfirm(enter);
     onBack(() => go('slots'));   // ESC : retour selection de sauvegarde
@@ -3270,6 +3684,7 @@
   // --- CHAPITRE GAGNE -------------------------------------------------
   // --- CHAPITRE ECRIT (apres chaque boss de niveau) : bureau de redaction ---
   scene('chapter', (data) => {
+    playMusic((C.music || {}).chapter);
     setCam(C.width / 2, C.height / 2);
     const idx = (data && data.idx) || 0;
     const N = SAVEAPI.N_LEVELS;
@@ -3327,6 +3742,7 @@
 
   // --- SOUTENANCE REUSSIE (apres le jury) : remise du diplome ---------------
   scene('win', (data) => {
+    playMusic((C.music || {}).win);
     setCam(C.width / 2, C.height / 2);
     const parts = String(C.story.win).split(/\s{2,}/).filter(Boolean);
     const head = parts[0] || String(C.story.win);
@@ -3447,6 +3863,7 @@
   });
 
   scene('lose', (data) => {
+    playMusic((C.music || {}).lose);
     setCam(C.width / 2, C.height / 2);
     add([rect(C.width, C.height), pos(0, 0), color(90, 110, 130)]);
     add([sprite('hero_hurt'), pos(C.width / 2, 200), anchor('center'), artScale(1.6)]).play('hurt');
@@ -3462,6 +3879,9 @@
     get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; },
     // debug : abat le i-eme passant a l'ecran (teste le cadavre) ; sans arg, tous
     kill: (i) => { const l = get('passant'); (i == null ? l : [l[i]]).forEach((e) => e && e.exists() && hitEnemy(e, { dmg: 99 })); },
+    // debug : bulle BD immediate sur le i-eme passant (0 par defaut) ; phrase du
+    //  registre js/npc.js si le PNJ en a, sinon une phrase de test
+    bubble: (i, txt) => { const e = get('passant')[i || 0]; if (!e) return null; const ph = npcPhrases(e); return npcBubble(e, txt || (ph ? ph[0] : 'Coucou Laura !'), 6); },
     // debug : lache une bombe sur la colonne du joueur (teste chute/ombre/souffle)
     bomb: (delay) => { if (PLAYER && PLAYER.exists()) dropBomb(PLAYER.pos.x, PLAYER.pos.y, delay || 0.9, 'shot_bomb'); },
   };

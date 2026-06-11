@@ -13,13 +13,18 @@ window.LQ_SAVE = (() => {
   const SLOTS = 3;
 
   // Detecte un localStorage utilisable, sinon shim memoire.
+  //  NB : la simple LECTURE de window.localStorage peut jeter (SecurityError,
+  //  cookies/storage bloques) -> tout acces reste DANS le try, y compris le
+  //  calcul de `persistent` (sinon crash au boot sur navigateur verrouille).
   const mem = {};
   let store;
+  let persistent = false;
   try {
     const t = '__lq_test__';
     window.localStorage.setItem(t, '1');
     window.localStorage.removeItem(t);
     store = window.localStorage;
+    persistent = true;
   } catch (e) {
     store = {
       getItem: (k) => (k in mem ? mem[k] : null),
@@ -27,7 +32,6 @@ window.LQ_SAVE = (() => {
       removeItem: (k) => { delete mem[k]; },
     };
   }
-  const persistent = (store === window.localStorage);
 
   function fresh(name) {
     return {
@@ -85,6 +89,23 @@ window.LQ_SAVE = (() => {
 
   function erase(i) { try { store.removeItem(KEY(i)); } catch (e) {} }
 
+  // --- Prefs GLOBALES (independantes des slots) : mute son/musique... ---
+  //  Meme store que les slots (donc meme fallback memoire en file://).
+  const PREFS_KEY = 'lauraquest_prefs';
+  function loadPrefs() {
+    try {
+      const o = JSON.parse(store.getItem(PREFS_KEY) || '{}');
+      // cle corrompue en JSON primitif ("true", "12"...) : setPref ferait
+      //  p[k]=v sur un non-objet -> TypeError en strict. On repart de zero.
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) { return {}; }
+  }
+  function setPref(k, v) {
+    const p = loadPrefs(); p[k] = v;
+    try { store.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) {}
+    return p;
+  }
+
   function list() {
     const out = [];
     for (let i = 0; i < SLOTS; i++) out.push(load(i));
@@ -105,5 +126,5 @@ window.LQ_SAVE = (() => {
     return Math.round((got / total) * 100);
   }
 
-  return { fresh, load, save, erase, list, completion, persistent, N_LEVELS, SLOTS };
+  return { fresh, load, save, erase, list, completion, loadPrefs, setPref, persistent, N_LEVELS, SLOTS };
 })();

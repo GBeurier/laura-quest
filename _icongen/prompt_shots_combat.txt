@@ -1,0 +1,21 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. You will generate SIX game-item icons (six separate image_gen calls).
+
+STYLE (same for all six): retro 16-bit pixel-art GAME ICON, classic LucasArts "Monkey Island" / SCUMM vibe. Crisp visible square pixels, bold dark brown outline, limited warm vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D, NO painterly/airbrushed look.
+
+CRITICAL for these PROJECTILE icons (they fly fast and small over a busy colorful background, so they MUST pop): draw each as a BOLD, SIMPLE, HIGH-CONTRAST silhouette that reads instantly at tiny size. Use a VERY THICK dark almost-black outline, BRIGHT saturated colors, strong light/shadow, and fill ~85% of the frame (little padding). Make it look like a clear incoming threat, clearly oriented as THROWN to the RIGHT (leading tip toward the right edge), with a couple of short motion streaks behind it (on the LEFT side). Keep the shape chunky and uncluttered — NO tiny fragile details.
+
+BACKGROUND (same for all six): fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO vignette, NO text other than what is asked, NO frame, NO grid, NO watermark. NEVER use magenta or pink anywhere on the object itself.
+
+IMAGE 1 -> a flat SHEET OF GRAPH PAPER flying edge-first: beige/cream paper slightly curved by the flight, printed with a bold RED BAR CHART and a BLUE rising curve clearly visible on the page. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_chart.png
+
+IMAGE 2 -> a CRUMPLED PAPER BALL: scrunched-up white/cream paper wad, deep crease shadows in light gray, a few sticking-out folded corners. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_boulette.png
+
+IMAGE 3 -> a single golden POTATO CRISP (chip): wavy oval crisp seen at a slight angle, warm yellow-orange with darker toasted edges, tiny white salt specks, 2-3 small crumbs trailing behind it. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_chip.png
+
+IMAGE 4 -> a flying GLOB OF WATER: bright blue elongated droplet (rounded front toward the right, tapered tail toward the left), bold white highlights, 3-4 tiny satellite droplets around the tail. NO face. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_eau.png
+
+IMAGE 5 -> an ADMINISTRATIVE ENVELOPE flying like a dart: beige paper envelope slightly folded along its length so the right end forms a point, a round RED official rubber stamp mark clearly visible on it, a small postage stamp in a corner. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_courrier.png
+
+IMAGE 6 -> a flying PAGE OF A THESIS MANUSCRIPT: white paper sheet slightly curved by the flight, covered in neat gray lines of fake text with a short RED title line at the top, one corner folded. cp the generated PNG to /home/delete/laura_quest/_icongen/raw/shot_page.png
+
+Generate the images ONE AT A TIME (one image_gen call, then cp, then the next). Do NOT run chroma-key removal, do NOT delete any files. When done, print one line per icon: '<name>: <path> (<W>x<H>)'.

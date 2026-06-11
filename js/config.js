@@ -116,7 +116,7 @@ window.CONFIG = {
     //             headRot = amplitude du balancement (degres).
     //  Tout asset absent est ignore -> retombe sur la base / pas de tete.
     passant: {
-      femaleRatio: 17 / 38,
+      femaleRatio: 23 / 49,
       headScale: 0.9,
       headLocal: [0, -90], headBob: 1, headRot: 3,
       //  - deadHeadDrop / deadHeadScale : CADAVRE. Quand le passant tombe, le corps
@@ -125,9 +125,25 @@ window.CONFIG = {
       //    taille du corps) pour qu'elle TOUCHE le corps, et on la RETRECIT un peu
       //    (scale, multiplie la taille de tete) pour epouser la perspective affalee.
       deadHeadDrop: 34, deadHeadScale: 0.85,
+      //  - bubble : BULLES BD (phrases perso du registre js/npc.js -> cle
+      //    `phrases`). De temps en temps UN PNJ visible "parle" : bulle BD
+      //    au-dessus de sa tete avec une de ses phrases au hasard. UNE bulle
+      //    a la fois + pause aleatoire gapMin..gapMax (secondes) entre deux
+      //    -> volontairement RARE. dur = duree d'affichage (s). Au JURY la
+      //    pause est multipliee par juryGapMult (la scene est bondee -> encore
+      //    plus rare pour ne pas saturer). `font` = pile de fonts TTF embarquees
+      //    (assets/fonts/, repli par glyphe : latin -> Comic Neue, khmer -> Noto)
+      //    -> les phrases s'affichent AVEC leurs accents ; si aucune n'est
+      //    chargee, repli font bitmap + accents translitteres.
+      //    cf. npcBubble() dans game.js.
+      bubble: { gapMin: 9, gapMax: 20, dur: 4, juryGapMult: 2.5,
+                font: 'font_bubble,font_bubble_kh' },
       bodies: { h: ['body_champ_h'], f: ['body_champ_f'] },
-      heads:  { h: Array.from({ length: 21 }, (_, i) => 'head_npc_h_' + (i + 1)),
-                f: Array.from({ length: 17 }, (_, i) => 'head_npc_f_' + (i + 1)) },
+      // pool partage COMPLET (26 h / 23 f embarques, cf. CLAUDE.md PNJ) : la
+      //  liste 21/17 d'avant datait d'un lot precedent -> 9 collegues manquaient
+      //  au cortege de victoire (scene win, qui lit CE pool par defaut).
+      heads:  { h: Array.from({ length: 26 }, (_, i) => 'head_npc_h_' + (i + 1)),
+                f: Array.from({ length: 23 }, (_, i) => 'head_npc_f_' + (i + 1)) },
       sizeScale: { petit: 1, moyen: 1.14, grand: 1.28, tresGrand: 1.42 },
       // La TAILLE de chaque personne (lettre P/M/G/TG) vit desormais dans le
       //  REGISTRE des PNJ -> js/npc.js (window.NPC, une entree par tete). Ici on
@@ -201,7 +217,7 @@ window.CONFIG = {
   // --- Chat angora (allie deploye) ------------------------------------
   //  ALLER-RETOUR : Laura le pose au sol juste devant elle (anim hero_cat_out),
   //  il court vers l'avant en nettoyant tout (ennemis + tirs), fait demi-tour a
-  //  'range', revient vers Laura et disparait en la touchant (anim hero_cat_in).
+  //  'range', revient vers Laura et disparait en la touchant (poof).
   cat: {
     sprite: 'cat_run',
     speed: 560,       // vitesse de course du chat
@@ -333,7 +349,10 @@ window.CONFIG = {
     //     (cf. addRock dans game.js ; pose par '^' dans la map + auto aux 2 bords).
     camion:   { sprite: 'enemy_camion',   hp: 6,        touchDamage: 2, move: 'patrol',  speed: 130, range: 130, aggro: 460, score: 250, hit: { w: 0.86, h: 0.84 } },
     assureur: { sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 80,  range: 110, aggro: 380, score: 150, hit: { w: 0.88, h: 0.83 } },
-    ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200, hit: { w: 0.72, h: 0.82 } },
+    //  shot : sprite du PROJECTILE du tireur (cf. enemyBullet). Chaque tireur a
+    //  le sien, assorti a son geste d'attaque (l'ancien defaut unique shot_paper
+    //  — un avion en papier — collait mal a un sachet de chips ou un tuyau).
+    ademe:    { sprite: 'enemy_ademe',    hp: 3,        touchDamage: 1, move: 'shooter', shotEvery: 2.2, range: 460, shotSpeed: 240, score: 200, shot: 'shot_courrier', hit: { w: 0.72, h: 0.82 } },
     // nouveaux archetypes (variete / difficulte)
     corbeau:  { sprite: 'enemy_corbeau',  hp: 2,        touchDamage: 1, move: 'fly',     speed: 95,  range: 150, amp: 34, anim: 'fly', score: 180, scale: 0.32, hit: { w: 0.90, h: 0.95 } },
     //  criquet : feuille re-griddee en cellule LARGE 302px (regrid.py, frames de
@@ -362,16 +381,18 @@ window.CONFIG = {
     livreur:      { sprite: 'enemy_livreur',      hp: 6, touchDamage: 2, move: 'patrol',  speed: 120, range: 130, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.82 } },
     coursier:     { sprite: 'enemy_coursier',     hp: 6, touchDamage: 2, move: 'patrol',  speed: 140, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.85 } },
     //  TIR (shooter)
-    imprimante:   { sprite: 'enemy_imprimante',   hp: 4, touchDamage: 1, move: 'shooter', shotEvery: 2.0, range: 440, shotSpeed: 260, anim: 'walk', score: 230, scale: 0.95, hit: { w: 0.92, h: 0.78 } },
-    chips:        { sprite: 'enemy_chips',        hp: 2, touchDamage: 1, move: 'shooter', shotEvery: 2.4, range: 400, shotSpeed: 230, anim: 'walk', score: 160, scale: 0.7 , hit: { w: 0.92, h: 0.88 } },
-    tuyau:        { sprite: 'enemy_tuyau',        hp: 3, touchDamage: 1, move: 'shooter', shotEvery: 1.8, range: 420, shotSpeed: 240, anim: 'walk', score: 200, scale: 0.9 , hit: { w: 0.92, h: 0.82 } },
+    imprimante:   { sprite: 'enemy_imprimante',   hp: 4, touchDamage: 1, move: 'shooter', shotEvery: 2.0, range: 440, shotSpeed: 260, anim: 'walk', score: 230, scale: 0.95, shot: 'shot_boulette', hit: { w: 0.92, h: 0.78 } },
+    chips:        { sprite: 'enemy_chips',        hp: 2, touchDamage: 1, move: 'shooter', shotEvery: 2.4, range: 400, shotSpeed: 230, anim: 'walk', score: 160, scale: 0.7 , shot: 'shot_chip', hit: { w: 0.92, h: 0.88 } },
+    tuyau:        { sprite: 'enemy_tuyau',        hp: 3, touchDamage: 1, move: 'shooter', shotEvery: 1.8, range: 420, shotSpeed: 240, anim: 'walk', score: 200, scale: 0.9 , shot: 'shot_eau', hit: { w: 0.92, h: 0.82 } },
     //  IMMOBILE (static, degat au contact / petite attaque de proximite)
     sac:          { sprite: 'enemy_sac',          hp: 3, touchDamage: 1, move: 'static',  anim: 'walk', score: 120, scale: 0.8, hit: { w: 0.92, h: 0.86 } },
     fontaine:     { sprite: 'enemy_fontaine',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9, hit: { w: 0.58, h: 0.84 } },
     dossiers:     { sprite: 'enemy_dossiers',     hp: 4, touchDamage: 1, move: 'static',  anim: 'walk', score: 150, scale: 0.9, hit: { w: 0.86, h: 0.84 } },
 
     // minions de boss (reutilisent des sprites existants)
-    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'hop', score: 60, hit: { w: 0.54, h: 0.82 } },   // sprite criquet -> meme hit.w re-derive (cellule 302)
+    //  anim 'walk' : la feuille criquet regeneree n'a plus de clip 'hop' (cf.
+    //  enemy_criquet plus bas) — 'hop' laissait le minion FIGE frame 0.
+    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'walk', score: 60, hit: { w: 0.54, h: 0.82 } },   // sprite criquet -> meme hit.w re-derive (cellule 302)
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120, hit: { w: 0.88, h: 0.83 } },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
@@ -422,8 +443,11 @@ window.CONFIG = {
     //  pace (approche ; 1 cycle/2 tire un TRIPLE missile, milieu DUCKABLE ; paceTime)
     //  -> wind (se cabre, windTime) -> dash (rue dashSpeed pdt dashTime, seisme local)
     //  -> stagger (essouffle = PUNITION, staggerTime) -> throw (eventail 3, throwTime).
+    //  shot 'shot_bail' = le ROULEAU de bail a ruban rouge (ex-shot_chart, renomme) :
+    //  c'est EXACTEMENT ce que Francois brandit/jette sur sa feuille _atk (l'ancien
+    //  shot_stake — un piquet en bois — ne correspondait a aucun de ses gestes).
     proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
-                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_stake',
+                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_bail',
                     paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5,
                     p2StaggerTime: 0.9, p2RewindTime: 0.3 },
 
@@ -440,8 +464,12 @@ window.CONFIG = {
     //  garde ses distances (keepMin..keepMax) ; vise (aimTime) puis lache une BOMBE
     //  EN PAPIER sur le joueur ; 1 cycle/3 = overload (eventail 3) ; recalc (ne tire
     //  pas = PUNITION, recalcTime). Esquive : bouger lateralement / double-saut.
+    //  shot_chart (regenere) = FEUILLE de graphiques plate (bar-chart + courbe),
+    //  comme sur sa feuille _atk. bomb 'shot_boulette' = boulette de papier froisse
+    //  pour la "bombe en papier" (avant : shot_paper, un avion en papier qui
+    //  CHUTAIT en tournoyant — le fameux "feuille qui se transforme en avion").
     michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
-                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart',
+                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
                     aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440,
                     p2KeepMin: 180, p2KeepMax: 380 },
 
@@ -458,8 +486,11 @@ window.CONFIG = {
     //  cadence shotEvery) ; 33-66% debat (eventail 5 + anneau de ringN + minion) ;
     //  <33% verdict (eventail de panicN + bombes + MUR A TROU a dasher). enrageTime
     //  = pose marquee au changement de phase. Esquive : lob a distance puis DASH.
+    //  shot 'shot_page' = page de these volante : c'est ce que les 3 jures JETTENT
+    //  sur leur feuille _atk (le marteau shot_gavel etait iconique mais aucun jure
+    //  n'en brandit ; il reste sur disque si on veut revenir en arriere).
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
-                    hp: 450, maxHp: 450, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_gavel', scale: 1.32,
+                    hp: 450, maxHp: 450, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
                     enrageTime: 0.7, ringN: 8, panicN: 9, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve
   },
 
@@ -513,11 +544,18 @@ window.CONFIG = {
     hero_idle:        { sliceX: 8, sliceY: 1, anims: { idle:  { from: 0, to: 7, loop: true,  speed: 8  } } },
     hero_run:         { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 14 } } },
     hero_jump:        { sliceX: 8, sliceY: 1, anims: { jump:  { from: 0, to: 7, loop: true,  speed: 10 } } },
-    hero_hurt:        { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 10 } } },
+    //  hurt : speed 16 (pas 10) — la pose n'est affichee que ~0.25s (cf. branche
+    //  anim de game.js) ; a 10 fps on ne voyait que 2-3 frames de la feuille.
+    hero_hurt:        { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 16 } } },
     hero_duck:        { sliceX: 7, sliceY: 1, anims: { duck:  { from: 0, to: 6, loop: true,  speed: 8  } } },
-    // lancer du chat : sortie (depart) / entree (retour au sac)
+    // DASH (ruee + i-frames) : feuille 6 frames (impulsion -> fente -> freinage)
+    //  mais le dash ne dure que 0.16s -> le clip ne joue que l'ELAN (0-3) a
+    //  vitesse haute ; les frames 4-5 (freinage/redressement) restent dispo si
+    //  on allonge la duree un jour. Le branchement (game.js) retombe sur
+    //  hero_run tant que le PNG n'est pas embarque.
+    hero_dash:        { sliceX: 6, sliceY: 1, anims: { dash:  { from: 0, to: 3, loop: false, speed: 24 } } },
+    // lancer du chat (le retour au sac n'a pas de pose dediee : poof + disparition)
     hero_cat_out:     { sliceX: 5, sliceY: 1, anims: { cat:   { from: 0, to: 4, loop: false, speed: 12 } } },
-    hero_cat_in:      { sliceX: 4, sliceY: 1, anims: { cat:   { from: 0, to: 3, loop: false, speed: 12 } } },
     // pose de lancer plein-corps commune aux deux armes (les feuilles dediees
     //  hero_throw_seed/cake ont ete retirees des assets).
     hero_throw:       { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
@@ -534,9 +572,10 @@ window.CONFIG = {
     //  le chat est DEHORS (cf. noCat() dans game.js). Memes sliceX/clips que la base.
     hero_idle_nocat:  { sliceX: 8, sliceY: 1, anims: { idle:  { from: 0, to: 7, loop: true,  speed: 8  } } },
     hero_run_nocat:   { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 14 } } },
-    hero_hurt_nocat:  { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 10 } } },
+    hero_hurt_nocat:  { sliceX: 8, sliceY: 1, anims: { hurt:  { from: 0, to: 7, loop: true,  speed: 16 } } },
     hero_jump_nocat:  { sliceX: 8, sliceY: 1, anims: { jump:  { from: 0, to: 7, loop: true,  speed: 10 } } },
     hero_duck_nocat:  { sliceX: 7, sliceY: 1, anims: { duck:  { from: 0, to: 6, loop: true,  speed: 8  } } },
+    hero_dash_nocat:  { sliceX: 6, sliceY: 1, anims: { dash:  { from: 0, to: 3, loop: false, speed: 24 } } },
     hero_throw_nocat: { sliceX: 6, sliceY: 1, anims: { throw: { from: 0, to: 5, loop: false, speed: 18 } } },
     hero_bike_nocat:  { sliceX: 7, sliceY: 1, anims: { idle: { from: 0, to: 6, loop: true, speed: 6 }, run: { from: 0, to: 6, loop: true, speed: 14 }, jump: { from: 3, to: 3 } } },
     hero_roll_nocat:  { sliceX: 8, sliceY: 1, anims: { idle: { from: 0, to: 7, loop: true, speed: 6 }, run: { from: 0, to: 7, loop: true, speed: 16 }, jump: { from: 4, to: 4 } } },
@@ -544,11 +583,22 @@ window.CONFIG = {
     enemy_corbeau:    { sliceX: 6, sliceY: 1, anims: { fly:   { from: 0, to: 5, loop: true,  speed: 8  } } },
     enemy_criquet:    { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 10 }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 14 } } },
     // --- Boss : DEUX feuilles par boss (cf. tools/gen_boss_sheets.py) ---
-    //  _move : DEPLACEMENT — frames 0-2 = cycle de marche (idle), frame 3 = touche (hurt)
-    //  _atk  : ATTAQUE     — frames 0-3 = charge -> frappe -> retour (attack)
-    //  game.js bascule sur la feuille _atk uniquement quand animWant === 'attack'.
+    //  _move : DEPLACEMENT — frames 0-4 = cycle idle/menace, frame 5 = touche (hurt)
+    //  _atk  : ATTAQUE     — frames 0-5 = montee -> frappe -> retour (attack)
+    //  game.js (bossAnim) bascule sur la feuille _atk pour animWant 'attack' ET
+    //  pour les CLIPS DEDIES ('windup'/'dash'/'throw', poses par l'IA charger) ;
+    //  un clip dedie absent de la feuille retombe sur 'attack' (autres boss).
     boss_proprietaire_move: { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
-    boss_proprietaire_atk:  { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
+    //  Contenu reel de la feuille atk du proprio : f0 quasi-idle, f1 leve le bail,
+    //  f2 bail a l'epaule (arme), f3 JET bras tendu, f4 pose de COURSE penchee
+    //  (poussiere), f5 ~ f0. Avant, l'unique clip attack {0..5 loop} servait aux
+    //  4 etats de l'IA -> pendant la CHARGE le boss "jetait ses cles" en boucle
+    //  (bug anim niveau2). Clips dedies : windup (se cabre et arme, fige sur f2),
+    //  dash (frame de course seule), throw (leve -> jet, fige sur la frame de jet).
+    boss_proprietaire_atk:  { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 },
+                                                             windup: { from: 0, to: 2, loop: false, speed: 10 },
+                                                             dash:   { from: 4, to: 4 },
+                                                             throw:  { from: 1, to: 3, loop: false, speed: 12 } } },
     boss_agriculteur_move:  { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
     boss_agriculteur_atk:   { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 } } },
     boss_michael_move:      { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 7 }, hurt: { from: 5, to: 5 } } },
@@ -576,7 +626,6 @@ window.CONFIG = {
     pickup_graine:    { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_plant:     { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_chart:     { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
-    pickup_barchart:  { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_sheet:     { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     pickup_pilule:    { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },   // skin 'd'/'p' (Appart / Arene)
     pickup_champignon:{ sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },   // skin 'p' (Arene)
@@ -637,10 +686,23 @@ window.CONFIG = {
     cat:        ['c'],           // chat (instantane)
     dash:       ['shift'],       // dash (ruee + i-frames), libere par le retrait du switch d'arme
     quit:       ['escape'],      // quitter le niveau -> carte
+    muteSfx:    ['s'],           // coupe/retablit les bruitages (toutes scenes)
+    muteMusic:  ['m'],           // coupe/retablit la musique (lecteur MIDI js/music.js)
   },
 
   // --- Audio ----------------------------------------------------------
-  audio: { enabled: true, volume: 0.5 },
+  //  enabled = bruitages (toggle en jeu : touche S) ; music = musique (touche M).
+  //  Les deux flags sont persistes (LQ_SAVE prefs) et relus au boot (game.js).
+  //  musicVolume = volume du lecteur MIDI chiptune (js/music.js), independant
+  //  de volume (les ondes carrees sortent fort, rester bas).
+  audio: { enabled: true, volume: 0.5, music: true, musicVolume: 0.25 },
+
+  // --- Musique (MIDI chiptune, js/music.js) ---------------------------
+  //  Piste par SCENE (cle = piste dans assets/music/*.mid, reembarquer via
+  //  gen_assets_data.py). En jeu : piste = LEVELS[clef].music || clef du
+  //  niveau (niveau1.mid, ..., jury.mid). Piste absente = silence, rien ne
+  //  casse. Scene absente de cette table = la musique s'arrete.
+  music: { title: 'title', slots: 'title', overworld: 'map', chapter: 'chapter', win: 'win', lose: 'lose' },
 
   // --- Mobile / tactile (web, pas de natif) ---------------------------
   //  La manette tactile (js/mobile.js) s'active TOUTE SEULE sur ecran tactile
@@ -654,7 +716,7 @@ window.CONFIG = {
 
   // --- Triche / test (mets cheats:false pour la version cadeau) -------
   //  En jeu : 1-6 = aller au niveau, 0 = finir le niveau, G = dieu, H = plein.
-  cheats: true,
+  cheats: false,
 
   // --- Enchainement des niveaux (cles dans LEVELS) --------------------
   levels: ['niveau1', 'niveau2', 'niveau3', 'niveau4', 'niveau5', 'jury'],
@@ -694,6 +756,7 @@ window.CONFIG = {
     // v2 : boss (garde/fenetres), checkpoint d'arene, medailles (cf. GAMEPLAY.md)
     bossOpen:  'OUVERT !',                    // fenetre de vulnerabilite du boss
     bossGuard: 'GARDE !',                     // 1er tir encaisse en garde (pedagogie)
+    arenaClose:'L ARENE SE FERME !',          // verrou d'arene (v2.3) : murs poses a l'entree
     checkpoint:'K.O. ! REPRISE A L ARENE',    // mort pendant un boss -> respawn au checkpoint (jingle + flash rouge)
     mention:   'MENTION TRES HONORABLE',      // toutes les medailles d'or
     feliJury:  'FELICITATIONS DU JURY',       // medaille cachee : niveau sans perdre coeur ni equipement

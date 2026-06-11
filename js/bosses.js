@@ -35,8 +35,7 @@
  *   - Tirs : api.bullet prend un 6e parametre optionnel = nom du sprite du
  *     projectile (l'ancien global BOSS_SHOT_SPRITE disparait). TOUS les tirs
  *     de boss passent b.def.shot — les helpers shoot/shootDir/lob/
- *     tripleShoot/wallWithHole le font automatiquement (skyHazard prend le
- *     sprite en parametre car il n'a pas le boss sous la main).
+ *     tripleShoot/wallWithHole le font automatiquement.
  *
  *  Convention : chaque IA pose b.animWant = 'idle' | 'attack' | 'hurt'
  *  (game.js lit ce champ pour jouer l'animation du boss).
@@ -123,11 +122,14 @@ window.BOSS_AI = (() => {
     const d = vec2(up.x * c - up.y * s, up.x * s + up.y * c);
     api.bullet(b.pos.x, b.pos.y - api.TS, { pos: b.pos.add(d.scale(100)) }, sp * 0.85, 'boss', b.def.shot);
   }
-  // danger qui tombe sur une colonne VERROUILLEE (x, sol fige a l'instant du tell).
-  //  Trajectoire strictement verticale -> coherente avec le marqueur au sol.
-  //  spr = sprite du projectile (optionnel ; pas de b ici, donc en parametre).
-  function skyHazard(api, atX, groundY, spr) {
-    api.bullet(atX, groundY - 380, { pos: vec2(atX, groundY + 400) }, 320, 'enemy', spr);
+  // ATTAQUES CIBLEES (bombe / tampon-piege sur p.pos) : ne partent que si le
+  //  joueur est DANS l'arene (+ marge 6 tuiles, meme gate que le drive du
+  //  tracteur). Ceinture de securite du verrou d'arene cote game.js : sans ca,
+  //  michael / cendrine / le jury bombardaient jusqu'au spawn une fois reveilles
+  //  (b._awoken ne redescend jamais) — exactement le bug que la veille v2.1
+  //  pretendait corriger.
+  function inArena(b, p, api) {
+    return Math.abs(p.pos.x - b.homeX) < (b.def.range || 300) + api.TS * 6;
   }
 
   // SPAWN-EN-FACE (dette tech 3) : pose un minion ENTRE le boss et le joueur
@@ -232,9 +234,12 @@ window.BOSS_AI = (() => {
       faceOnly(b, p);
       moveClamp(b, p, (b.def.speed || 90) * 0.6);
       if (b.p2 || b.cyc % 2 === 1) {
-        // cycle de tir : breve pose 'attack' (~0.2s) puis triple horizontal
-        b.animWant = (b.ct < 0.2) ? 'attack' : 'idle';
-        if (!b.shotDone && b.ct >= 0.2) { tripleShoot(b, p, api, shotSpeed); b.shotDone = true; }
+        // tir CALE SUR LA FRAME DE JET : pose 'throw' (clip dedie de la feuille
+        //  _atk : leve -> epaule -> bras tendu) demarree a 0.1s, missile a 0.3s
+        //  = pile la frame de jet affichee. Avant, le missile partait a
+        //  l'instant exact ou l'anim REVENAIT a idle (telegraphe inverse).
+        b.animWant = (b.ct >= 0.1 && b.ct < 0.5) ? 'throw' : 'idle';
+        if (!b.shotDone && b.ct >= 0.3) { tripleShoot(b, p, api, shotSpeed); b.shotDone = true; }
       } else {
         b.animWant = 'idle';
       }
@@ -243,8 +248,10 @@ window.BOSS_AI = (() => {
         b.dashDir = Math.sign(p.pos.x - b.pos.x) || -1;  // verrouille la cible
       }
     } else if (b.cs === 'wind') {
-      // TELEGRAPHE net : se cabre (recule a l'oppose) + poussiere aux pieds
-      b.animWant = 'attack';
+      // TELEGRAPHE net : se cabre (recule a l'oppose) + poussiere aux pieds.
+      //  'windup' = clip dedie (leve -> arme, fige sur la pose armee) ; les
+      //  feuilles sans ce clip retombent sur 'attack' (cf. bossAnim).
+      b.animWant = 'windup';
       faceOnly(b, p);
       b.move(-b.dashDir * 70, 0);
       if (b.ct < 0.06) { api.poof(b.pos.x, b.pos.y); api.poof(b.pos.x - b.dashDir * 18, b.pos.y - 6); }
@@ -256,7 +263,9 @@ window.BOSS_AI = (() => {
     } else if (b.cs === 'dash') {
       // ruee a pleine vitesse dans la direction verrouillee : trainee de
       //  poussiere localisee + contact (contact-damage normal du boss).
-      b.animWant = 'attack';
+      //  'dash' = frame de COURSE de la feuille _atk (avant : le clip complet
+      //  bouclait -> le boss "jetait ses cles" en boucle pendant la charge).
+      b.animWant = 'dash';
       const edge = moveDirClamp(b, b.dashDir, dashSpd);
       b.dust += dt();
       if (b.dust >= 0.09) { b.dust = 0; api.poof(b.pos.x - b.dashDir * 16, b.pos.y); }
@@ -277,7 +286,7 @@ window.BOSS_AI = (() => {
       }
     } else if (b.cs === 'rewind') {
       // PHASE 2 : re-armement court SUR PLACE (telegraphe du dash retour)
-      b.animWant = 'attack';
+      b.animWant = 'windup';
       faceOnly(b, p);
       if (b.ct < 0.05) { api.poof(b.pos.x, b.pos.y); api.poof(b.pos.x + b.dashDir * 20, b.pos.y - 8); }
       if (b.ct > rewindT) { b.cs = 'dash'; b.ct = 0; b.dashDir = -b.dashDir; b.didReturn = true; b.dust = 0; }
@@ -288,12 +297,16 @@ window.BOSS_AI = (() => {
       if (b.ct < 0.06) { api.poof(b.pos.x, b.pos.y); api.poof(b.pos.x - 20, b.pos.y - 10); }
       if (b.ct > stagT) { b.cs = 'throw'; b.ct = 0; }
     } else {
-      // jette UN eventail de 3 piquets puis repart en pace. Flag b.shotDone :
+      // jette UN eventail de 3 baux puis repart en pace. Flag b.shotDone :
       //  l'ancien test "ct < 0.06" durait plusieurs frames -> eventail double/
       //  triple selon le framerate (le flag rend le tir deterministe).
-      b.animWant = 'attack';
+      //  Tir a 0.25s = la frame de JET (le clip 'throw' redemarre a l'entree de
+      //  l'etat : leve 0-0.08, epaule 0.08-0.17, bras tendu des 0.17). Avant,
+      //  l'eventail partait frame 0 (bras baisses) et la pose de jet arrivait
+      //  0.3s APRES que les projectiles aient quitte le boss.
+      b.animWant = 'throw';
       faceOnly(b, p);
-      if (!b.shotDone) { b.shotDone = true; [-0.22, 0, 0.22].forEach((s) => lob(b, p, api, s)); }
+      if (!b.shotDone && b.ct >= 0.25) { b.shotDone = true; [-0.22, 0, 0.22].forEach((s) => lob(b, p, api, s)); }
       // NB : cyc ne s'incremente plus ici (il s'incremente deja a pace->wind ;
       //  le double ++ le gardait toujours PAIR pendant pace -> le triple
       //  missile "1 cycle sur 2" de p1 ne partait JAMAIS).
@@ -312,7 +325,7 @@ window.BOSS_AI = (() => {
    *  devient un risque calcule, plus un open bar.
    * ===================================================================== */
   AI.tracteur = function (b, p, api) {
-    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.skyT = 0; b.stallBomb = false; b.bombPose = 0; }
+    if (b.ts === undefined) { b.ts = 'rev'; b.tt = 0; b.dir = -1; b.skyT = 0; b.stallBomb = false; b.bombPose = 0; b.revInit = false; }
     if (b.p2Just) p2Tell(b, api);
     b.tt += dt();
     const revT = b.def.revTime || 0.5;
@@ -325,8 +338,11 @@ window.BOSS_AI = (() => {
       // TELEGRAPHE : choisit la direction, vrombit (fumee d'echappement), sur place
       faceOnly(b, p);
       b.animWant = 'attack';
-      // vise le joueur si loin, sinon repart vers le centre pour ne pas se coincer
-      if (b.tt < 0.06) {
+      // vise le joueur si loin, sinon repart vers le centre pour ne pas se coincer.
+      //  FLAG revInit (pas "tt < 0.06") : une frame longue (>60ms, mobile charge)
+      //  sautait la fenetre -> direction jamais rechoisie, fumee jamais emise.
+      if (!b.revInit) {
+        b.revInit = true;
         const towardP = Math.sign(p.pos.x - b.pos.x) || -1;
         const towardHome = Math.sign(b.homeX - b.pos.x) || -1;
         b.dir = (Math.abs(b.pos.x - b.homeX) > b.def.range * 0.7) ? towardHome : towardP;
@@ -334,6 +350,10 @@ window.BOSS_AI = (() => {
         api.poof(b.pos.x - 14, b.pos.y - api.TS * 1.5);
         api.poof(b.pos.x + 10, b.pos.y - api.TS * 1.1);
         api.poof(b.pos.x, b.pos.y);
+        // PHASE 2 : UNE fourche lobee pendant le vrombissement — def.shot
+        //  (shot_fork) etait de la config morte (l'IA ne tirait jamais) ; ca
+        //  donne a l'agriculteur un poil de menace a distance sans toucher P1.
+        if (b.p2 && inArena(b, p, api)) lob(b, p, api, 0);
       }
       if (b.tt > revT) { b.ts = 'drive'; b.tt = 0; b.skyT = 0; }
     } else if (b.ts === 'drive') {
@@ -353,7 +373,7 @@ window.BOSS_AI = (() => {
         //  lachee MEME quand Laura est tout pres (fini "plus de bombes quand on est
         //  pres"), mais JAMAIS hors de l'arene (jamais jusqu'au spawn, meme si Laura
         //  a fui apres avoir reveille le boss). Esquive : dash/saut lateral.
-        if (Math.abs(p.pos.x - b.homeX) < (b.def.range || 300) + api.TS * 6) {
+        if (inArena(b, p, api)) {
           b.bombPose = 0.25;
           api.dropBomb(p.pos.x, p.pos.y, skyDelay, 'shot_bomb');
         }
@@ -369,9 +389,9 @@ window.BOSS_AI = (() => {
       //  mais demande de bouger (ou de tirer a distance).
       if (b.p2 && !b.stallBomb && b.tt >= stallT * 0.5) {
         b.stallBomb = true;
-        api.dropBomb(p.pos.x, p.pos.y, 0.9, 'shot_bomb');
+        if (inArena(b, p, api)) api.dropBomb(p.pos.x, p.pos.y, 0.9, 'shot_bomb');
       }
-      if (b.tt > stallT) { b.ts = 'rev'; b.tt = 0; b.dir = -b.dir; }  // repart en sens inverse
+      if (b.tt > stallT) { b.ts = 'rev'; b.tt = 0; b.dir = -b.dir; b.revInit = false; }  // repart en sens inverse
     }
     p2Pose(b);
     clampHome(b);
@@ -417,11 +437,17 @@ window.BOSS_AI = (() => {
       // BOMBE EN PAPIER : memo froisse qui tombe sur la position du joueur ->
       //  le force a BOUGER lateralement (ombre qui grandit = telegraphe).
       //  P2 : une 2e bombe decalee de +/-120 px coupe l'esquive paresseuse.
+      //  Sprite via b.def.bomb (boulette de papier froisse — l'ancien defaut
+      //  shot_paper etait un AVION en papier qui chutait en tournoyant).
+      //  Gate inArena : fini les bombes qui suivaient Laura jusqu'au spawn.
       b.animWant = 'attack';
       if (!b.threw) {
         b.threw = true;
-        api.dropBomb(p.pos.x, p.pos.y, 0.7, 'shot_paper');
-        if (b.p2) api.dropBomb(p.pos.x + (rand(0, 1) < 0.5 ? -120 : 120), p.pos.y, 0.7, 'shot_paper');
+        const bombSpr = b.def.bomb || 'shot_paper';
+        if (inArena(b, p, api)) {
+          api.dropBomb(p.pos.x, p.pos.y, 0.7, bombSpr);
+          if (b.p2) api.dropBomb(p.pos.x + (rand(0, 1) < 0.5 ? -120 : 120), p.pos.y, 0.7, bombSpr);
+        }
       }
       if (b.mt > 0.5) { b.ms = 'recalc'; b.mt = 0; b.spawned = false; }
     } else if (b.ms === 'overload') {
@@ -494,8 +520,10 @@ window.BOSS_AI = (() => {
       if (b.st > attackT) { b.state = 'summon'; b.st = 0; b.summoned = false; }
     } else if (b.state === 'summon') {
       // invoque des cafards TRES fragiles (1 PV) en face du joueur ; +1 si bas HP.
+      //  Flag PUR (pas "st < 0.06") : une frame longue sautait la fenetre ->
+      //  AUCUNE invocation du cycle (st incremente avant le test).
       b.animWant = 'idle';
-      if (!b.summoned && b.st < 0.06) {
+      if (!b.summoned) {
         b.summoned = true;
         const n = (b.hp / b.maxHp < 0.5) ? 3 : 2;
         for (let i = 0; i < n; i++) spawnEnFace(b, p, api, 'cafard');
@@ -521,7 +549,7 @@ window.BOSS_AI = (() => {
    *  tampon-piege plus long (p2HazardDur), window plus courte (p2WindowTime).
    * ===================================================================== */
   AI.paperasse = function (b, p, api) {
-    if (b.ps === undefined) { b.ps = 'pre'; b.pt = 0; b.destX = b.homeX; b.threw = false; b.chain = 0; }
+    if (b.ps === undefined) { b.ps = 'pre'; b.pt = 0; b.destX = b.homeX; b.threw = false; b.chain = 0; b.destDone = false; }
     if (b._baseScale === undefined) { b._baseScale = b.scale ? b.scale.clone() : vec2(1, 1); }
     if (b.p2Just) p2Tell(b, api);
     b.pt += dt();
@@ -536,10 +564,13 @@ window.BOSS_AI = (() => {
 
     if (b.ps === 'pre') {
       // choisit la destination (clampee a l'ecran, ELOIGNEE du joueur >=200px)
-      //  et la TELEGRAPHE (poof a l'avance).
+      //  et la TELEGRAPHE (poof a l'avance). Flag destDone (pas "pt < 0.06") :
+      //  une frame longue gardait le destX du TP PRECEDENT -> le telegraphe
+      //  annoncait la mauvaise destination.
       faceOnly(b, p);
       b.animWant = 'idle';
-      if (b.pt < 0.06) {
+      if (!b.destDone) {
+        b.destDone = true;
         let dx = b.homeX + rand(-range, range);
         if (Math.abs(dx - p.pos.x) < 200) dx = p.pos.x + (dx >= p.pos.x ? 200 : -200);
         b.destX = Math.max(b.homeX - range, Math.min(b.homeX + range, dx));
@@ -576,11 +607,11 @@ window.BOSS_AI = (() => {
         b.threw = true;
         const half = (formN - 1) / 2;
         for (let i = 0; i < formN; i++) shoot(b, p, api, sp, (i - half) * 0.16);
-        api.hazard(p.pos.x, p.pos.y, hazardDur, 0.5);
+        if (inArena(b, p, api)) api.hazard(p.pos.x, p.pos.y, hazardDur, 0.5);   // pas de tampon jusqu'au spawn
         api.poof(b.pos.x, b.pos.y - api.TS);   // recul du jet (FX localise, pas de shake)
       }
       if (b.pt > throwT) {
-        if (b.p2 && !b.chain) { b.chain = 1; b.ps = 'pre'; b.pt = 0; }  // PHASE 2 : DOUBLE TP enchaine
+        if (b.p2 && !b.chain) { b.chain = 1; b.ps = 'pre'; b.pt = 0; b.destDone = false; }  // PHASE 2 : DOUBLE TP enchaine
         else { b.chain = 0; b.ps = 'window'; b.pt = 0; }
       }
     } else {
@@ -588,7 +619,7 @@ window.BOSS_AI = (() => {
       b.animWant = 'idle';
       b.guard = 1;
       faceOnly(b, p);
-      if (b.pt > windowT) { b.ps = 'pre'; b.pt = 0; }
+      if (b.pt > windowT) { b.ps = 'pre'; b.pt = 0; b.destDone = false; }
     }
     p2Pose(b);
     clampHome(b);
@@ -704,15 +735,17 @@ window.BOSS_AI = (() => {
         if (b.cyc % 3 === 0) spawnEnFace(b, p, api, 'bug');   // vrai minion fragile (pas de passant)
       } else {
         // verdict / panique : large eventail rapide + bombes + MUR A TROU a dasher.
+        //  Les frappes CIBLEES (bombe / tampon sur p.pos) sont gatees inArena :
+        //  pas de pluie sur une Laura qui serait hors de l'arene.
         const n = b.def.panicN || 7;
         const half = (n - 1) / 2;
         for (let i = 0; i < n; i++) shoot(b, p, api, sp * 1.1, (i - half) * 0.16);
-        api.dropBomb(p.pos.x, p.pos.y, 0.6, 'shot_bomb');
+        if (inArena(b, p, api)) api.dropBomb(p.pos.x, p.pos.y, 0.6, 'shot_bomb');
         if (b.cyc % 2 === 0) api.dropBomb(b.pos.x + rand(-range, range), p.pos.y, 0.6, 'shot_bomb');
         if (b.cyc % 2 === 1) {
           // MUR A TROU (helper factorise wallWithHole) + tampon-piege au sol
           wallWithHole(b, p, api, {});
-          api.hazard(p.pos.x, p.pos.y, 2.0, 0.5);
+          if (inArena(b, p, api)) api.hazard(p.pos.x, p.pos.y, 2.0, 0.5);
         }
       }
       // apres CHAQUE volee (tous modes) : battement de garde ouverte
