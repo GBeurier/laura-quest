@@ -135,8 +135,11 @@ window.CONFIG = {
       //    (assets/fonts/, repli par glyphe : latin -> Comic Neue, khmer -> Noto)
       //    -> les phrases s'affichent AVEC leurs accents ; si aucune n'est
       //    chargee, repli font bitmap + accents translitteres.
+      //    centerFrac = un PNJ ne parle que s'il est vers le MILIEU de l'ecran
+      //    (a +/- centerFrac * largeur du centre camera) — sinon la bulle
+      //    apparaissait clampee au bord AVANT que son PNJ entre dans le cadre.
       //    cf. npcBubble() dans game.js.
-      bubble: { gapMin: 9, gapMax: 20, dur: 4, juryGapMult: 2.5,
+      bubble: { gapMin: 9, gapMax: 20, dur: 4, juryGapMult: 2.5, centerFrac: 0.3,
                 font: 'font_bubble,font_bubble_kh' },
       bodies: { h: ['body_champ_h'], f: ['body_champ_f'] },
       // pool partage COMPLET (26 h / 23 f embarques, cf. CLAUDE.md PNJ) : la
@@ -424,6 +427,12 @@ window.CONFIG = {
     //  js/bosses.js sont exposes ici (avant, beaucoup n'avaient qu'un defaut code
     //  en dur, et certaines valeurs ici etaient PERIMEES et ecrasaient l'IA).
     //  Edite ces nombres + reload pour ajuster le game feel. 2e ligne = reglages IA. ===
+    //  `range` = demi-largeur de l'ARENE (px) : verrou de portes a bossX +/- range
+    //  (addArenaGates) ET rayon de deambulation du boss (homeX +/- range, bosses.js).
+    //  v3 : +80px sur les 5 boss de niveau (arenes jugees trop etroites au playtest) ;
+    //  le jury garde 320 (son niveau entier EST l'arene). Si tu retouches, garde
+    //  tools/check_levels.py (META.boss_range) SYNCHRO et relance-le : il verifie
+    //  qu'aucune fosse '%' ne tombe dans l'arene agrandie.
 
     // niveau1 (Riziere) — agriculteur (IA 'tracteur') : LE PLUS FACILE.
     //  rev (vrombit, revTime) -> drive (traverse, lache une BOMBE tous les skyEvery,
@@ -433,7 +442,7 @@ window.CONFIG = {
     //  = marge d'entree d'arene (en TUILES) avant que le boss se reveille.
     //  Esquive : lob depuis panneaux + saut/dash sous bombes.
     agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
-                    hp: 70, maxHp: 70, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 300, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
+                    hp: 70, maxHp: 70, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 380, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
                     //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd ~ 2.5s),
                     //  sinon AUCUNE bombe ne part en drive (bug v1 : 3.4 > 2.5).
                     revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, arenaPad: 2,
@@ -447,7 +456,7 @@ window.CONFIG = {
     //  c'est EXACTEMENT ce que Francois brandit/jette sur sa feuille _atk (l'ancien
     //  shot_stake — un piquet en bois — ne correspondait a aucun de ses gestes).
     proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
-                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 300, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_bail',
+                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 380, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_bail',
                     paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5,
                     p2StaggerTime: 0.9, p2RewindTime: 0.3 },
 
@@ -456,7 +465,7 @@ window.CONFIG = {
     //  summon (cafards fragiles spawnes EN FACE, summonTime) -> load (immobile =
     //  PUNITION, loadTime). Esquive : dash + petites plateformes.
     rstudio:      { sprite: 'boss_rstudio_move', attackSprite: 'boss_rstudio_atk', behavior: 'errors',
-                    hp: 170, maxHp: 170, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 280, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
+                    hp: 170, maxHp: 170, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 360, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
                     attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5,
                     p2BurstGap: 0.6 },
 
@@ -469,7 +478,7 @@ window.CONFIG = {
     //  pour la "bombe en papier" (avant : shot_paper, un avion en papier qui
     //  CHUTAIT en tournoyant — le fameux "feuille qui se transforme en avion").
     michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
-                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 300, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
+                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 380, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
                     aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440,
                     p2KeepMin: 180, p2KeepMax: 380 },
 
@@ -478,7 +487,7 @@ window.CONFIG = {
     //  implodeTime) -> TP + eventail de formN formulaires + TAMPON-PIEGE (throwTime)
     //  -> window (PUNITION, windowTime). Esquive : dash apres le TP / les tampons.
     cendrine:     { sprite: 'boss_cendrine_move', attackSprite: 'boss_cendrine_atk', behavior: 'paperasse',
-                    hp: 280, maxHp: 280, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 320, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
+                    hp: 280, maxHp: 280, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 400, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
                     preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4,
                     p2FormN: 6, p2HazardDur: 3.5, p2WindowTime: 0.9 },
 
@@ -715,8 +724,18 @@ window.CONFIG = {
   mobile: { enabled: true, assistAim: true, opacity: 0.34, size: 74 },
 
   // --- Triche / test (mets cheats:false pour la version cadeau) -------
-  //  En jeu : 1-6 = aller au niveau, 0 = finir le niveau, G = dieu, H = plein.
-  cheats: false,
+  //  En jeu (touches declarees ci-dessous, cf. cheatKeys) :
+  //    1-6   = aller directement au niveau (derive de CONFIG.levels)
+  //    0     = finir le niveau en cours
+  //    G     = bascule mode DIEU (invincible)
+  //    Suppr = PLEIN : armes a fond (puissance + cadence) + recharge tout
+  //            (PV, energie/soleil, charges du chat)
+  cheats: true,
+  cheatKeys: {
+    god:    'g',        // bascule DIEU
+    finish: '0',        // termine le niveau
+    refill: 'delete',   // touche "Suppr" : armes a fond + recharge tout
+  },
 
   // --- Enchainement des niveaux (cles dans LEVELS) --------------------
   levels: ['niveau1', 'niveau2', 'niveau3', 'niveau4', 'niveau5', 'jury'],
@@ -758,6 +777,10 @@ window.CONFIG = {
     bossGuard: 'GARDE !',                     // 1er tir encaisse en garde (pedagogie)
     arenaClose:'L ARENE SE FERME !',          // verrou d'arene (v2.3) : murs poses a l'entree
     checkpoint:'K.O. ! REPRISE A L ARENE',    // mort pendant un boss -> respawn au checkpoint (jingle + flash rouge)
+    // v3 MORT : message dedie sur place (cadavre au sol, flash rouge) puis le
+    //  niveau REDEMARRE tout seul — plus d'ecran lose ni de retour carte.
+    dead:      'LAURA EST K.O. !',
+    deadSub:   'ON REPREND LE CHAPITRE...',
     mention:   'MENTION TRES HONORABLE',      // toutes les medailles d'or
     feliJury:  'FELICITATIONS DU JURY',       // medaille cachee : niveau sans perdre coeur ni equipement
     medals:    ['TEMPS', 'DATA', 'SAUVES'],   // noms des 3 medailles (recap + carte)

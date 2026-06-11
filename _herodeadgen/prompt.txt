@@ -1,0 +1,21 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate ONE single-frame sprite = a KNOCKED-OUT (fainted) version of the HEROINE of a cute cartoon platformer, collapsed on the ground.
+
+REFERENCE IMAGE: a reference PNG of this exact heroine STANDING is provided (_herodeadgen/hero_ref.png). She is "Laura": a young girl with golden-blonde hair tied in a high SIDE PONYTAIL with a RED hair scrunchie, fair skin with rosy cheeks, a navy-BLUE sleeveless top, a small red pendant, KHAKI/brown shorts with a belt, and brown hiking boots with cream socks. She wears a RED backpack on her back, and a fluffy WHITE CAT is peeking out of the backpack. Keep the SAME character, SAME outfit, SAME colors, SAME red backpack with the white cat. Only change the POSE: standing -> fainted on the ground.
+
+PIXEL-ART STYLE: retro 16-bit SNES look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D. Cute, comedic, NOT gory.
+
+POSE — KNOCKED OUT / FAINTED, comedic:
+- Laura has COLLAPSED onto the ground, lying on her BACK / sprawled, seen from a 3/4 front-ish high angle so we read her whole body lying down. Her body is roughly HORIZONTAL, head toward the LEFT, feet/boots toward the RIGHT (the game mirrors the sprite for the other direction).
+- Arms limp and splayed out on the floor, legs limp. A defeated "passed out" pose.
+- Her FACE shows a cute fainted expression: eyes closed as little ">_<" or simple X_X (dizzy), tiny open mouth. NOT scary, NOT bloody — just dizzy/knocked-out, comedic.
+- The RED BACKPACK with the WHITE CAT is still visible (the cat looks worried / peeking out next to her).
+- The LOWEST point of the sprite = her body resting on the floor baseline (bottom edge of the image). She is wider than tall (lying down).
+
+LAYOUT: ONE single sprite, ONE character lying down, centered horizontally. NO grid, NO multiple frames, NO panels.
+
+BACKGROUND: fill the ENTIRE image with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO floor line, NO gradient, NO grid, NO text, NO watermark. NEVER use magenta/pink on the character.
+
+cp the generated PNG to /home/delete/laura_quest/_herodeadgen/raw/hero_dead_sheet.png
+
+Generate the sprite (ONE image_gen call), then cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  SHEET: /home/delete/laura_quest/_herodeadgen/raw/hero_dead_sheet.png (<W>x<H>)

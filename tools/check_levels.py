@@ -49,11 +49,11 @@ KNOWN = SOLID | ITEMS | GROUND_CHARS | FLYERS | set('@B*^% ')
 
 # équipement disponible par niveau + portée du boss (px -> tuiles)
 META = {
-    'niveau1': dict(W=148, R=13, g=11, gear=[],          boss_range=300 / 48),
-    'niveau2': dict(W=260, R=14, g=12, gear=['velo'],    boss_range=300 / 48),
-    'niveau3': dict(W=280, R=14, g=12, gear=['rollers'], boss_range=280 / 48),
-    'niveau4': dict(W=300, R=14, g=12, gear=['velo'],    boss_range=300 / 48),
-    'niveau5': dict(W=330, R=16, g=14, gear=['rollers'], boss_range=320 / 48),
+    'niveau1': dict(W=148, R=13, g=11, gear=[],          boss_range=380 / 48),
+    'niveau2': dict(W=260, R=14, g=12, gear=['velo'],    boss_range=380 / 48),
+    'niveau3': dict(W=280, R=14, g=12, gear=['rollers'], boss_range=360 / 48),
+    'niveau4': dict(W=300, R=14, g=12, gear=['velo'],    boss_range=380 / 48),
+    'niveau5': dict(W=330, R=16, g=14, gear=['rollers'], boss_range=400 / 48),
     'jury':    dict(W=60,  R=11, g=9,  gear=[],          boss_range=320 / 48),
 }
 

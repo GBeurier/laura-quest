@@ -4,7 +4,8 @@
  *  et BOSS_AI (js/bosses.js). Moteur : KAPLAY (engine/kaplay.js), 100% client.
  *
  *  Scenes : title -> slots -> overworld -> game -> chapter -> overworld
- *           ... jury -> win.   (lose -> overworld)
+ *           ... jury -> win.   (mort : sequence in-scene -> le niveau
+ *           redemarre ; la scene 'lose' n'est plus atteinte depuis le jeu)
  * ===================================================================== */
 (() => {
   'use strict';
@@ -90,8 +91,9 @@
   // Musique d'ecran : delegue au lecteur MIDI chiptune (js/music.js). Chaque
   //  scene annonce SA piste (cf. C.music) ; rejouer la piste deja en cours est
   //  un no-op cote lecteur (pas de coupure quand deux scenes partagent une
-  //  piste, ex. title <-> slots ; une mort repasse par lose/map -> la piste
-  //  du niveau, elle, REDEMARRE). Sans nom (scene non mappee) -> silence.
+  //  piste, ex. title <-> slots ; une mort relance scene('game') sur la MEME
+  //  piste -> la musique du niveau CONTINUE sans coupure, c'est voulu).
+  //  Sans nom (scene non mappee) -> silence.
   //  Le mute (touche M) est gere par le lecteur (C.audio.music + setEnabled).
   const playMusic = (name) => {
     const M = window.LQ_MUSIC;
@@ -1144,6 +1146,11 @@
   //  MONDE de premier niveau (pas un enfant) : le texte reste net (echelle 1,
   //  pas de compensation @ART) et suit le PNJ a la main ; elle meurt avec lui
   //  (corpsify/save posent e.dead), a la fin du timer ou s'il sort de l'ecran.
+  //  Elle ne NAIT que si le PNJ est vers le MILIEU de l'ecran (centerFrac) :
+  //  le filtre !hidden ne suffit pas, la marge du culling reveille les PNJ
+  //  AVANT qu'ils entrent dans le cadre -> on voyait la bulle (clampee au bord)
+  //  avant son PNJ. Z = celui des passants (-0.5) : la bulle vit DERRIERE les
+  //  vivants (z 0), comme son PNJ — pas par-dessus tout le decor.
   //  Le font bitmap rend mal les accents (cf. CLAUDE.md) -> on translitere la
   //  phrase a l'affichage (e accentue -> e ; ecritures non latines best-effort).
   const stripAccents = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -1180,7 +1187,7 @@
     const fnt = bubbleFont(cfg);
     const topts = { size: 13, width: 175, align: 'center' };
     if (fnt) topts.font = fnt;
-    const b = add([pos(e.pos.x, npcHeadTop(e)), z(60), 'bubble', { t: 0 }]);
+    const b = add([pos(e.pos.x, npcHeadTop(e)), z(-0.5), 'bubble', { t: 0 }]);
     const label = b.add([
       text(fnt ? phrase : stripAccents(phrase), topts),
       color(40, 32, 26), anchor('center'), pos(0, 0), z(2),
@@ -1202,10 +1209,14 @@
     }
     b.onUpdate(() => {
       b.t += dt();
-      if (b.t > dur || !e.exists() || e.dead || e.paused || e.hidden) { destroy(b); return; }
+      const cx = getCam().x;
+      // meurt avec son PNJ, a la fin du timer, ou des qu'il QUITTE l'ecran
+      //  (sans attendre le culling et sa marge : pas de bulle orpheline au bord)
+      if (b.t > dur || !e.exists() || e.dead || e.paused || e.hidden
+        || Math.abs(e.pos.x - cx) > C.width / 2 + TS) { destroy(b); return; }
       // suit le PNJ, mais reste DANS le cadre camera : un PNJ en bord d'ecran
       //  garde sa bulle lisible (la queue glisse un peu de sa tete, assume)
-      const cx = getCam().x, half = w / 2 + 6;
+      const half = w / 2 + 6;
       b.pos = vec2(
         Math.max(cx - C.width / 2 + half, Math.min(cx + C.width / 2 - half, e.pos.x)),
         npcHeadTop(e) - 4);
@@ -1224,8 +1235,13 @@
       if (cur && cur.exists()) return;        // UNE bulle a la fois
       t -= dt();
       if (t > 0) return;
-      const cands = get('passant').filter((o) => o.exists() && !o.dead && !o.paused && !o.hidden && npcPhrases(o));
-      if (!cands.length) { t = 1.5; return; } // personne d'eloquent a l'ecran -> retente bientot
+      // candidats : PNJ vers le MILIEU de l'ecran seulement (a centerFrac de la
+      //  largeur autour du centre camera) — un PNJ encore au bord / hors cadre
+      //  (le culling le reveille en avance) ne parle pas.
+      const cx = getCam().x, cw = C.width * (cfg.centerFrac != null ? cfg.centerFrac : 0.3);
+      const cands = get('passant').filter((o) => o.exists() && !o.dead && !o.paused && !o.hidden
+        && Math.abs(o.pos.x - cx) <= cw && npcPhrases(o));
+      if (!cands.length) { t = 1.5; return; } // personne d'eloquent au centre -> retente bientot
       const e = cands[Math.floor(rand(0, cands.length))];
       const ph = npcPhrases(e);
       cur = npcBubble(e, ph[Math.floor(rand(0, ph.length))], cfg.dur != null ? cfg.dur : 4);
@@ -2743,16 +2759,59 @@
   }
 
   function loseGame() {
+    if (PLAYER && PLAYER._dying) return;     // sequence de mort deja en cours
     // v2 CHECKPOINT BOSS (GAMEPLAY.md §2.4) : mourir PENDANT le boss -> respawn
     //  IN-SCENE a la porte d'arene (pas de re-traversee du niveau, pas de rebuild
     //  -> pas de re-farm de pickups), boss reset, chrono qui CONTINUE (la penalite
-    //  time-attack est naturelle). Mourir hors boss : ecran lose comme avant.
+    //  time-attack est naturelle). Mourir hors boss : sequence de mort in-scene.
     //  DESACTIVABLE en bloc (tous niveaux) via CONFIG.bossCheckpoint.
     if (C.bossCheckpoint && LEVEL && LEVEL.checkpoint && LEVEL.bossesAlive > 0 && PLAYER && PLAYER.exists()) {
       respawnAtArena();
       return;
     }
-    sfx('lose'); go('lose', { score: PLAYER ? PLAYER.score : 0 });
+    deathSequence();
+  }
+
+  // MORT (v3) : plus d'ecran 'lose' ni de detour par la carte — Laura s'affale
+  //  en CADAVRE sur place (sprite dedie hero_dead s'il est embarque, sinon le
+  //  repli corpsify : bascule au sol, pivot = pieds), message dedie + flash
+  //  rouge KO, puis le NIVEAU REDEMARRE tout seul (scene 'game' relancee ->
+  //  run propre, score/chrono remis a zero ; meme piste musicale = la musique
+  //  ne coupe pas, playMusic est no-op). Le joueur n'est PAS detruit (les
+  //  onUpdate de scene le referencent) : cache + pause (un objet pause sort de
+  //  la grille de collision -> plus aucun degat possible) ; le cadavre est un
+  //  objet a part pose au SOL (la mort peut arriver en l'air). Mort par CHUTE
+  //  sous le niveau : pas de cadavre visible, message seul. La scene 'lose'
+  //  reste definie mais n'est plus atteinte depuis le jeu.
+  function deathSequence() {
+    const p = PLAYER;
+    if (!p || !p.exists()) return;
+    p._dying = true;
+    p.invuln = 9999;
+    sfx('lose');
+    const fell = p.pos.y > LEVEL.height + 100;          // tombee dans un trou
+    if (!fell) {
+      const gy = surfaceTopAt(p.pos.x);
+      const c = add([
+        sprite(hasSprite('hero_dead') ? 'hero_dead' : 'hero_hurt'),
+        artScale(), pos(p.pos.x, gy != null ? gy : p.pos.y),
+        anchor('bot'), z(-0.6), 'corpse',
+      ]);
+      if (hasSprite('hero_dead')) playIfAnim(c, 'hero_dead');
+      else c.angle = (p.facing >= 0 ? 90 : -90);        // repli : bascule au sol
+    }
+    p.hidden = true; p.paused = true;
+    add([rect(C.width, C.height), pos(0, 0), fixed(), color(200, 30, 30),
+      opacity(0.45), z(190), lifespan(0.6, { fade: 0.5 })]);
+    safeShake(12);
+    const mk = (txt, dy, size) => add([
+      text(txt, { size, align: 'center' }), pos(C.width / 2, C.height / 2 + dy),
+      anchor('center'), fixed(), z(951), color(255, 255, 255), opacity(1),
+      lifespan(1.9, { fade: 0.5 }),
+    ]);
+    mk(C.story.dead, -36, 34);
+    mk(C.story.deadSub, 8, 18);
+    wait(2.2, () => go('game', C.levels[CUR_IDX]));
   }
 
   function respawnAtArena() {
@@ -3013,10 +3072,11 @@
 
     // --- CHEATS de test (CONFIG.cheats). Mets cheats:false pour le cadeau.
     if (C.cheats) {
+      const CK = C.cheatKeys || { god: 'g', finish: '0', refill: 'delete' };
       C.levels.forEach((lk, i) => onPlayPress(String(i + 1), () => go('game', lk)));  // 1-6
-      onPlayPress('0', () => { LEVEL.bossesAlive = 0; completeLevel(); });            // finir
-      onPlayPress('g', () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
-      onPlayPress('h', () => {                                                        // plein
+      if (CK.finish) onPlayPress(CK.finish, () => { LEVEL.bossesAlive = 0; completeLevel(); });  // finir
+      if (CK.god) onPlayPress(CK.god, () => { PLAYER._god = !PLAYER._god; flashMsg('DIEU ' + (PLAYER._god ? 'ON' : 'OFF')); });
+      if (CK.refill) onPlayPress(CK.refill, () => {                                   // Suppr : plein + armes a fond
         PLAYER.hp = PLAYER.maxHp; PLAYER.kills = 0; PLAYER.sunMax = C.sun.max; PLAYER.sun = C.sun.max;
         PLAYER.power = (C.arsenal && C.arsenal.power.max) || 3;   // ARSENAL au max
         PLAYER.rate = (C.arsenal && C.arsenal.rate.max) || 3;

@@ -46,6 +46,7 @@ Ancre : `bot` (pieds au centre-bas), `center`, `topleft`.
 | `hero_run` | Laura course | 6 | 64×76 | 128×152 | run (14) | bot | → |
 | `hero_jump` | Laura saut | 2 | 64×76 | 128×152 | jump (8) | bot | → |
 | `hero_hurt` | Laura touchée | 2 | 64×76 | 128×152 | hurt (10) | bot | → |
+| `hero_dead` | Laura K.O. au sol — **optionnel** : cadavre affalé (1 frame, comme les `body_*_dead`) montré pendant la séquence de mort (`deathSequence`, game.js). Absent → repli : `hero_hurt` basculé à 90° (pivot = pieds). | 1 | ~76×40 | ~152×80 | — | bot | → |
 | `hero_throw` | Laura lance | 2 | 64×76 | 128×152 | throw (16) | bot | → |
 | `cat_run` | Chat angora | 6 | 56×40 | 112×80 | run (18) | bot | → |
 | `enemy_corbeau` | Corbeau (vole) | 6 | 52×44 | 104×88 | fly (8) | bot | → |
