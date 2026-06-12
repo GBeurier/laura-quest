@@ -1,0 +1,54 @@
+TASK: produce ONE full-screen background image used BEHIND the game's pop-up cards
+(the "death / try-again" pop-up and the "quit level?" pop-up). A parchment card with
+text sits in the CENTER on top of it (with a ~26% dark veil), so the CENTER must stay
+calm/uncluttered; the interest lives around the edges. Then process + embed it.
+
+STEP 1 — GENERATE (use your built-in image_gen / "imagegen" tool; do NOT draw
+procedurally with PIL/SVG/canvas/matplotlib, do NOT use any CLI fallback). Generate
+ONE single wide LANDSCAPE image.
+
+STYLE: retro 16-bit pixel-art, classic LucasArts "Monkey Island" / SCUMM adventure
+vibe, cozy and CUTE storybook warmth (a touch of Animal Crossing / Dora). Crisp
+visible square pixels, bold dark-brown outlines, limited warm palette, flat cel
+shading, soft chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D
+render, NO painterly/airbrushed look, NO photographic realism.
+
+FORMAT: ONE wide cinematic LANDSCAPE illustration, full-bleed, fills the ENTIRE frame
+edge to edge (full-screen GAME BACKGROUND, NOT an icon: no padding, no border, NO
+magenta anywhere).
+
+THEME: cheerful French-academia / agrivoltaics-PhD farming world (thesis on rice grown
+under solar panels). MOOD for this pop-up: warm, gently encouraging "take a breath and
+try again" — NOT grim, NOT a game-over skull screen.
+
+SCENE: a calm wide evening view of a rice field under a long row of blue solar panels,
+gentle green hills and soft mountains on the horizon, a big warm low sun / dusk glow,
+a few cute fluffy clouds, maybe Laura's little white angora cat sitting small in a
+lower corner. CENTER of the image = mostly open calm sky / field (a card will cover it).
+Keep all cute details toward the LEFT/RIGHT and BOTTOM edges. Soft, slightly desaturated
+warm twilight palette so white text on a parchment card reads well on top.
+
+TEXT-SAFE: render NO words, letters, title, numbers or logo anywhere. Keep the central
+band calm and low-contrast.
+
+NO watermark, NO UI, NO frame, NO speech bubbles, NO big lettering, NO magenta/pink fill.
+
+When the image is generated, cp the PNG to /home/delete/laura_quest/_bggen/raw/ui_popup_bg.png
+
+STEP 2 — PROCESS + COMPRESS HARD + EMBED (shell, Python+Pillow available):
+  - Read the target resolution + rough byte budget from the existing full-screen bg
+    /home/delete/laura_quest/assets/sprites/bg_title.jpg (match its pixel size; these
+    backgrounds are authored at 2x display = 1920x1056). Resize the raw PNG to that
+    size with LANCZOS, RGB.
+  - Save as JPG at /home/delete/laura_quest/assets/sprites/ui_popup_bg.jpg, "compressed
+    to death": pick the lowest JPEG quality (try q=72 then step down) that stays a
+    full-screen-believable look while keeping the file <= ~220 KB (similar to
+    bg_title.jpg). Use optimize=True, progressive=True.
+  - Then run:  cd /home/delete/laura_quest && python3 gen_assets_data.py
+    (this re-embeds every sprite incl. the new ui_popup_bg into js/assets_data.js).
+  - Do NOT touch any .js file other than the generated js/assets_data.js. Do NOT modify
+    js/game.js (the wiring is already done by the human: it draws sprite 'ui_popup_bg'
+    full-screen behind the pop-up cards when present).
+
+STEP 3 — REPORT: print the final line:
+  'ui_popup_bg: <assets path> (<W>x<H>, <KB> KB) embedded into js/assets_data.js'

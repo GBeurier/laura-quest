@@ -40,6 +40,13 @@
  *                       hasard ; fait les cent pas. Habits/tetes via theme.passant.)
  *    'B'  boss (defini par .boss)
  *    '*'  sortie = chapitre (apparait apres le boss)
+ *    '|'  ZONE-CIEL (trigger camera) : marque les COLONNES ou la camera SUIT
+ *         Laura vers le HAUT (revele un niveau cache en hauteur). La zone va de
+ *         la 1re a la derniere colonne marquee ; passe la derniere, la cam se
+ *         reverrouille en bas. Pose 1 '|' a CHAQUE bord de la section (le haut
+ *         d'une colonne vide convient). Les niveaux INTERIEURS reçoivent en plus
+ *         un PLAFOND-CIEL (ciel + montagnes + nuages) au-dessus du panorama.
+ *         Rien d'autre n'est pose sur la case. cf. addSkyCeiling / setCam (game.js).
  *
  *  Astuce : pose ennemis/objets sur la ligne JUSTE AU-DESSUS du sol.
  *

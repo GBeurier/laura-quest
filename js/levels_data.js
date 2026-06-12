@@ -1,7 +1,7 @@
 // AUTO-GENERE par gen_levels_data.py -- EDITE les niveaux dans levels/*.txt, PAS ici.
 window.LEVEL_MAPS = {
   "niveau1": [
-    "                                                   L",
+    "                           |                       L   |",
     "                                                 -----",
     "                                         ----",
     "                                                                                                                       P",

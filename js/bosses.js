@@ -68,7 +68,7 @@ window.BOSS_AI = (() => {
   }
   // avance vers le joueur en restant dans l'arene (autour de homeX)
   function moveClamp(b, p, spd) {
-    if (Math.abs(p.pos.x - b.homeX) < 640 && Math.abs(b.pos.x - b.homeX) < b.def.range) {
+    if (Math.abs(p.pos.x - b.homeX) < 640 && Math.abs(b.pos.x - b.homeX) < b.range) {
       b.move(Math.sign(p.pos.x - b.pos.x) * spd, 0);
     }
   }
@@ -87,18 +87,18 @@ window.BOSS_AI = (() => {
     } else b._mdcBlock = 0;
     b._mdcDir = dir; b._mdcX = x0;
     const nx = x0 + dir * step;
-    const inside = Math.abs(nx - b.homeX) < b.def.range;
+    const inside = Math.abs(nx - b.homeX) < b.range;
     if (inside) b.move(dir * spd, 0);
     // bord atteint si la position depasse range OU si le gate vient de refuser
     //  le pas (pos collee au bord, a <1 pas de la limite). Sans le 2e test,
     //  "edge" n'etait JAMAIS vrai par auto-deplacement (move() du moteur =
     //  translation immediate par le MEME calcul que nx -> toujours < range)
     //  -> le drive du tracteur ne finissait jamais tout seul.
-    return !inside || Math.abs(x0 - b.homeX) >= b.def.range || (b._mdcBlock || 0) >= 4;
+    return !inside || Math.abs(x0 - b.homeX) >= b.range || (b._mdcBlock || 0) >= 4;
   }
   // borne dure de la position au cas ou (securite anti-sortie d'arene)
   function clampHome(b) {
-    const r = b.def.range || 360;
+    const r = b.range || 360;
     if (b.pos.x < b.homeX - r) b.pos.x = b.homeX - r;
     if (b.pos.x > b.homeX + r) b.pos.x = b.homeX + r;
   }
@@ -129,13 +129,13 @@ window.BOSS_AI = (() => {
   //  (b._awoken ne redescend jamais) — exactement le bug que la veille v2.1
   //  pretendait corriger.
   function inArena(b, p, api) {
-    return Math.abs(p.pos.x - b.homeX) < (b.def.range || 300) + api.TS * 6;
+    return Math.abs(p.pos.x - b.homeX) < (b.range || 300) + api.TS * 6;
   }
 
   // SPAWN-EN-FACE (dette tech 3) : pose un minion ENTRE le boss et le joueur
   //  (jamais derriere la camera) + poof de telegraphe. Clampe a l'arene.
   function spawnEnFace(b, p, api, kind) {
-    const r = b.def.range || 360;
+    const r = b.range || 360;
     let x = (b.pos.x + p.pos.x) / 2;
     x = Math.max(b.homeX - r, Math.min(b.homeX + r, x));
     api.poof(x, b.pos.y - api.TS);
@@ -165,7 +165,7 @@ window.BOSS_AI = (() => {
     const o = opts || {};
     const dirX = o.dirX || b.facing || (Math.sign(p.pos.x - b.pos.x) || -1);
     const sp = (b.def.shotSpeed || 220) * (o.speedMul || 0.9);
-    const wallX = b.pos.x - dirX * (b.def.range || 360) * 0.5;   // nait derriere le boss
+    const wallX = b.pos.x - dirX * (b.range || 360) * 0.5;   // nait derriere le boss
     const gapY = (o.gapY != null) ? o.gapY : p.pos.y - api.TS * (1 + rand(0, 1.5));
     api.poof(wallX, gapY);                                       // annonce du trou
     const top = b.pos.y - api.TS * 6, bot = b.pos.y + api.TS * 0.5, step = api.TS * 0.75;
@@ -345,7 +345,7 @@ window.BOSS_AI = (() => {
         b.revInit = true;
         const towardP = Math.sign(p.pos.x - b.pos.x) || -1;
         const towardHome = Math.sign(b.homeX - b.pos.x) || -1;
-        b.dir = (Math.abs(b.pos.x - b.homeX) > b.def.range * 0.7) ? towardHome : towardP;
+        b.dir = (Math.abs(b.pos.x - b.homeX) > b.range * 0.7) ? towardHome : towardP;
         // VROMBISSEMENT localise : fumee aux echappements + poussiere aux roues
         api.poof(b.pos.x - 14, b.pos.y - api.TS * 1.5);
         api.poof(b.pos.x + 10, b.pos.y - api.TS * 1.1);
@@ -560,7 +560,7 @@ window.BOSS_AI = (() => {
     const formN = b.p2 ? (b.def.p2FormN || 6) : (b.def.formN || 4);
     const hazardDur = b.p2 ? (b.def.p2HazardDur || 3.5) : 2.5;
     const sp = b.def.shotSpeed || 220;
-    const range = b.def.range || 360;
+    const range = b.range || 360;
 
     if (b.ps === 'pre') {
       // choisit la destination (clampee a l'ecran, ELOIGNEE du joueur >=200px)
@@ -651,7 +651,7 @@ window.BOSS_AI = (() => {
     const phase = frac > 0.66 ? 0 : (frac > 0.33 ? 1 : 2);
     const sp = b.def.shotSpeed || 220;
     const baseEvery = b.def.shotEvery || 1.4;
-    const range = b.def.range || 360;
+    const range = b.range || 360;
 
     // --- transition de phase : BOSS RUSH (interlude 'invite') ou enrage ---
     if (phase !== b.jPhase) {

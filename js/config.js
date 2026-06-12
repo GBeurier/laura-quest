@@ -293,23 +293,23 @@ window.CONFIG = {
     //  P3 = 5 graines ENFLAMMEES (flame) et TRANSPERCANTES (pierce).
     graines: {
       speed: 620,
-      cadence: [0.28, 0.18, 0.11],                                   // delai entre tirs par niveau de CADENCE
+      cadence: [0.40, 0.30, 0.20],                                   // delai entre tirs par niveau de CADENCE (rallonge v3 : tir de base + upgrades moins spammables)
       bossTick: [1, 2, 3],                                           // degat d'UN TICK vs BOSS par niveau de PUISSANCE (cf. CONFIG.bossHit)
       levels: [
         { pellets: 1, spread: 0,    damage: 1, flame: false, pierce: 0 },
         { pellets: 3, spread: 0.17, damage: 1, flame: false, pierce: 0 },
-        { pellets: 5, spread: 0.28, damage: 2, flame: true,  pierce: 2 },
+        { pellets: 5, spread: 0.28, damage: 1, flame: true,  pierce: 1 },   // v3 : P3 ne one-shot plus les mobs (degat 2->1, pierce 2->1)
       ],
     },
     // PATISSERIES (X, COUTE DU SOLEIL). levels[power-1] : sprite/scale/radius (AoE)
     //  /damage/cost(soleil)/secondary(mini-explosions du "gateau des enfers").
     patisseries: {
       speed: 520,
-      cadence: [0.70, 0.52, 0.36],                                   // cooldown du lob par niveau de CADENCE
+      cadence: [0.88, 0.70, 0.55],                                   // cooldown du lob par niveau de CADENCE (rallonge v3)
       levels: [
-        { sprite: 'ammo_cookie',       scale: 0.95, radius: 60,  damage: 2, cost: 30, secondary: 0 },
-        { sprite: 'ammo_gateau',       scale: 1.0,  radius: 96,  damage: 3, cost: 45, secondary: 0 },
-        { sprite: 'ammo_gateau_enfer', scale: 1.1,  radius: 132, damage: 4, cost: 48, secondary: 4, enfers: true },
+        { sprite: 'ammo_cookie',       scale: 0.95, radius: 60,  damage: 1, cost: 30, secondary: 0 },
+        { sprite: 'ammo_gateau',       scale: 1.0,  radius: 96,  damage: 2, cost: 45, secondary: 0 },
+        { sprite: 'ammo_gateau_enfer', scale: 1.1,  radius: 132, damage: 3, cost: 48, secondary: 4, enfers: true },   // v3 : degats AoE baisses (cookie 2->1, gateau 3->2, enfer 4->3)
       ],
     },
   },
@@ -442,7 +442,7 @@ window.CONFIG = {
     //  = marge d'entree d'arene (en TUILES) avant que le boss se reveille.
     //  Esquive : lob depuis panneaux + saut/dash sous bombes.
     agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
-                    hp: 70, maxHp: 70, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 380, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
+                    hp: 42, maxHp: 42, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 500, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
                     //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd ~ 2.5s),
                     //  sinon AUCUNE bombe ne part en drive (bug v1 : 3.4 > 2.5).
                     revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, arenaPad: 2,
@@ -456,7 +456,7 @@ window.CONFIG = {
     //  c'est EXACTEMENT ce que Francois brandit/jette sur sa feuille _atk (l'ancien
     //  shot_stake — un piquet en bois — ne correspondait a aucun de ses gestes).
     proprietaire: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
-                    hp: 120, maxHp: 120, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 380, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_bail',
+                    hp: 72, maxHp: 72, guard: 0.4, touchDamage: 2, shotSpeed: 255, speed: 55, range: 500, dashSpeed: 480, score: 1300, name: 'FRANCOIS LE PROPRIO', shot: 'shot_bail',
                     paceTime: 1.0, windTime: 0.7, dashTime: 0.9, staggerTime: 1.2, throwTime: 0.5,
                     p2StaggerTime: 0.9, p2RewindTime: 0.3 },
 
@@ -465,7 +465,7 @@ window.CONFIG = {
     //  summon (cafards fragiles spawnes EN FACE, summonTime) -> load (immobile =
     //  PUNITION, loadTime). Esquive : dash + petites plateformes.
     rstudio:      { sprite: 'boss_rstudio_move', attackSprite: 'boss_rstudio_atk', behavior: 'errors',
-                    hp: 170, maxHp: 170, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 360, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
+                    hp: 100, maxHp: 100, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 470, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
                     attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5,
                     p2BurstGap: 0.6 },
 
@@ -478,7 +478,7 @@ window.CONFIG = {
     //  pour la "bombe en papier" (avant : shot_paper, un avion en papier qui
     //  CHUTAIT en tournoyant — le fameux "feuille qui se transforme en avion").
     michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
-                    hp: 210, maxHp: 210, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 380, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
+                    hp: 125, maxHp: 125, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 500, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
                     aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440,
                     p2KeepMin: 180, p2KeepMax: 380 },
 
@@ -487,7 +487,7 @@ window.CONFIG = {
     //  implodeTime) -> TP + eventail de formN formulaires + TAMPON-PIEGE (throwTime)
     //  -> window (PUNITION, windowTime). Esquive : dash apres le TP / les tampons.
     cendrine:     { sprite: 'boss_cendrine_move', attackSprite: 'boss_cendrine_atk', behavior: 'paperasse',
-                    hp: 280, maxHp: 280, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 400, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
+                    hp: 165, maxHp: 165, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 520, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
                     preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4,
                     p2FormN: 6, p2HazardDur: 3.5, p2WindowTime: 0.9 },
 
@@ -499,7 +499,7 @@ window.CONFIG = {
     //  sur leur feuille _atk (le marteau shot_gavel etait iconique mais aucun jure
     //  n'en brandit ; il reste sur disque si on veut revenir en arriere).
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
-                    hp: 450, maxHp: 450, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 320, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
+                    hp: 270, maxHp: 270, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
                     enrageTime: 0.7, ringN: 8, panicN: 9, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve
   },
 

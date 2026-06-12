@@ -424,7 +424,11 @@
       b.onCollide('enemy', boom);
       b.onCollide('passant', boom);   // figurant : encaisse les balles (mais rien d'autre)
       b.onCollide('boss', boom);
-      b.onCollide('solid', boom);
+      // SOL/rochers OUI, mais PANNEAUX NON : le lob est l'arme "par-dessus" — il
+      //  ARQUE au-dessus des panneaux-couvert pour retomber sur l'ennemi/le boss
+      //  derriere, au lieu d'exploser betement sur le panneau (bug "lob par-dessus
+      //  sans degats"). Il eclate quand meme au sol pour ne jamais etre gaspille.
+      b.onCollide('solid', (s) => { if (s && s.is && s.is('panel')) return; boom(); });
     } else if (opts.pierce) {                   // PERCANT : traverse plusieurs ennemis sans se detruire
       b.pierce = opts.pierce; b._hit = new Set();
       const through = (e, fn) => { if (b._hit.has(e)) return; b._hit.add(e); fn(e, { dmg: b.dmg, bossDmg: b.bossDmg, channel: b.channel, pos: b.pos }); b.pierce--; if (b.pierce <= 0 && b.exists()) destroy(b); };
@@ -1509,6 +1513,22 @@
     return null;
   }
 
+  // Surface (sol/panneau) AU NIVEAU OU SOUS les pieds (atY) — PAS le solide le
+  //  plus haut de la colonne. surfaceTopAt remontait sur un deck de panneaux
+  //  AU-DESSUS de Laura -> le cadavre etait pose tout en haut ("trop haut") ;
+  //  ici on part de la rangee des pieds et on descend jusqu'au 1er solide.
+  function surfaceUnderFeet(atX, atY) {
+    const grid = LEVEL && LEVEL.grid;
+    if (!grid) return null;
+    const c = Math.floor(atX / TS);
+    if (c < 0) return null;
+    for (let r = Math.max(0, Math.floor((atY - 1) / TS)); r < grid.length; r++) {
+      const ch = grid[r] && grid[r][c];
+      if (ch === '=' || ch === '-' || ch === 'x' || ch === '^') return r * TS;
+    }
+    return null;
+  }
+
   // Ombre de chute : feuille fx_bomb_shadow (6 frames qui grossissent), posee SUR
   //  LA SURFACE visee (sol/panneau), PAS au niveau du perso. La frame suit
   //  l'avancement de la chute = telegraphe lisible. Repli cercle si le PNG manque.
@@ -1612,6 +1632,7 @@
     b.hp = Math.max(5, Math.round((def.maxHp || def.hp) * (hpFrac || 0.35)));
     b.maxHp = b.hp;                                 // barre pleine a l'invocation
     b.homeX = x;
+    if (LEVEL && LEVEL.bossRange) b.range = LEVEL.bossRange;   // l'invite roame DANS l'arene du jury
     addPoof(x - 16, gy - TS); addPoof(x + 16, gy - TS * 1.5); addPoof(x, gy - TS * 0.5);
     sfx('boss');
     return b;
@@ -1655,6 +1676,13 @@
   //  plein AVANT d'entrer, puis le combat est sans retour (l'anti-exploit vise).
   function addArenaGates() {
     if (!LEVEL || LEVEL.gates || LEVEL.bossX == null) return;
+    // SNAPSHOT du loadout AVANT-BOSS (1re entree d'arene) : "reprendre au boss"
+    //  restaure EXACTEMENT ce setup (armes/equipement d'avant l'arene), pas l'etat
+    //  a la mort ni un refill max. cf. restartBoss.
+    if (!LEVEL.bossLoadout && PLAYER && PLAYER.exists()) {
+      const p = PLAYER;
+      LEVEL.bossLoadout = { power: p.power, rate: p.rate, equipped: p.equipped, catCharges: p.catCharges, sunMax: p.sunMax, ammoKey: p.ammoKey };
+    }
     const bx = LEVEL.bossX, r = LEVEL.bossRange || 300;
     const mk = (col) => {
       const gx = col * TS, gy = columnGroundY(col);
@@ -1740,6 +1768,10 @@
       'boss',
       {
         key, def, spr: sname, sprAtk: aname, hp: def.hp, maxHp: def.maxHp || def.hp,
+        // range PER-INSTANCE (lu par bosses.js) : def.range par defaut, surcharge
+        //  par les bornes d'arene '['/']' de la map (cf. buildLevel). Demi-largeur
+        //  de l'arene autour de homeX.
+        range: def.range || 360,
         t: 0, dir: -1, homeX: x, stun: 0, knockX: 0, knockT: 0,
         hurtT: 0, animWant: 'idle', _spr: sname, _anim: null,
         // garde posee DES LE SPAWN (meme formule que bossBehavior) : sans ca le
@@ -1753,6 +1785,16 @@
     b.onBeforePhysicsResolve((col) => {
       const o = col.target;
       if (o && o.is && o.is('player')) col.preventResolution();
+    });
+    // ANTI-ENFONCEMENT (bug "le jury rentre dans le sol quand on s'approche") : un
+    //  boss est TOUJOURS au sol d'une arene PLATE et ne saute jamais. La gravite +
+    //  la resolution physique d'un GROS corps (jury x1.32) chevauchant Laura ou un
+    //  invite pouvaient le faire DERIVER vers le bas dans le sol. On memorise sa
+    //  hauteur posee (1er contact sol) et on l'y REVISSE chaque frame (jamais plus
+    //  bas). Horizontal et knockback inchanges ; aucun boss ne bouge en Y.
+    b.onUpdate(() => {
+      if (b._restY == null) { if (b.isGrounded && b.isGrounded()) b._restY = b.pos.y; return; }
+      if (b.pos.y > b._restY) { b.pos.y = b._restY; if (b.vel) b.vel = vec2(b.vel.x, 0); }
     });
     BOSS_LIST.push(b);   // ref directe pour le HUD (cf. buildHUD, plus de get('boss') par frame)
     return b;
@@ -1770,8 +1812,11 @@
     //  qu'elle le touche (hitBoss -> b._awoken, anti-sniping). Les INVITES du
     //  jury (b.guest) spawnent deja engages -> jamais en veille.
     if (!b.guest && !b._awoken) {
-      const pad = (b.def.arenaPad != null ? b.def.arenaPad : 2) * TS;
-      if (p.pos.x >= b.homeX - (b.def.range || 300) - pad) b._awoken = true;
+      // REVEIL = FRANCHISSEMENT de la ligne d'arene (MEME seuil que addArenaGates :
+      //  homeX - range + 1 tuile). Avant : IMMOBILE en idle, AUCUNE attaque ni
+      //  deplacement (plus d'arenaPad qui le reveillait trop tot). Le coup encaisse
+      //  (hitBoss -> _awoken) reste un reveil legitime (anti-sniping hors arene).
+      if (p.pos.x >= b.homeX - (b.range || 300) + TS) b._awoken = true;
     }
     if (!b.guest && !b._awoken) {
       b.flipX = (p.pos.x - b.pos.x) >= 0;     // regarde Laura (sprites boss pointent a gauche)
@@ -2110,10 +2155,19 @@
     const list = Array.isArray(spec.sprite) ? spec.sprite : [spec.sprite];
     const seq = !!spec.seq && list.length > 1 && list.every(hasSprite);
     const par = spec.parallax != null ? spec.parallax : 1;
+    // vpar = parallax VERTICAL (revele/cache en grimpant, cf. zone-ciel '|').
+    //  Defaut = horizontal SAUF le panorama INTERIEUR (band 'ground' d'un niveau
+    //  indoor) : c'est le mur autour de Laura -> vpar 1 (colle au monde, defile
+    //  hors-champ en grimpant pour DECOUVRIR le plafond-ciel). worldY != null
+    //  (couches du plafond-ciel) : vpar 1 aussi. cf. addSkyCeiling / setCam.
+    const indoorPano = !!(LEVEL && LEVEL.theme && LEVEL.theme.indoor) && spec.worldY == null && (spec.y == null || spec.y === 'ground');
+    const vpar = spec.vpar != null ? spec.vpar : (indoorPano ? 1 : par);
     const z0  = spec.z != null ? spec.z : -20;
     const op  = spec.opacity != null ? spec.opacity : 1;
     const anc = spec.anchor || 'bot';
-    const y   = (spec.y == null || spec.y === 'ground') ? HORIZON_Y : spec.y;
+    const baseCamY0 = (LEVEL && LEVEL.baseCamY != null) ? LEVEL.baseCamY : (C.height / 2 - CAM_DROP);
+    const y   = (spec.worldY != null) ? (spec.worldY - baseCamY0 + C.height / 2)
+              : ((spec.y == null || spec.y === 'ground') ? HORIZON_Y : spec.y);
     const sc  = (spec.scale || 1) / ART;
     const tw0 = spec.tileW || 320;
     const n   = seq ? list.length : 1;
@@ -2132,9 +2186,12 @@
       const tw = spec.tileW || ((objs[0].width || 0) * sc) || tw0;   // largeur d'UN morceau
       const period = tw * n;
       const off = (((getCam().x * par) % period) + period) % period;
+      // defilement VERTICAL (zone-ciel) : vy = (base - courant) * vpar.
+      const vy = ((LEVEL && LEVEL.baseCamY != null) ? (LEVEL.baseCamY - LEVEL.camY) : 0) * vpar;
       for (let i = 0; i < objs.length; i++) {
         const x = Math.floor(i / n) * period + (i % n) * tw - off;
         objs[i].pos.x = x;
+        objs[i].pos.y = y + vy;
         // copie surement hors-cadre -> pas de draw. Marge d'UNE largeur de
         //  morceau de chaque cote : couvre toute ancre (bot/top = centre-x).
         objs[i].hidden = (x - tw > C.width) || (x + tw < 0);
@@ -2147,12 +2204,17 @@
   function addScatterLayer(spec, th) {
     const list = Array.isArray(spec.sprite) ? spec.sprite : [spec.sprite];
     const par  = spec.parallax != null ? spec.parallax : 0.3;
+    const vpar = spec.vpar != null ? spec.vpar : par;
     const z0   = spec.z != null ? spec.z : -22;
     const op   = spec.opacity != null ? spec.opacity : 1;
     const sc   = (spec.scale || 1) / ART;
     const n    = spec.count || 7;
     const yMin = spec.yMin != null ? spec.yMin : 36;
     const yMax = spec.yMax != null ? spec.yMax : 150;
+    // worldY != null : les sprites sont disperses AU-DESSUS d'une ancre MONDE
+    //  (plafond-ciel interieur) -> on convertit en Y ecran a la cam de base.
+    const baseCamY0 = (LEVEL && LEVEL.baseCamY != null) ? LEVEL.baseCamY : (C.height / 2 - CAM_DROP);
+    const yBase = (spec.worldY != null) ? (spec.worldY - baseCamY0 + C.height / 2) : 0;
     const span = spec.span || (C.width + 260);
     const margin = 130;
     const items = [];
@@ -2160,21 +2222,49 @@
       const sname = pickSkin(list, list[0]);
       if (!sname || !hasSprite(sname)) continue;
       const bx = ((i + 0.5) / n) * span + rand(-span / (n * 2.5), span / (n * 2.5));
-      const by = yMin + rand(0, Math.max(0, yMax - yMin));
+      const by = yBase + yMin + rand(0, Math.max(0, yMax - yMin));
       const fr = randGridFrame(sname);   // grille de variantes (bg_cloud 4x3) -> une au hasard
       const spr = fr != null ? sprite(sname, { frame: fr }) : sprite(sname);
       const o = add([spr, scale(sc * rand(0.7, 1.15)), pos(-9999, by), anchor('center'), fixed(), z(z0), opacity(op), 'bg'].concat(layerTint(spec, th)));
       playIfAnim(o, sname);
-      items.push({ o, bx });
+      items.push({ o, bx, by });
     }
     if (!items.length) return;
     items[0].o.onUpdate(() => {
       const scroll = getCam().x * par;
+      const vy = ((LEVEL && LEVEL.baseCamY != null) ? (LEVEL.baseCamY - LEVEL.camY) : 0) * vpar;
       for (const it of items) {
         const x = (((it.bx - scroll) % span) + span) % span;
         it.o.pos.x = x - margin;
+        it.o.pos.y = it.by + vy;
       }
     });
+  }
+
+  // PLAFOND-CIEL (niveaux INTERIEURS en hauteur, cf. zone-ciel '|') : au-dessus du
+  //  panorama il n'y a que la couleur de fond plate -> on pose un CIEL (bleu +
+  //  montagnes + nuages) ANCRE AU MONDE (vpar 1 = se revele en grimpant) et DERRIERE
+  //  le panorama (z < -22 -> cache en bas, decouvert en hauteur). Reglages via
+  //  theme.ceiling { row|worldY, sky:[r,g,b], mountains, clouds, tint, ... }.
+  function addSkyCeiling(th) {
+    if (!LEVEL) return;
+    const cfg = (th && th.ceiling) || {};
+    const rows = Math.round(LEVEL.height / TS);
+    // plafond = juste au-dessus de la bande TOUJOURS visible (les 11 du bas).
+    const cy = (cfg.worldY != null) ? cfg.worldY
+             : ((cfg.row != null ? cfg.row : Math.max(0, rows - 12)) * TS);
+    const sky = cfg.sky || [126, 192, 238];                 // bleu ciel (pas la teinte interieure)
+    const skyTh = Object.assign({}, th, { tint: cfg.tint || null });   // pas de teinte interieure sur le ciel
+    // 1) pan de ciel : rect plein largeur ancre au plafond (monte vers le haut).
+    const sr = add([rect(C.width * 3, LEVEL.height + C.height * 2), pos(C.width / 2, 0), anchor('bot'),
+      fixed(), z(-39), color(sky[0], sky[1], sky[2]), 'bg']);
+    sr.onUpdate(() => { sr.pos.x = C.width / 2; sr.pos.y = cy - LEVEL.camY + C.height / 2; });
+    // 2) montagnes (base calee sous le plafond -> tuckee derriere le panorama, cimes au ciel).
+    addBandLayer({ sprite: cfg.mountains || 'bg_mountains', band: true, parallax: cfg.mpar != null ? cfg.mpar : 0.20,
+      vpar: 1, anchor: 'bot', worldY: cy + (cfg.mDrop != null ? cfg.mDrop : 10), z: -38, tileW: cfg.mTileW || 480 }, skyTh);
+    // 3) nuages disperses AU-DESSUS du plafond.
+    addScatterLayer({ sprite: cfg.clouds || 'bg_cloud', scatter: true, parallax: cfg.cpar != null ? cfg.cpar : 0.35,
+      vpar: 1, count: cfg.cloudN || 6, worldY: cy, yMin: -210, yMax: -40, z: -37, scale: cfg.cloudScale || 0.85 }, skyTh);
   }
 
   // ---------------------------------------------------------------------
@@ -2212,6 +2302,12 @@
     // grid MUTABLE (tableaux de caracteres) : un panneau cassable qui explose
     //  remet sa case a ' ' -> inShade() et l'ombre projetee se mettent a jour.
     LEVEL = { width: levelW, height: rows.length * TS, bossesAlive: 0, sun: null, dataTotal: 0, pageTotal: 0, hasPubli: false, grid: rows.map((r) => r.split('')), shadeByCol: {}, theme };
+    // Cadrage vertical : baseCamY = vue EPINGLEE en bas (comportement historique,
+    //  ex-const camY). camY = position COURANTE de la cam, suivie par la boucle de
+    //  jeu (zone-ciel '|' -> suit Laura vers le haut). Lue par les couches parallax
+    //  pour leur defilement VERTICAL. cf. setCam + addBandLayer/addScatterLayer.
+    LEVEL.baseCamY = C.height / 2 - CAM_DROP + Math.max(0, LEVEL.height - C.height);
+    LEVEL.camY = LEVEL.baseCamY;
 
     // Bord droit JOUABLE = derniere case de SOL des 2 rangees du bas. Les
     //  rangees ASCII ne sont pas toujours de meme longueur (la ligne du boss
@@ -2232,6 +2328,8 @@
     buildBackground();
 
     let exitCx = null;   // centre X de la sortie '*' -> sert a poser le caillou de bord DROIT au-dela
+    let skyMinC = Infinity, skyMaxC = -1;   // ZONE-CIEL '|' : colonnes ou la cam suit en hauteur
+    let arenaLcol = null, arenaRcol = null; // BORNES D'ARENE '['/']' (optionnel) : taille de l'arene du boss
     rows.forEach((row, r) => {
       for (let c = 0; c < row.length; c++) {
         const ch = row[c];
@@ -2255,6 +2353,9 @@
           case 'i': spawnPickup('cadence', cx, y + TS / 2); break;       // upgrade arsenal : +1 CADENCE
           case '^': addRock(cx, groundY); break;
           case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
+          case '|': if (c < skyMinC) skyMinC = c; if (c > skyMaxC) skyMaxC = c; break;   // ZONE-CIEL : la cam suit en hauteur (rien d'autre pose ; cf. skyZone)
+          case '[': arenaLcol = (arenaLcol == null) ? c : Math.min(arenaLcol, c); break;   // BORD GAUCHE d'arene (rien d'autre pose)
+          case ']': arenaRcol = (arenaRcol == null) ? c : Math.max(arenaRcol, c); break;   // BORD DROIT d'arene (rien d'autre pose)
           case 'T': spawnEnemy('camion', cx, groundY); break;
           case 'A': spawnEnemy('assureur', cx, groundY); break;
           case 'R': spawnEnemy('ademe', cx, groundY); break;
@@ -2289,6 +2390,28 @@
         }
       }
     });
+
+    // BORNES D'ARENE ('['/']') : redimensionnent l'arene du boss (gates, reveil,
+    //  clamp IA, checkpoint). Sans symbole -> taille par defaut (def.range). On
+    //  garde le boss AU CENTRE de son 'B' (modele symetrique homeX +/- range) :
+    //  range = distance max de bossX a l'un des bords -> l'arene couvre les 2.
+    if ((arenaLcol != null || arenaRcol != null) && LEVEL.bossX != null) {
+      const bx = LEVEL.bossX;
+      const L = (arenaLcol != null) ? arenaLcol * TS : (bx - LEVEL.bossRange);
+      const R = (arenaRcol != null) ? (arenaRcol + 1) * TS : (bx + LEVEL.bossRange);
+      LEVEL.bossRange = Math.max(TS * 4, bx - L, R - bx);   // garde-fou mini 4 tuiles
+      BOSS_LIST.forEach((b) => { b.range = LEVEL.bossRange; });
+    }
+
+    // ZONE-CIEL (trigger '|') : plage X ou la cam suit Laura vers le haut pour
+    //  reveler un niveau cache en hauteur ; desactivee passe toX. cf. setCam.
+    if (skyMaxC >= 0) {
+      LEVEL.skyZone = { fromX: skyMinC * TS, toX: (skyMaxC + 1) * TS };
+      // INTERIEUR : au-dessus du panorama il n'y a que la couleur de fond plate.
+      //  On pose un PLAFOND-CIEL (ciel bleu + montagnes + nuages, parallax) DERRIERE
+      //  le panorama (z < panorama) -> cache en bas, revele en grimpant. cf. addSkyCeiling.
+      if (theme.indoor) addSkyCeiling(theme);
+    }
 
     // COLLISION du sol '=' : colliders fusionnes par segment (cf. addGroundColliders).
     addGroundColliders(LEVEL.grid);
@@ -2758,6 +2881,11 @@
     else go('chapter', { idx: CUR_IDX, score: p.score, meds, tsec, pct, savedPct, par, feli: !!(p.medNoHit && tsec > 0) });
   }
 
+  // Arme par scene('game') : ouvre le popup de mort (recommencer niveau / boss).
+  //  Defini DANS la scene (acces a setPaused + respawnAtArena in-scene) ; null
+  //  hors de la scene game -> deathSequence retombe sur un simple redemarrage.
+  let openDeathBox = null;
+
   function loseGame() {
     if (PLAYER && PLAYER._dying) return;     // sequence de mort deja en cours
     // v2 CHECKPOINT BOSS (GAMEPLAY.md §2.4) : mourir PENDANT le boss -> respawn
@@ -2791,10 +2919,14 @@
     sfx('lose');
     const fell = p.pos.y > LEVEL.height + 100;          // tombee dans un trou
     if (!fell) {
-      const gy = surfaceTopAt(p.pos.x);
+      // surfaceUnderFeet (PAS surfaceTopAt) : le cadavre se pose sur le sol SOUS
+      //  Laura, jamais sur un deck de panneaux au-dessus. CORPSE_SINK : on
+      //  l'enfonce un poil dans le sol (sprite couche) pour qu'il y repose.
+      const CORPSE_SINK = 12;
+      const gy = surfaceUnderFeet(p.pos.x, p.pos.y);
       const c = add([
         sprite(hasSprite('hero_dead') ? 'hero_dead' : 'hero_hurt'),
-        artScale(), pos(p.pos.x, gy != null ? gy : p.pos.y),
+        artScale(), pos(p.pos.x, (gy != null ? gy : p.pos.y) + CORPSE_SINK),
         anchor('bot'), z(-0.6), 'corpse',
       ]);
       if (hasSprite('hero_dead')) playIfAnim(c, 'hero_dead');
@@ -2804,14 +2936,14 @@
     add([rect(C.width, C.height), pos(0, 0), fixed(), color(200, 30, 30),
       opacity(0.45), z(190), lifespan(0.6, { fade: 0.5 })]);
     safeShake(12);
-    const mk = (txt, dy, size) => add([
-      text(txt, { size, align: 'center' }), pos(C.width / 2, C.height / 2 + dy),
+    add([
+      text(C.story.dead, { size: 34, align: 'center' }), pos(C.width / 2, C.height / 2 - 36),
       anchor('center'), fixed(), z(951), color(255, 255, 255), opacity(1),
-      lifespan(1.9, { fade: 0.5 }),
+      lifespan(1.6, { fade: 0.5 }),
     ]);
-    mk(C.story.dead, -36, 34);
-    mk(C.story.deadSub, 8, 18);
-    wait(2.2, () => go('game', C.levels[CUR_IDX]));
+    // v3 : plus de redemarrage AUTO -> on ouvre un popup (recommencer niveau /
+    //  reprendre au boss). Hors scene game (openDeathBox null) : repli redemarrage.
+    wait(1.2, () => { if (openDeathBox) openDeathBox(); else go('game', C.levels[CUR_IDX]); });
   }
 
   function respawnAtArena() {
@@ -2893,11 +3025,10 @@
     npcBubbleLoop(levelKey);   // bulles BD des PNJ (rares, cf. theme.passant.bubble)
 
     buildHUD();
-    // Cam fixe en Y. Un niveau plus HAUT que l'ecran (rangees ajoutees EN HAUT,
-    //  cf. niveau5) garde EXACTEMENT le meme cadrage du sol : on descend la cam
-    //  du surplus de hauteur -> tout l'espace ajoute devient du HORS-CHAMP en haut
-    //  (publi cachee a sauter en aveugle). Niveau standard (11 rangees) => 256.
-    const camY = C.height / 2 - CAM_DROP + Math.max(0, LEVEL.height - C.height);
+    // Cadrage Y : par DEFAUT epingle en bas (LEVEL.baseCamY, calcule dans buildLevel)
+    //  -> un niveau plus HAUT que l'ecran garde le meme cadrage du sol, le surplus
+    //  devient du hors-champ en haut. Une ZONE-CIEL ('|') laisse la cam SUIVRE Laura
+    //  vers le haut (revele le niveau cache), cf. la boucle d'update (setCam).
 
     // --- ESC : confirmation avant d'abandonner le niveau (gele le jeu) -----
     //  getTreeRoot().paused gele update + physique (le draw, lui, continue) ; les
@@ -2937,8 +3068,13 @@
         const bw = 520, bh = 290, top = cy - bh / 2, L = cx - bw / 2;
         const sunY = top;                                            // foyer du soleil (derriere le ruban)
 
-        // 1) voile chaud
-        drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.54 * ap });
+        // 1) FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile chaud
+        if (hasSprite('ui_popup_bg')) {
+          drawSprite({ sprite: 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+          drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.26 * ap });
+        } else {
+          drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.54 * ap });
+        }
 
         // 2) atmosphere : halo radial + gerbe de rayons tournant lentement
         for (let i = 8; i >= 1; i--)
@@ -3017,6 +3153,120 @@
     const closeQuit = () => { if (quitBox) { destroy(quitBox); quitBox = null; } setPaused(false); };
     const confirmQuit = () => { if (!quitBox) return; setPaused(false); go('overworld'); };
 
+    // --- MORT : popup "recommencer" (niveau / reprendre au boss) -----------
+    //  Affiche par deathSequence (apres le cadavre + KO). Deux choix :
+    //   0 = RECOMMENCER LE NIVEAU  -> scene rebuild (arsenal/equipement RESET).
+    //   1 = REPRENDRE AU BOSS      -> checkpoint arme JUSTE devant l'arene +
+    //       respawnAtArena IN-SCENE (arsenal CONSERVE, pas de re-traversee).
+    //  Gele le jeu via setPaused (neutralise onPlayKey/onPlayPress + la boucle
+    //  d'update). Selection ◀▶, validation ESPACE/ENTREE/saut/OK ou tap direct.
+    let deathBox = null, deathSel = 0;
+    const bossRetryOK = () => !!(LEVEL && LEVEL.bossX != null && LEVEL.bossesAlive > 0);
+    const closeDeath = () => { if (deathBox) { destroy(deathBox); deathBox = null; } setPaused(false); };
+    const restartLevel = () => { closeDeath(); go('game', C.levels[CUR_IDX]); };
+    const restartBoss = () => {
+      // checkpoint JUSTE DEVANT le boss (meme calcul que la pose auto d'arene)
+      if (!LEVEL.checkpoint && LEVEL.bossX != null) {
+        const edge = LEVEL.bossX - (LEVEL.bossRange || 300) - TS * 2;
+        LEVEL.checkpoint = { x: Math.max(TS * 1.5, edge - TS), y: columnGroundY(Math.floor(edge / TS)) - 2 };
+      }
+      get('corpse').forEach((o) => destroy(o));      // on relance Laura sur place
+      const p = PLAYER;
+      if (p) { p.hidden = false; p.paused = false; p._dying = false; }
+      closeDeath();
+      respawnAtArena();                              // refill HP/soleil + teleport arene + boss reset + KO rouge
+      // RESTAURE le loadout d'AVANT-BOSS (snapshot a l'entree d'arene) : on garde
+      //  exactement les armes/equipement qu'on avait en arrivant (pas l'etat a la
+      //  mort, pas un max). cf. addArenaGates.
+      const lo = LEVEL.bossLoadout;
+      if (p && lo) {
+        p.power = lo.power; p.rate = lo.rate; p.equipped = lo.equipped;
+        p.catCharges = lo.catCharges; p.sunMax = lo.sunMax; p.ammoKey = lo.ammoKey;
+        p.sun = Math.min(p.sunMax, p.sun);
+      }
+    };
+    const deathConfirm = () => {
+      if (!deathBox) return;
+      if (deathSel === 1 && bossRetryOK()) restartBoss();
+      else restartLevel();
+    };
+    const deathSelMove = (d) => {
+      if (!deathBox || !bossRetryOK()) return;       // 1 seule option dispo -> rien a deplacer
+      deathSel = Math.max(0, Math.min(1, deathSel + d));
+    };
+    openDeathBox = () => {
+      if (deathBox) return;
+      // defaut : REPRENDRE AU BOSS si Laura est morte DANS la zone du boss
+      //  (gates d'arene posees, ou x dans l'arene) -> sinon RECOMMENCER LE NIVEAU.
+      const arenaEdge = (LEVEL.bossX != null) ? (LEVEL.bossX - (LEVEL.bossRange || 300) - TS * 2) : Infinity;
+      const atBoss = bossRetryOK() && (LEVEL.gates || (PLAYER && PLAYER.exists() && PLAYER.pos.x >= arenaEdge));
+      deathSel = atBoss ? 1 : 0;
+      setPaused(true);
+      const t0 = nowMs();
+      deathBox = add([pos(0, 0), fixed(), z(900)]);
+      deathBox.onDraw(() => {
+        const W = C.width, H = C.height, cx = W / 2, cy = H / 2;
+        const T = Math.max(0, (nowMs() - t0) / 1000);
+        const e = Math.min(1, T / 0.26), ap = 1 - Math.pow(1 - e, 3);
+        const scl = 0.9 + 0.1 * ap, rise = (1 - ap) * 16;
+        const GOLD = rgb(255, 206, 71), GOLDHI = rgb(255, 233, 150), CREAM = rgb(252, 245, 224),
+          CREAMLO = rgb(241, 226, 192), INK = rgb(58, 36, 22), INKSOFT = rgb(124, 90, 54),
+          RED = rgb(226, 74, 60), REDDK = rgb(150, 40, 30), GREEN = rgb(112, 178, 64),
+          GREENDK = rgb(56, 110, 36), BROWN = rgb(92, 62, 36);
+        const ink = (s, x, y, sz, fill, op) => {
+          for (let a = 0; a < 8; a++) drawText({ text: s, pos: vec2(x + Math.cos(a * Math.PI / 4) * 2, y + Math.sin(a * Math.PI / 4) * 2), anchor: 'center', size: sz, color: INK, opacity: op == null ? 1 : op });
+          drawText({ text: s, pos: vec2(x, y), anchor: 'center', size: sz, color: fill, opacity: op == null ? 1 : op });
+        };
+        const bw = 560, bh = 250, top = cy - bh / 2, L = cx - bw / 2;
+
+        // FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile.
+        if (hasSprite('ui_popup_bg')) {
+          drawSprite({ sprite: 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+          drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.28 * ap });
+        } else {
+          drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.6 * ap });
+        }
+
+        pushTransform(); pushTranslate(cx, cy + rise); pushScale(scl, scl); pushTranslate(-cx, -cy);
+        drawRect({ pos: vec2(L + 5, top + 9), width: bw, height: bh, radius: 20, color: rgb(18, 11, 6), opacity: 0.34 });
+        drawRect({ pos: vec2(L, top), width: bw, height: bh, radius: 18, color: CREAMLO });
+        drawRect({ pos: vec2(L, top), width: bw, height: bh * 0.55, radius: 18, color: CREAM });
+        drawRect({ pos: vec2(L, top), width: bw, height: bh, radius: 18, fill: false, outline: { width: 4.5, color: GOLD } });
+
+        // ruban KO + soleil
+        const rbw = 168, rbh = 44, rt = top - rbh / 2;
+        drawRect({ pos: vec2(cx - rbw / 2 + 3, rt + 4), width: rbw, height: rbh, radius: rbh / 2, color: rgb(18, 11, 6), opacity: 0.3 });
+        drawRect({ pos: vec2(cx - rbw / 2, rt), width: rbw, height: rbh, radius: rbh / 2, color: RED });
+        drawRect({ pos: vec2(cx - rbw / 2, rt), width: rbw, height: rbh, radius: rbh / 2, fill: false, outline: { width: 3, color: REDDK } });
+        ink('K.O. !', cx, top + 1, 22, CREAM, 1);
+
+        ink('On recommence ?', cx, top + 54, 26, GOLD, 1);
+
+        // deux cartes cote a cote (◀ niveau | boss ▶) ; la selectionnee pulse en vert
+        const opts = bossRetryOK()
+          ? [{ cap: 'NIVEAU', sub: 'Tout le niveau' }, { cap: 'BOSS', sub: 'Juste le boss' }]
+          : [{ cap: 'NIVEAU', sub: 'Tout le niveau' }];
+        const single = opts.length === 1;
+        const ow = single ? 300 : 252, oh = 96, gap = 16;
+        const totW = opts.length * ow + (opts.length - 1) * gap;
+        const oy = cy + 40;
+        opts.forEach((o, i) => {
+          const ox = cx - totW / 2 + i * (ow + gap);
+          const on = (i === deathSel);
+          if (on) drawRect({ pos: vec2(ox - 5, oy - oh / 2 - 5), width: ow + 10, height: oh + 10, radius: 16, color: GREEN, opacity: 0.18 + 0.18 * (0.5 + 0.5 * Math.sin(T * 4)) });
+          drawRect({ pos: vec2(ox + 3, oy - oh / 2 + 4), width: ow, height: oh, radius: 13, color: rgb(18, 11, 6), opacity: 0.16 });
+          drawRect({ pos: vec2(ox, oy - oh / 2), width: ow, height: oh, radius: 13, color: CREAM });
+          drawRect({ pos: vec2(ox, oy - oh / 2), width: ow, height: oh, radius: 13, fill: false, outline: { width: on ? 3.5 : 2.5, color: on ? GREENDK : INKSOFT } });
+          ink(o.cap, ox + ow / 2, oy - 14, 24, on ? GREENDK : INK, 1);
+          drawText({ text: o.sub, pos: vec2(ox + ow / 2, oy + 22), anchor: 'center', size: 15, color: BROWN });
+        });
+
+        const hint = TOUCH_ON ? '(tape une carte)' : (single ? 'ESPACE pour valider' : '◀ ▶ pour choisir  -  ESPACE pour valider');
+        drawText({ text: hint, pos: vec2(cx, top + bh + 22), anchor: 'center', size: 14, color: GOLDHI, opacity: 0.9 });
+        popTransform();
+      });
+    };
+
     // SAUT MODULABLE : relacher SAUT en pleine montee coupe la courbe (petit saut).
     const onKeysRelease = (arr, cb) => arr.forEach((k) => onKeyRelease(k, cb));
     onPlayKey(C.controls.jump, () => {
@@ -3056,13 +3306,27 @@
       if (p.vel) p.vel = vec2(0, p.vel.y);       // repart d'une vitesse horizontale NULLE (anti-glissade)
       addPoof(p.pos.x, p.pos.y - TS * 0.4);
     });
-    onKeys(C.controls.quit, () => { quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
-    onKeyPress('space', confirmQuit);                                        // ESPACE/ENTREE : confirme la sortie
-    onKeyPress('enter', confirmQuit);
-    // Tactile/souris : taper directement une des deux rangees de la boite "quitter"
-    //  (touchToMouse mappe le tap -> souris ; la boite est en repere ecran, donc
-    //  mousePos() est dans le meme repere logique 960x528). Marche aussi a la souris.
+    //  Le popup de MORT a priorite : tant qu'il est ouvert, ESC/ESPACE/ENTREE
+    //  pilotent SON choix (pas la confirmation de sortie).
+    onKeys(C.controls.quit, () => { if (deathBox) return; quitBox ? closeQuit() : openQuit(); });   // ESC : ouvre/ferme la confirmation
+    onKeyPress('space', () => { if (deathBox) { deathConfirm(); return; } confirmQuit(); });        // ESPACE/ENTREE : valide
+    onKeyPress('enter', () => { if (deathBox) { deathConfirm(); return; } confirmQuit(); });
+    // popup mort : saut = valider aussi (OK tactile) ; ◀▶ deplacent la selection.
+    C.controls.jump.forEach((k) => onKeyPress(k, () => { if (deathBox) deathConfirm(); }));
+    C.controls.left.forEach((k) => onKeyPress(k, () => deathSelMove(-1)));
+    C.controls.right.forEach((k) => onKeyPress(k, () => deathSelMove(1)));
+    // Tactile/souris : taper directement une rangee de la boite "quitter" ou une
+    //  carte du popup de mort (touchToMouse mappe le tap -> souris ; les boites
+    //  sont en repere ecran, donc mousePos() est dans le meme repere 960x528).
     onMousePress(() => {
+      if (deathBox) {
+        const m = mousePos(), cx = C.width / 2, cy = C.height / 2;
+        if (Math.abs(m.y - (cy + 40)) <= 54) {                    // bande des cartes -> selectionne + valide
+          deathSel = (bossRetryOK() && m.x > cx) ? 1 : 0;
+          deathConfirm();
+        }
+        return;
+      }
       if (!quitBox) return;
       const m = mousePos(), cx = C.width / 2, cy = C.height / 2;
       if (Math.abs(m.x - cx) > 224) return;                       // hors des rangees
@@ -3308,7 +3572,28 @@
 
       const half = C.width / 2;
       const cx = Math.max(half, Math.min(LEVEL.width - half, p.pos.x));
-      setCam(cx, camY);
+      // CAM VERTICALE : dans une ZONE-CIEL ('|'), la cam suit Laura vers le HAUT
+      //  pour reveler le niveau cache. Mais : ZONE MORTE en bas (PAS de suivi sur
+      //  les sauts au ras du sol — ca ne demarre que quand Laura APPROCHE DU HAUT
+      //  de l'ecran) ET cadrage ~CENTRE quand ca suit (pas de sol visible -> Laura
+      //  en bas fait bizarre). Hors zone / passe toX -> retour epingle en bas.
+      const baseY = LEVEL.baseCamY;
+      let targetY = baseY;
+      const sz = LEVEL.skyZone;
+      if (sz && p.pos.x >= sz.fromX && p.pos.x < sz.toX) {
+        // ou serait Laura A L'ECRAN si la cam restait epinglee en bas (0=haut, C.height=bas)
+        const screenAtBase = p.pos.y - baseY + C.height / 2;
+        const TRIG = C.height * (LEVEL.skyTrig != null ? LEVEL.skyTrig : 0.22);   // declenche quand Laura entre dans le HAUT (> double-saut depuis le sol)
+        const BLEND = C.height * 0.16;                                            // transition douce vers le suivi (pas de saut de cadrage)
+        const t = Math.max(0, Math.min(1, (TRIG - screenAtBase) / BLEND));
+        if (t > 0) {
+          const framed = p.pos.y - C.height * 0.05;                              // Laura un poil SOUS le centre (un peu plus de ciel au-dessus)
+          const top = (LEVEL.skyTop != null) ? LEVEL.skyTop : -TS * 4;
+          targetY = Math.max(top, baseY + (framed - baseY) * t);                 // lerp(base -> centre) selon t
+        }
+      }
+      LEVEL.camY += (targetY - LEVEL.camY) * Math.min(1, dt() * 6);     // lissage (ease)
+      setCam(cx, LEVEL.camY);
     });
   });
 
