@@ -196,8 +196,23 @@ window.CONFIG = {
   //  (autoAimArc) resout la puissance pour atteindre la cible a cet angle.
   //  lobCooldown = delai minimal entre deux lobs lourds (X).
   shot: {
-    rate: 0.26, arcGravity: 1500, arcMin: 0.6, arcMax: 1.6,
+    rate: 0.26, arcGravity: 1500, arcMin: 0.5, arcMax: 1.6,   // arcMin = portee du tir MINI (charge 0) ; arcMax = pleine charge. Sous ~0.46 le cookie (rayon 60) explose SUR Laura -> friendly fire a chaque tap.
     aimDefault: 52, lobCooldown: 0.6,
+    // FRIENDLY FIRE : le souffle de la PATISSERIE (cloche AoE) blesse aussi
+    //  Laura si elle est dans le rayon (vise de trop pres). Fraction des degats
+    //  de la bombe qu'elle encaisse (arrondie au SUP, min 1) ; 0 = desactive.
+    //  0.5 -> cookie 1 / gateau 1 / gateau des enfers 2 coeurs. Le bouclier-
+    //  soleil encaisse devant comme toute blessure (cf. damagePlayer).
+    friendlyFire: 0.5,
+    // PATISSERIE CHARGEABLE (X) : maintenir X gonfle la portee (puissance de
+    //  lancer 0..1 -> vitesse arcMin..arcMax). lobChargeTime = duree de maintien
+    //  pour atteindre la portee MAX ; un simple tap = lob court. Le lancer part
+    //  dans le SENS de Laura (pas d'auto-visee).
+    lobChargeTime: 0.7,
+    // AUTO-VISEE du lob : false = visee manuelle (charge + sens de Laura). Le
+    //  tactile mobile (assistAim) reste auto-vise quoi qu'il arrive ; ce flag
+    //  (ou PLAYER.lobAuto, futur pickup Imagen) RE-ACTIVE l'auto-visee au clavier.
+    lobAutoAim: false,
     // throwHold = duree de la pose de lancer apres CHAQUE tir. DOIT etre > rate
     //  sinon, en rafale (maintien), la pose retombe 1 frame sur course/saut entre
     //  deux tirs (clignotement). L'anim est rejouee a chaque tir (cf. playerShoot)
@@ -379,10 +394,13 @@ window.CONFIG = {
     abeille:      { sprite: 'enemy_abeille',      hp: 1, touchDamage: 1, move: 'fly',     speed: 130, range: 150, amp: 36, anim: 'walk', score: 130, scale: 0.5 , hit: { w: 0.86, h: 0.87 } },
     //  SOL (rampe vite, bas)
     cafard:       { sprite: 'enemy_cafard',       hp: 1, touchDamage: 1, move: 'chase',   speed: 165, range: 90,  aggro: 500, anim: 'walk', score: 100, scale: 0.5, hit: { w: 0.92, h: 0.68 } },
-    //  VEHICULE (va-et-vient, gros degats)
-    transpalette: { sprite: 'enemy_transpalette', hp: 6, touchDamage: 2, move: 'patrol',  speed: 150, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.68, h: 0.80 } },
-    livreur:      { sprite: 'enemy_livreur',      hp: 6, touchDamage: 2, move: 'patrol',  speed: 120, range: 130, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.82 } },
-    coursier:     { sprite: 'enemy_coursier',     hp: 6, touchDamage: 2, move: 'patrol',  speed: 140, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, hit: { w: 0.90, h: 0.85 } },
+    //  VEHICULE (va-et-vient, gros degats). ignorePanel:true -> ces engins qui
+    //  roulent au sol (dont le cycliste 'coursier') TRAVERSENT les panneaux comme
+    //  le boss : sans ca un deck de panneaux bas dans leur va-et-vient les coince
+    //  (cf. spawnEnemy / collisionIgnore 'panel' ; meme raison que le boss).
+    transpalette: { sprite: 'enemy_transpalette', hp: 6, touchDamage: 2, move: 'patrol',  speed: 150, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, ignorePanel: true, hit: { w: 0.68, h: 0.80 } },
+    livreur:      { sprite: 'enemy_livreur',      hp: 6, touchDamage: 2, move: 'patrol',  speed: 120, range: 130, aggro: 460, anim: 'walk', score: 260, scale: 1.0, ignorePanel: true, hit: { w: 0.90, h: 0.82 } },
+    coursier:     { sprite: 'enemy_coursier',     hp: 6, touchDamage: 2, move: 'patrol',  speed: 140, range: 140, aggro: 460, anim: 'walk', score: 260, scale: 1.0, ignorePanel: true, hit: { w: 0.90, h: 0.85 } },
     //  TIR (shooter)
     imprimante:   { sprite: 'enemy_imprimante',   hp: 4, touchDamage: 1, move: 'shooter', shotEvery: 2.0, range: 440, shotSpeed: 260, anim: 'walk', score: 230, scale: 0.95, shot: 'shot_boulette', hit: { w: 0.92, h: 0.78 } },
     chips:        { sprite: 'enemy_chips',        hp: 2, touchDamage: 1, move: 'shooter', shotEvery: 2.4, range: 400, shotSpeed: 230, anim: 'walk', score: 160, scale: 0.7 , shot: 'shot_chip', hit: { w: 0.92, h: 0.88 } },
@@ -395,7 +413,7 @@ window.CONFIG = {
     // minions de boss (reutilisent des sprites existants)
     //  anim 'walk' : la feuille criquet regeneree n'a plus de clip 'hop' (cf.
     //  enemy_criquet plus bas) — 'hop' laissait le minion FIGE frame 0.
-    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'walk', score: 60, hit: { w: 0.54, h: 0.82 } },   // sprite criquet -> meme hit.w re-derive (cellule 302)
+    bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'walk', scale: 0.6, score: 60, hit: { w: 0.54, h: 0.82 } },   // scale 0.6 = taille d'un vrai criquet (sans ce champ, scale defaut 1 -> minion du jury ~1.67x trop GROS). sprite criquet -> meme hit.w re-derive (cellule 302)
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120, hit: { w: 0.88, h: 0.83 } },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
@@ -467,6 +485,7 @@ window.CONFIG = {
     rstudio:      { sprite: 'boss_rstudio_move', attackSprite: 'boss_rstudio_atk', behavior: 'errors',
                     hp: 100, maxHp: 100, guard: 0.35, touchDamage: 2, shotSpeed: 280, speed: 60, range: 470, score: 1700, name: 'RSTUDIO', shot: 'shot_error',
                     attackTime: 2.5, burstGap: 0.8, summonTime: 2.0, loadTime: 1.5,
+                    summonDelay: 0.7,
                     p2BurstGap: 0.6 },
 
     // niveau4 (Labo) — michael (IA 'modeles').
@@ -478,29 +497,35 @@ window.CONFIG = {
     //  pour la "bombe en papier" (avant : shot_paper, un avion en papier qui
     //  CHUTAIT en tournoyant — le fameux "feuille qui se transforme en avion").
     michael:      { sprite: 'boss_michael_move', attackSprite: 'boss_michael_atk', behavior: 'modeles',
-                    hp: 125, maxHp: 125, guard: 0.3, touchDamage: 2, shotSpeed: 300, speed: 80, range: 500, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
+                    hp: 125, maxHp: 125, guard: 0.3, touchDamage: 2, shotSpeed: 480, speed: 80, range: 500, score: 2100, name: 'MICHAEL LE DIRECTEUR', shot: 'shot_chart', bomb: 'shot_boulette',
                     aimTime: 1.0, recalcTime: 1.0, keepMin: 220, keepMax: 440,
                     p2KeepMin: 180, p2KeepMax: 380 },
 
     // niveau5 (Universite) — cendrine (IA 'paperasse') : LE PLUS DUR DES 5.
-    //  pre (annonce la destination du TP, preTime) -> implosion (retrecit+clignote,
-    //  implodeTime) -> TP + eventail de formN formulaires + TAMPON-PIEGE (throwTime)
-    //  -> window (PUNITION, windowTime). Esquive : dash apres le TP / les tampons.
+    //  pre (annonce la destination du TP, preTime) -> implosion (TP qui retrecit+
+    //  clignote, implodeTime — LENT : Cendrine prend le DOUBLE de degats pendant
+    //  toute l'implosion, b.teleporting -> dmgMult 2 lu par hitBoss) -> TP +
+    //  eventail de formN formulaires HORIZONTAUX (shootH) + FLAQUE au sol lobee
+    //  apres une incantation (castTime) tous les hazardEvery s, qui FUSIONNE avec
+    //  une flaque voisine a < hazardMerge px (throwTime) -> window (PUNITION,
+    //  windowTime). Esquive : dash apres le TP / les flaques.
     cendrine:     { sprite: 'boss_cendrine_move', attackSprite: 'boss_cendrine_atk', behavior: 'paperasse',
-                    hp: 165, maxHp: 165, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 520, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
-                    preTime: 0.4, implodeTime: 0.18, throwTime: 0.3, windowTime: 1.2, formN: 4,
-                    p2FormN: 6, p2HazardDur: 3.5, p2WindowTime: 0.9 },
+                    hp: 125, maxHp: 125, guard: 0.3, touchDamage: 2, shotSpeed: 330, speed: 90, range: 520, score: 2600, name: 'CENDRINE LA RESPONSABLE', shot: 'shot_form',
+                    preTime: 0.4, implodeTime: 0.36, throwTime: 0.3, windowTime: 1.2, formN: 4,
+                    castTime: 0.45, hazardEvery: 3.0, hazardMerge: 130, hazardDur: 4.0, teleDmgMult: 2,
+                    p2FormN: 6, p2HazardDur: 5.0, p2WindowTime: 0.9 },
 
     // FINAL — jury (IA 'jury') : megaboss 3 phases selon HP. >66% Q&A (eventail 3,
     //  cadence shotEvery) ; 33-66% debat (eventail 5 + anneau de ringN + minion) ;
-    //  <33% verdict (eventail de panicN + bombes + MUR A TROU a dasher). enrageTime
+    //  <33% verdict (ROTATION d'UNE menace par beat : eventail de panicN, OU mur a
+    //  trou, OU bombe ciblee + tampon — plus de cumul, cf. AI.jury). enrageTime
     //  = pose marquee au changement de phase. Esquive : lob a distance puis DASH.
     //  shot 'shot_page' = page de these volante : c'est ce que les 3 jures JETTENT
     //  sur leur feuille _atk (le marteau shot_gavel etait iconique mais aucun jure
     //  n'en brandit ; il reste sur disque si on veut revenir en arriere).
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
                     hp: 270, maxHp: 270, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
-                    enrageTime: 0.7, ringN: 8, panicN: 9, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve
+                    enrageTime: 0.7, ringN: 8, panicN: 7, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve ; panicN = largeur de l'eventail verdict (phase 2 rotationne UNE menace/beat, cf. AI.jury)
   },
 
   // --- Collectibles ---------------------------------------------------
@@ -518,6 +543,17 @@ window.CONFIG = {
     //  via 'e' (puissance) / 'i' (cadence) -> buildLevel. Fallback propre si PNG absent.
     puissance: { sprite: 'pickup_puissance', score: 60, upgrade: 'power' },  // +1 PUISSANCE (force)
     cadence:   { sprite: 'pickup_cadence',   score: 60, upgrade: 'rate'  },  // +1 CADENCE (vitesse de tir)
+    // PIEGES (cf. CONFIG.trap) : MEME sprite que les versions normales (pilule /
+    //  champignon) -> indiscernables a l'oeil. Au ramassage : AUCUN benefice, juste
+    //  l'effet "camera inversee" (la vue se renverse qq secondes). Re-skin via
+    //  theme.pickups['pilulepiege'/'champipiege'] si un niveau veut un autre look.
+    pilulepiege:  { sprite: 'pickup_pilule',     score: 0, trap: 'invert' },  // pilule PIEGEE : inverse la cam
+    champipiege:  { sprite: 'pickup_champignon', score: 0, trap: 'invert' },  // champignon PIEGE : inverse la cam
+  },
+
+  // --- Pieges (pickups piegees, cf. pickups.*.trap) -------------------
+  trap: {
+    invertDuration: 4,   // secondes pendant lesquelles la camera reste renversee (vue sens dessus dessous)
   },
 
   // --- Equipements (objets a ramasser qui changent Laura) -------------
@@ -761,7 +797,7 @@ window.CONFIG = {
               'Des rizières à la colloc, de la serre au labo puis à la fac,\n' +
               'jusqu à la soutenance : bats chaque boss pour écrire ta thèse !',
     hint:     'Gauche/Droite ou Q/D bouger   HAUT sauter (relache tot = petit saut)\n' +
-              'ESPACE tir   X lob lourd   MAJ dash   C chat   BAS+SAUT descend d un panneau   ESC quitter',
+              'ESPACE tir   X (tiens) lob lourd   MAJ dash   C chat   BAS+SAUT descend d un panneau   ESC quitter',
     start:    'Appuie sur ESPACE pour commencer',
     slots:    'CHOISIS TA SAUVEGARDE',
     overworld:'Choisis un chapitre (ESPACE pour entrer)',
@@ -772,6 +808,7 @@ window.CONFIG = {
     bossWarn: 'Bats le boss pour écrire le chapitre !',
     catEmpty: 'Plus de chat ! (ramasse des croquettes)',
     publi:    'PUBLICATION TROUVEE ! +100%',
+    trapInvert: 'OUPS... TOUT TOURNE !',      // pilule/champignon PIEGE : la cam se renverse qq s (sans accents : font bitmap)
     // v2 : boss (garde/fenetres), checkpoint d'arene, medailles (cf. GAMEPLAY.md)
     bossOpen:  'OUVERT !',                    // fenetre de vulnerabilite du boss
     bossGuard: 'GARDE !',                     // 1er tir encaisse en garde (pedagogie)

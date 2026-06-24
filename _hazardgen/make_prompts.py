@@ -23,65 +23,63 @@ PREAMBLE = (
     'pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw '
     'procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image '
     'generator. You will generate {n} separate sprite(s) (one image_gen call '
-    'each), each a DEADLY PIT carved into the ground for a 16-bit platformer.\n\n'
-    'STYLE (every sprite): retro 16-bit SNES pixel-art, crisp visible square '
-    'pixels, BOLD dark outline, limited saturated palette, flat cel shading, '
-    'high contrast. NO smooth gradients, NO anti-aliasing, NO 3D render, NO '
-    'painterly/airbrushed look. This is a cheerful agrivoltaics-PhD farming '
-    'platformer (rice paddies, lab research, French academia).\n\n'
-    'WHAT IT IS (every sprite): a HOLE / PIT carved into the FLOOR that the player '
-    'looks DOWN into -- a recessed trap she runs over. Seen from a STEEP overhead '
-    '3/4 angle (as if standing right over it, looking down INTO it).\n'
-    'GEOMETRY (CRITICAL -- read carefully, every sprite):\n'
-    '  - WIDE and SHORT image (about 2:1, much wider than tall).\n'
-    '  - The OPENING is a WIDE foreshortened ELLIPSE that lies FLAT on the ground '
-    'and FILLS the frame. You look straight DOWN into the hole.\n'
-    '  - The DANGER (acid / stakes / spikes) FILLS the whole opening and is fully '
-    'visible from above -- it is the main subject, NOT hidden at a far bottom.\n'
-    '  - Only a SHALLOW band of inner WALL shows around the rim, darkening fast '
-    'with depth (trompe-l\'oeil: it reads as a deep shaft whose bottom you cannot '
-    'see). Near (front/bottom) rim lit from the UPPER-LEFT; far (top) rim is the '
-    'back edge.\n'
-    'IT IS A HOLE IN THE FLOOR (flat ground decal) -- NOT a bucket, pot, cauldron, '
-    'barrel, basket, tub, bowl or vessel, and NOT a wall/billboard standing up. Do '
-    'NOT draw any OUTSIDE of a container (no belly, base, handles, legs). Only the '
-    'ground cut away and the inside of the hole, seen from above.\n\n'
-    'TROMPE-L\'OEIL (THE WHOLE POINT): a flat decal that creates a CONVINCING '
-    'illusion of a REAL hole the player could fall into -- like anamorphic '
-    'sidewalk-chalk "pit" street-art, but clean 16-bit pixel art. Sell depth with '
-    'strong upper-left light, a bright sunlit near rim, a hard dark inner-shadow '
-    'just under the rim, and the danger sitting down inside. Cracks/dirt/tiles on '
-    'the rim continue the surrounding floor. Carved and three-dimensional, never a '
-    'flat painted patch, never a cartoon black oval.\n\n'
-    'BACKGROUND (every sprite): fill the ENTIRE area AROUND the pit with ONE '
-    'perfectly FLAT solid #ff00ff magenta (chroma-key, removed later) so the pit '
-    'composites into ANY floor. Only a THIN ring of exposed earth/material may '
-    'border the mouth. The pit fills ~85% of the frame, mouth touching the top. '
-    'NO drop shadow on the magenta, NO floor texture around it, NO gradient, NO '
-    'text, NO frame, NO grid, NO watermark. NEVER use magenta/pink inside the pit.'
+    'each), each a SQUARE TILE of a floor HAZARD STRIP for a SIDE-SCROLLING 16-bit '
+    'platformer.\n\n'
+    'STYLE (every sprite): retro 16-bit SNES pixel-art, CHUNKY and COARSE. BIG bold '
+    'shapes, THICK dark outlines, large flat cel-shaded color areas, only a FEW '
+    'large elements. BIG visible square pixels, LOW native resolution look (as if '
+    'drawn at about 32-40 px wide then enlarged). NO fine/dense/intricate detail, '
+    'NO thin lines, NO tiny repeated specks, NO smooth gradients, NO anti-aliasing, '
+    'NO 3D render, NO painterly/airbrushed look. Cheerful agrivoltaics-PhD farming '
+    'game (rice paddies, lab research, French academia).\n\n'
+    'VIEW / PERSPECTIVE (CRITICAL -- this is the #1 requirement): SIDE VIEW (side '
+    'elevation), the way the player sees the world in a SIDE-SCROLLER -- looking at '
+    'it horizontally FROM THE SIDE, only very slightly from above (~15 degrees). You '
+    'SEE THE SIDE of the danger and a bit of its DEPTH, exactly like the spikes and '
+    'the lava/acid in Super Mario or Metroid. This is absolutely NOT a top-down / '
+    'map view: do NOT look straight down into a hole.\n\n'
+    'WHAT IT IS (every sprite): a horizontal STRIP of deadly hazard set into the '
+    'FLOOR, seen from the side. The TOP edge of the tile is the GROUND SURFACE LINE '
+    '(where the player runs); just BELOW it the danger sits in a shallow trough cut '
+    'into the ground. Show a little DEPTH on the side: a lit near edge (top-left) and '
+    'a darker recess behind/below. In-game many identical tiles are laid edge-to-edge '
+    'into ONE long strip -- so it MUST TILE SEAMLESSLY left-to-right.\n'
+    'GEOMETRY (CRITICAL):\n'
+    '  - PERFECT SQUARE image (1:1); the hazard FILLS THE WHOLE SQUARE edge to edge.\n'
+    '  - SEAMLESS HORIZONTAL TILING: the ground line and the danger run STRAIGHT OFF '
+    'both the LEFT and the RIGHT edge so copies abut into one continuous strip. Draw '
+    'NO left wall and NO right wall -- the pattern simply continues sideways.\n'
+    '  - It is a FLOOR HAZARD STRIP -- NOT a single centered object, NOT a bucket / '
+    'pot / vessel, NOT a wall standing up, NOT a top-down hole.\n\n'
+    'BACKGROUND (every sprite): the hazard fills the ENTIRE square (opaque tile, '
+    'essentially no background). If any sliver is left in the very corners, make it '
+    'FLAT solid #ff00ff magenta (chroma-key, removed/cropped later). NO drop shadow, '
+    'NO gradient halo, NO text, NO frame border, NO grid lines, NO watermark. NEVER '
+    'use magenta inside the art, and NEVER along the LEFT or RIGHT edges (they must '
+    'stay live so the tiling is seamless).'
 )
 
-# nom de sortie -> description du DANGER au fond + matiere du rebord
+# nom de sortie -> description du DANGER (vue de COTE, gros et grossier)
 HAZARDS = {
     "hazard_paddy": (
-        "RICE-PADDY PUNJI PIT (outdoor), seen from ABOVE. A nest of sharpened "
-        "BAMBOO / wooden stakes pointing UP at the viewer out of murky brown-green "
-        "muddy paddy water that fills the opening, with water ripples and glints. "
-        "Stakes are tan/green with dark sharp tips, menacing. The rim is wet "
-        "exposed MUD/EARTH with a few reeds. Muddy, wet, organic, lethal."
+        "RICE-PADDY PUNJI HAZARD (outdoor), SIDE VIEW. A row of BIG CHUNKY sharpened "
+        "BAMBOO stakes pointing UP, seen from the SIDE, planted in muddy brown-green "
+        "paddy water/earth. Only a FEW large stakes across (about 4 to 6), thick dark "
+        "outlines, tan/green bamboo with dark sharp tips and a bright top-left "
+        "highlight on each. Big, bold, menacing, lethal."
     ),
     "hazard_acid": (
-        "INDOOR ACID PIT (laboratory), seen from ABOVE. A wide pool of bubbling "
-        "TOXIC ACID-GREEN corrosive liquid fills the opening, glowing, with rising "
-        "bubbles and a bright caustic sheen. The rim is BROKEN CRACKED TILE / pale "
-        "concrete (light, so it reads on a dark floor), with a drip or two. "
-        "Industrial, chemical, lethal."
+        "INDOOR ACID HAZARD (laboratory), SIDE VIEW. A trough of bubbling TOXIC "
+        "ACID-GREEN corrosive liquid set into the floor, seen from the side: a big "
+        "wavy bright surface line near the top and a FEW BIG round rising bubbles, "
+        "glowing caustic green, with a darker recess behind. Chunky, bold, lethal."
     ),
     "hazard": (
-        "STEEL SPIKE PIT (generic), seen from ABOVE. A bed of sharp grey IRON / "
-        "STEEL spikes points UP at the viewer from a dark hole, cold metal with "
-        "bright highlights and deep shadow between them. The rim is cracked stone "
-        "/ dark metal. Stark and lethal."
+        "STEEL SPIKE HAZARD (generic), SIDE VIEW. A row of BIG CHUNKY triangular "
+        "grey IRON / STEEL spikes pointing UP, seen from the SIDE, set into a dark "
+        "metal/stone trough in the floor. Only a FEW large spikes across (about 4 to "
+        "6), thick dark outlines, cold metal with a bright highlight on the "
+        "upper-left face and a dark shadow side. Stark, bold, lethal."
     ),
 }
 
@@ -93,9 +91,11 @@ def main():
     for name, subject in HAZARDS.items():
         body = (
             head + "\n\n=== SPRITE: " + name + " ===\n" + subject + "\n\n"
-            "Save the raw magenta sheet as: " + os.path.join(RAW, name + ".png") + "\n"
-            "Make it WIDE and SHORT (about 2:1), the elliptical opening filling the "
-            "frame, danger seen from above.\n"
+            "Save the raw sheet as: " + os.path.join(RAW, name + ".png") + "\n"
+            "Make it a PERFECT SQUARE (1:1), SIDE VIEW (NOT top-down), CHUNKY/COARSE "
+            "with only a FEW big bold elements (thick outlines, big pixels), and "
+            "SEAMLESSLY TILEABLE left-to-right (ground line + danger run straight off "
+            "both side edges; no left/right wall).\n"
         )
         path = os.path.join(PROMPTS, name + ".txt")
         with open(path, "w") as f:

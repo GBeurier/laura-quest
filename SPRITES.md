@@ -123,9 +123,9 @@ boucle (+ flash d'opacité). Ancre **bot**.
 | `sun_goal` | Soleil = sortie du niveau | 128×128 | 256×256 | center |
 | `tile_soil` | Terre (sol) | 48×48 | 96×96 | topleft |
 | `tile_panel` | Panneau solaire (plateforme) | 48×48 | 96×96 | topleft |
-| `hazard_paddy` | Fosse-piège EXTÉRIEUR (riziere : piques de bambou) | ~72×35 | ~144×70 | **bot** |
-| `hazard_acid` | Fosse-piège INTÉRIEUR (acide vert) | ~72×34 | ~144×67 | **bot** |
-| `hazard` | Fosse-piège générique (piques d'acier, fallback) | ~72×30 | ~144×59 | **bot** |
+| `hazard_paddy` | Piège EXTÉRIEUR (riziere : piques de bambou), **tuile carrée tileable** | 48×48 | 96×96 | **top** |
+| `hazard_acid` | Piège INTÉRIEUR (acide vert), **tuile carrée tileable** | 48×48 | 96×96 | **top** |
+| `hazard` | Piège générique (piques d'acier, fallback), **tuile carrée tileable** | 48×48 | 96×96 | **top** |
 | `heart` | Cœur de vie (HUD) | 28×28 | 56×56 | topleft |
 | `fx_tear` | Larme (sort « pleurer ») | 28×28 | 56×56 | center |
 | `fx_grumble` | Bulle (sort « râler ») | 76×52 | 152×104 | center |
@@ -136,16 +136,17 @@ boucle (+ flash d'opacité). Ancre **bot**.
 > Le **panneau cassable** (`x` dans la map) réutilise `tile_panel` teinté rouge — pas de
 > nouveau sprite à dessiner ; il explose après un saut dessus (cf. `js/level.js`).
 >
-> **Fosses-pièges (`hazard*`, map `%`)** : ancre **`bot`** — le sprite est posé
-> **à plat sur le sol** (la lèvre proche au ras du sol, légèrement enfoncée). Le
-> jeu a très peu de hauteur sous le sol (le HUD est juste dessous), donc on ne
-> peut PAS plonger vers le bas : dessine un **TROU VU DE DESSUS** (trompe-l'œil),
-> ouverture **large et basse** (~2:1), le **danger (piques / acide) remplit
-> l'ouverture** et reste visible, fines parois qui s'assombrissent (illusion de
-> profondeur). Un trou dans le sol, **pas un seau ni un panneau debout**. Autour =
-> transparent (composite sur n'importe quel sol). Skin par biome via
-> `theme.hazard`. Art : `_hazardgen/` (Codex `image_gen`, trompe-l'œil) ;
-> placeholders : `python3 tools/gen_hazard_placeholders.py`.
+> **Sols-pièges (`hazard*`, map `%`)** : **TUILE CARRÉE** (96×96 = 48×48 affiché =
+> UNE case) **VUE DE DESSUS** (trompe-l'œil), **tileable horizontalement**. Des `%`
+> contigus **fusionnent** : le moteur pose N tuiles bord à bord → **UNE plaque-piège
+> qui grandit en largeur** (`spawnHazardSpan`, `js/game.js`). Donc le **danger
+> (piques / acide) remplit tout le carré bord à bord** et **déborde des bords
+> gauche/droit** (pas de mur latéral) ; seul un **liseré HAUT** (bord lointain
+> sombre) et un **liseré BAS** (bord proche éclairé) → les tuiles se raccordent sans
+> couture. Plein cadre opaque (plus de coins ronds transparents). Un trou dans le
+> sol, **pas un seau ni un panneau debout**. Skin par biome via `theme.hazard`.
+> Art : `_hazardgen/` (Codex `image_gen`) ; placeholders :
+> `python3 tools/gen_hazard_placeholders.py`.
 >
 > **Plateformes par décor (cap + pied) :** la plateforme `-`/`x` = un *cap* (haut où l'on
 > marche) + un *pied* étiré au sol (`addPanelDeco`). Le cap est reskinné par `theme.tiles['-']`

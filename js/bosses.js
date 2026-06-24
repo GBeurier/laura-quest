@@ -16,6 +16,13 @@
  *           game.js) gardent leur shake.
  *
  *  CONTRAT game.js <-> IA (passe "difficulte & boss" v2) :
+ *   - b.dmgMult : MULTIPLICATEUR des degats infliges au boss (defaut 1, re-pose
+ *     a 1 par game.js AVANT chaque frame d'IA, lu par hitBoss apres la garde).
+ *     Une IA le passe > 1 pour ouvrir une fenetre de FAIBLESSE ponctuelle sans
+ *     toucher a la garde (Cendrine : 2 pendant toute l'implosion de teleport,
+ *     champ b.teleporting). api.hazard a un 5e parametre `merge` (px) : si une
+ *     flaque de boss (temp) est plus proche que `merge`, les deux FUSIONNENT en
+ *     une plaque plus large (cf. spawnHazardSpan / '%' contigus, cote game.js).
  *   - b.guard : multiplicateur des degats ENCAISSES hors fenetre. game.js le
  *     re-pose a (b.def.guard != null ? b.def.guard : 0.35) AVANT chaque frame
  *     d'IA ; l'IA le force a 1 A CHAQUE FRAME de ses etats de punition
@@ -108,6 +115,22 @@ window.BOSS_AI = (() => {
     const c = Math.cos(spread), s = Math.sin(spread);
     const d = vec2(base.x * c - base.y * s, base.x * s + base.y * c);
     api.bullet(b.pos.x, b.pos.y - api.TS, { pos: b.pos.add(d.scale(100)) }, speed, 'boss', b.def.shot);
+  }
+  // tir HORIZONTAL vers le joueur (cote gauche/droite), depuis le TORSE du boss.
+  //  base = (sign(dx), 0) -> Y nul : ne plonge JAMAIS dans le sol (le joueur et
+  //  le boss sont ancres 'bot', donc viser p.pos vers le bas envoyait le tir au
+  //  ras du sol). "spread" est ici un ecart VERTICAL leger (eventail) en
+  //  tournant ce vecteur horizontal -> reste quasi a plat. Le point de DEPART et
+  //  le point VISE sont au MEME y (torse = b.pos.y - TS) : sinon le decalage TS
+  //  entre spawn (torse) et cible (ancree b.pos = pieds) rajoutait un biais vers
+  //  le bas (le tir "horizontal" plongeait quand meme de ~25 deg). api.bullet vise
+  //  target.pos depuis (x,y), donc on construit la cible relative a CE meme y.
+  function shootH(b, p, api, speed, spread) {
+    const dir = Math.sign(p.pos.x - b.pos.x) || (b.dir || -1);
+    const c = Math.cos(spread), s = Math.sin(spread);
+    const ox = b.pos.x, oy = b.pos.y - api.TS;       // origine = torse
+    const aim = vec2(ox + dir * 100 * c, oy + dir * 100 * s);  // cible au meme niveau (oy)
+    api.bullet(ox, oy, { pos: aim }, speed, 'boss', b.def.shot);
   }
   // tir dans une DIRECTION precise (dir = vec2 unitaire), pas vers le joueur
   function shootDir(b, api, dir, speed, kind) {
@@ -452,7 +475,9 @@ window.BOSS_AI = (() => {
       if (b.mt > 0.5) { b.ms = 'recalc'; b.mt = 0; b.spawned = false; }
     } else if (b.ms === 'overload') {
       // OVERLOAD : telegraphe (poofs autour du boss) puis eventail de 3 tirs
-      //  VISES (shoot() vise bien le joueur depuis le torse).
+      //  HORIZONTAUX vers le joueur (shootH = depuis le torse, Y nul -> ne
+      //  plonge plus dans le sol ; l'ancien shoot() visait p.pos = pieds du
+      //  joueur vers le bas et enfoncait les graphiques dans le plancher).
       b.animWant = 'attack';
       if (!b.threw && b.mt < 0.06) {
         api.poof(b.pos.x - 20, b.pos.y - api.TS * 1.4);
@@ -461,7 +486,7 @@ window.BOSS_AI = (() => {
       }
       if (!b.threw && b.mt > 0.3) {
         b.threw = true;
-        [-0.2, 0, 0.2].forEach((s) => shoot(b, p, api, sp, s));
+        [-0.12, 0, 0.12].forEach((s) => shootH(b, p, api, sp, s));
       }
       if (b.mt > 0.6) { b.ms = 'recalc'; b.mt = 0; b.spawned = false; }
     } else {
@@ -496,6 +521,7 @@ window.BOSS_AI = (() => {
     b.st += dt();
     const attackT = b.def.attackTime || 2.5;   // FIRE : 3 salves de tripleShoot
     const summonT = b.def.summonTime || 2.0;   // SUMMON : cafards fragiles
+    const summonDelay = b.def.summonDelay || 0;// SUMMON : +delai apres le dernier tir avant l'invocation
     const loadT = b.def.loadTime || 1.5;       // LOAD : punition
     const burstGap = b.p2 ? (b.def.p2BurstGap || 0.6) : (b.def.burstGap || 0.8);
     const sp = b.def.shotSpeed || 255;
@@ -523,12 +549,14 @@ window.BOSS_AI = (() => {
       //  Flag PUR (pas "st < 0.06") : une frame longue sautait la fenetre ->
       //  AUCUNE invocation du cycle (st incremente avant le test).
       b.animWant = 'idle';
-      if (!b.summoned) {
+      // +summonDelay : on attend ce delai apres le dernier tir (fin de salve =
+      //  entree dans 'summon', b.st=0) avant de lancer l'invocation.
+      if (!b.summoned && b.st >= summonDelay) {
         b.summoned = true;
         const n = (b.hp / b.maxHp < 0.5) ? 3 : 2;
         for (let i = 0; i < n; i++) spawnEnFace(b, p, api, 'cafard');
       }
-      if (b.st > summonT) { b.state = 'load'; b.st = 0; b.burst = 0; }
+      if (b.st > summonT + summonDelay) { b.state = 'load'; b.st = 0; b.burst = 0; }
     } else {
       // LOAD ("loading...") : ne tire plus, immobile -> FENETRE DE PUNITION
       b.animWant = 'idle';
@@ -541,24 +569,35 @@ window.BOSS_AI = (() => {
 
   /* =====================================================================
    *  CENDRINE la secretaire — le boss le plus DUR des 5.
-   *  Teleportation TELEGRAPHEE (poof a la destination future) + eventail
-   *  de formulaires + tampon-piege au sol. Fenetre de vulnerabilite apres
-   *  chaque salve (garde levee). Cycle : pre -> implosion/tp -> throw -> window.
+   *  Teleportation TELEGRAPHEE (poof a la destination future) + eventail de
+   *  formulaires HORIZONTAUX (shootH : ne plonge plus dans le sol) + FLAQUE au
+   *  sol. Fenetre de vulnerabilite apres chaque salve (garde levee).
+   *  Cycle : pre -> implosion/tp -> throw -> cast(flaque) -> window.
+   *  TELEPORT = fenetre de FAIBLESSE : pendant TOUTE l'implosion (longue,
+   *  implodeTime), b.teleporting -> b.dmgMult = 2 (DOUBLE degats, lu par hitBoss).
+   *  FLAQUE : lobee apres une INCANTATION (castTime), elle TOMBE au sol (gere
+   *  cote game.js : surfaceUnderFeet) et FUSIONNE avec une flaque voisine
+   *  (< hazardMerge px) en une plaque plus large/plus durable. Espacees dans le
+   *  temps (hazardEvery : pas a chaque salve).
    *  PHASE 2 : DOUBLE TP enchaine (apres le 1er throw, re-pre RACCOURCI
-   *  (preTime x0.5) -> implosion -> 2e throw, PUIS window), formN p2FormN,
-   *  tampon-piege plus long (p2HazardDur), window plus courte (p2WindowTime).
+   *  (preTime x0.5) -> implosion -> 2e throw, PUIS cast/window), formN p2FormN,
+   *  flaque plus longue (p2HazardDur), window plus courte (p2WindowTime).
    * ===================================================================== */
   AI.paperasse = function (b, p, api) {
-    if (b.ps === undefined) { b.ps = 'pre'; b.pt = 0; b.destX = b.homeX; b.threw = false; b.chain = 0; b.destDone = false; }
+    if (b.ps === undefined) { b.ps = 'pre'; b.pt = 0; b.destX = b.homeX; b.threw = false; b.chain = 0; b.destDone = false; b.hazCd = 0; b.casted = false; }
     if (b._baseScale === undefined) { b._baseScale = b.scale ? b.scale.clone() : vec2(1, 1); }
     if (b.p2Just) p2Tell(b, api);
     b.pt += dt();
+    if (b.hazCd > 0) b.hazCd -= dt();          // cooldown de FLAQUE (espace les flaques dans le temps)
     const preT = (b.def.preTime || 0.4) * (b.chain ? 0.5 : 1);  // 2e TP du combo p2 : annonce raccourcie
-    const imploT = b.def.implodeTime || 0.18;   // duree de l'implosion spectaculaire
+    const imploT = b.def.implodeTime || 0.36;   // duree de l'implosion (TP LENT = fenetre de double-degats)
     const throwT = b.def.throwTime || 0.3;
+    const castT = b.def.castTime || 0.45;       // INCANTATION avant que la flaque sorte
     const windowT = b.p2 ? (b.def.p2WindowTime || 0.9) : (b.def.windowTime || 1.2);
     const formN = b.p2 ? (b.def.p2FormN || 6) : (b.def.formN || 4);
-    const hazardDur = b.p2 ? (b.def.p2HazardDur || 3.5) : 2.5;
+    const hazardDur = b.p2 ? (b.def.p2HazardDur || 3.5) : (b.def.hazardDur || 2.5);
+    const hazardEvery = b.def.hazardEvery || 4.2;     // delai mini entre deux flaques
+    const hazardMerge = b.def.hazardMerge || 130;     // distance de FUSION de deux flaques (px)
     const sp = b.def.shotSpeed || 220;
     const range = b.range || 360;
 
@@ -582,8 +621,14 @@ window.BOSS_AI = (() => {
     } else if (b.ps === 'implosion') {
       // TELEPORT SPECTACULAIRE : le boss implose (scale->0 + clignote) sur place,
       //  poof dense, puis reapparait a destX en flash, restaure scale/opacite.
+      //  TP LENT (imploT double) + FENETRE DE FAIBLESSE : pendant TOUTE l'implosion
+      //  Cendrine prend le DOUBLE de degats (b.teleporting -> b.dmgMult lu par
+      //  hitBoss). On NE leve PAS guard (la garde reste la garde) : c'est juste un
+      //  multiplicateur -> taper pendant le TP fait mal.
       faceOnly(b, p);
       b.animWant = 'idle';
+      b.teleporting = true;
+      b.dmgMult = b.def.teleDmgMult || 2;
       const k = Math.min(1, b.pt / imploT);
       const s = 1 - k;
       b.scale = b._baseScale.scale(s);
@@ -594,23 +639,41 @@ window.BOSS_AI = (() => {
         b.pos.x = b.destX;
         b.scale = b._baseScale.clone();
         b.opacity = 1;
+        b.teleporting = false;
         api.poof(b.pos.x, b.pos.y - api.TS); api.poof(b.pos.x + 16, b.pos.y - api.TS - 12);
         faceOnly(b, p);
         b.ps = 'throw'; b.pt = 0; b.threw = false;
       }
     } else if (b.ps === 'throw') {
-      // eventail de formulaires + TAMPON-PIEGE au sol (zone interdite, telegraphe
-      //  0.5s) sur la position du joueur -> on dash a l'oppose.
+      // eventail de formulaires HORIZONTAUX (shootH : depuis le torse, Y nul -> ne
+      //  plonge plus dans le sol ; l'ancien shoot() visait p.pos = pieds du joueur
+      //  vers le bas et enfoncait les formulaires dans le plancher).
       b.animWant = 'attack';
       faceOnly(b, p);
       if (!b.threw) {
         b.threw = true;
         const half = (formN - 1) / 2;
-        for (let i = 0; i < formN; i++) shoot(b, p, api, sp, (i - half) * 0.16);
-        if (inArena(b, p, api)) api.hazard(p.pos.x, p.pos.y, hazardDur, 0.5);   // pas de tampon jusqu'au spawn
+        for (let i = 0; i < formN; i++) shootH(b, p, api, sp, (i - half) * 0.16);
         api.poof(b.pos.x, b.pos.y - api.TS);   // recul du jet (FX localise, pas de shake)
       }
-      if (b.pt > throwT) {
+      if (b.pt > throwT) { b.ps = 'cast'; b.pt = 0; b.casted = false; }
+    } else if (b.ps === 'cast') {
+      // INCANTATION DE FLAQUE : Cendrine prend son temps (castTime) puis projette
+      //  une FLAQUE qui TOMBE au sol (surfaceUnderFeet cote game.js) sous Laura.
+      //  hazCd : pas a chaque salve (hazardEvery). merge = fusion des flaques
+      //  proches. Telegraphe : poofs montants qui s'intensifient pendant le cast.
+      b.animWant = 'attack';
+      faceOnly(b, p);
+      api.poof(b.pos.x, b.pos.y - api.TS * (1 + b.pt / castT));   // incantation qui monte
+      if (!b.casted && b.pt >= castT) {
+        b.casted = true;
+        if (b.hazCd <= 0 && inArena(b, p, api)) {
+          // flaque au sol, telegraphe 0.5s, FUSION si une flaque est proche (<= merge)
+          api.hazard(p.pos.x, p.pos.y, hazardDur, 0.5, hazardMerge);
+          b.hazCd = hazardEvery;
+        }
+      }
+      if (b.pt > castT + 0.1) {
         if (b.p2 && !b.chain) { b.chain = 1; b.ps = 'pre'; b.pt = 0; b.destDone = false; }  // PHASE 2 : DOUBLE TP enchaine
         else { b.chain = 0; b.ps = 'window'; b.pt = 0; }
       }
@@ -629,8 +692,9 @@ window.BOSS_AI = (() => {
    *  JURY DE THESE — megaboss final : BOSS RUSH en 3 phases selon HP.
    *   >66%  (calme, Q&A)      : volees visees, deplacement lent, eventails 3.
    *   33-66% (debat)          : + minions + salves en ANNEAU.
-   *   <33%  (verdict/panique) : pluie de bombes + larges eventails rapides +
-   *                             MUR A TROU (wallWithHole) a dasher.
+   *   <33%  (verdict/panique) : ROTATION d'UNE menace par beat (eventail rapide
+   *                             de panicN / MUR A TROU a dasher / bombe ciblee +
+   *                             tampon) — plus de cumul, chaque beat = 1 esquive.
    *  Aux transitions 0->1 et 1->2 : INTERLUDE 'invite' — le jury "se
    *  concerte" (recule au fond, INVULNERABLE guard=0, aucun tir) et invoque
    *  un ANCIEN boss via api.addGuestBoss (0->1 : agriculteur ; 1->2 :
@@ -645,7 +709,7 @@ window.BOSS_AI = (() => {
     faceOnly(b, p);
     if (b.jPhase === undefined) {
       b.jPhase = 0; b.t = 0; b.cyc = 0; b.enrage = 0;
-      b.openT = 0; b.jMode = 'fight'; b._guest = null;
+      b.openT = 0; b.jMode = 'fight'; b._guest = null; b.intangible = false;
     }
     const frac = b.hp / b.maxHp;
     const phase = frac > 0.66 ? 0 : (frac > 0.33 ? 1 : 2);
@@ -678,6 +742,7 @@ window.BOSS_AI = (() => {
     // --- INTERLUDE 'invite' : se concerte au fond, INVULNERABLE, aucun tir ---
     if (b.jMode === 'invite') {
       b.guard = 0;                              // invulnerable pendant la concertation
+      b.intangible = true;                      // ...et ECARTE du combat : balles le traversent, ne bloque ni ne blesse (cf. hitBoss / no-collision boss<->boss). Sinon il sert de bouclier pare-balles a l'invite place derriere lui -> softlock.
       b.animWant = 'idle';
       // recule vers le fond de l'arene, du cote OPPOSE au joueur
       const back = b.homeX + (p.pos.x >= b.homeX ? -1 : 1) * range * 0.7;
@@ -688,6 +753,7 @@ window.BOSS_AI = (() => {
         // invite vaincu -> pose d'enrage existante puis reprise du combat
         b._guest = null;
         b.jMode = 'fight';
+        b.intangible = false;                   // redevient solide/touchable pour la reprise
         b.enrage = b.def.enrageTime || 0.7;
         b.t = 0;
       }
@@ -713,7 +779,10 @@ window.BOSS_AI = (() => {
     moveClamp(b, p, (b.def.speed || 90) * (phase === 0 ? 0.4 : 0.55));
     b.animWant = 'idle';
     b.t += dt();
-    const every = (phase === 0) ? baseEvery : (phase === 1 ? baseEvery * 0.75 : baseEvery * 0.55);
+    // DERNIER TIER (phase 2, verdict <33% HP) : cadence DIVISEE PAR DEUX (delai
+    //  double : 0.7 -> 1.4) -> le verdict tire MOITIE MOINS souvent que la phase
+    //  0/1, le temps de lire chaque telegraphe rotatif. Tiers 0/1 inchanges.
+    const every = (phase === 0) ? baseEvery : (phase === 1 ? baseEvery * 0.75 : baseEvery * 1.4);
 
     if (b.t >= every) {
       b.t = 0; b.animWant = 'attack'; b.cyc++;
@@ -734,18 +803,27 @@ window.BOSS_AI = (() => {
         }
         if (b.cyc % 3 === 0) spawnEnFace(b, p, api, 'bug');   // vrai minion fragile (pas de passant)
       } else {
-        // verdict / panique : large eventail rapide + bombes + MUR A TROU a dasher.
-        //  Les frappes CIBLEES (bombe / tampon sur p.pos) sont gatees inArena :
-        //  pas de pluie sur une Laura qui serait hors de l'arene.
+        // verdict / panique : on ROTATIONNE entre 3 menaces LISIBLES (une seule
+        //  par beat) au lieu de toutes les empiler. Avant, chaque demi-seconde
+        //  cumulait eventail de 9 + bombe ciblee + (bombe alea OU mur+tampon) :
+        //  l'eventail couvrait l'horizontal, le mur le vertical, la bombe la
+        //  position de Laura, le hazard le sol -> AUCUN espace sur, rencontre
+        //  ingagnable (retour playtest "trop de missiles"). Desormais chaque beat
+        //  = UN telegraphe a lire, puis on punit (le jury reste vulnerable :
+        //  openTime > cadence). Les frappes CIBLEES restent gatees inArena.
         const n = b.def.panicN || 7;
         const half = (n - 1) / 2;
-        for (let i = 0; i < n; i++) shoot(b, p, api, sp * 1.1, (i - half) * 0.16);
-        if (inArena(b, p, api)) api.dropBomb(p.pos.x, p.pos.y, 0.6, 'shot_bomb');
-        if (b.cyc % 2 === 0) api.dropBomb(b.pos.x + rand(-range, range), p.pos.y, 0.6, 'shot_bomb');
-        if (b.cyc % 2 === 1) {
-          // MUR A TROU (helper factorise wallWithHole) + tampon-piege au sol
+        const k = b.cyc % 3;
+        if (k === 0) {
+          // large eventail rapide (la signature de la panique)
+          for (let i = 0; i < n; i++) shoot(b, p, api, sp * 1.05, (i - half) * 0.16);
+        } else if (k === 1) {
+          // MUR A TROU a dasher — menace VERTICALE seule (plus d'eventail simultane)
           wallWithHole(b, p, api, {});
-          if (inArena(b, p, api)) api.hazard(p.pos.x, p.pos.y, 2.0, 0.5);
+        } else if (inArena(b, p, api)) {
+          // frappe CIBLEE : UNE bombe sur Laura + tampon-piege au sol (pas d'eventail)
+          api.dropBomb(p.pos.x, p.pos.y, 0.6, 'shot_bomb');
+          api.hazard(p.pos.x, p.pos.y, 2.0, 0.5);
         }
       }
       // apres CHAQUE volee (tous modes) : battement de garde ouverte

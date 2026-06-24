@@ -1,42 +1,4 @@
-GLOBAL:
-- Fixe Boss: assets, gameplay
-- Level design
-
-- Toggle sound/music
-
-
-BUG:
-Vérifier le time attack bug timing.
-
-- Fond alpha pour mieux voir les plateformes
-- Mur invisible en début de niveau (bug cailloux)
-- Criquets à refaire, trop gros.
-- Virer les tremblements ca pourri l'expérience de jeu
-
-Features:
-- Maison Start and End level.
-- Bad option: champignon hallucinogen > retourne caméra 5 sec
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+musique
 
 
 

@@ -42,7 +42,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LVL = os.path.join(ROOT, 'levels')
 
 SOLID = set('=-x')
-ITEMS = set('ocdpPkLYei b'.replace(' ', ''))
+ITEMS = set('ocdpqwPkLYei b'.replace(' ', ''))   # q/w = pilule/champignon PIEGES (cam inversee) : se ramassent comme 'd'/'p'
 GROUND_CHARS = set('TARJKWGCIHUSFDN@B^%')      # posés sur une surface
 FLYERS = set('VME')                            # spawn 1.5-1.6 tuile au-dessus
 MARKERS = set('|')                             # marqueurs non-physiques (zone-ciel '|' : ni solide ni support requis)

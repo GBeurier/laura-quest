@@ -79,6 +79,13 @@
   // --- Helpers ----------------------------------------------------------
   const setCam = (x, y) =>
     (typeof setCamPos === 'function' ? setCamPos(vec2(x, y)) : camPos(vec2(x, y)));
+  // rotation de la camera (piege "vue inversee") — API selon le build KAPLAY
+  const setCamAngle = (deg) => {
+    try {
+      if (typeof setCamRot === 'function') setCamRot(deg);
+      else if (typeof camRot === 'function') camRot(deg);
+    } catch (e) {}
+  };
   // lecture de la position camera (pour le parallax)
   const getCam = () =>
     (typeof getCamPos === 'function' ? getCamPos()
@@ -423,7 +430,7 @@
       };
       b.onCollide('enemy', boom);
       b.onCollide('passant', boom);   // figurant : encaisse les balles (mais rien d'autre)
-      b.onCollide('boss', boom);
+      b.onCollide('boss', (e) => { if (!e.intangible) boom(); });   // jury "en concertation" : le lob le TRAVERSE (il eclatera sur l'invite derriere, pas en vain sur le jury immortel)
       // SOL/rochers OUI, mais PANNEAUX NON : le lob est l'arme "par-dessus" — il
       //  ARQUE au-dessus des panneaux-couvert pour retomber sur l'ennemi/le boss
       //  derriere, au lieu d'exploser betement sur le panneau (bug "lob par-dessus
@@ -486,7 +493,10 @@
   //  (p.power) choisit cookie -> gateau -> gateau des enfers (taille d'explosion +
   //  mini-explosions) ; la CADENCE (p.rate) son cooldown. Coute du SOLEIL. cf.
   //  CONFIG.arsenal.patisseries.
-  function lobShoot() {
+  //  power = puissance de lancer 0..1 (charge) -> portee ; auto = auto-visee
+  //  (mobile assiste / option lobAutoAim) qui IGNORE power et vise la cible la
+  //  plus proche. En manuel, le lob part dans le SENS courant de Laura.
+  function lobShoot(power, auto) {
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if ((p.lobCd || 0) > 0) return;
@@ -496,9 +506,15 @@
     const cost = L.cost || 0;
     if (C.sun.enabled && p.sun < cost) { flashMsg('PAS ASSEZ D ENERGIE'); return; }
     if (C.sun.enabled) p.sun = Math.max(0, p.sun - cost);
-    const aim = autoAimArc(p, { speed: A.speed || 520 });
-    p.facing = aim.facing; p.aimAngle = aim.aimAngle;
-    playerShoot('gateau', aim.power, {
+    let pw;
+    if (auto) {
+      const aim = autoAimArc(p, { speed: A.speed || 520 });
+      p.facing = aim.facing; p.aimAngle = aim.aimAngle; pw = aim.power;
+    } else {
+      p.aimAngle = C.shot.aimDefault;                       // angle fixe ; sens = facing courant
+      pw = Math.max(0, Math.min(1, power == null ? 1 : power));
+    }
+    playerShoot('gateau', pw, {
       sprite: L.sprite, projScale: L.scale || 1, speed: A.speed,   // sprite dedie par niveau (cookie / gateau / gateau des enfers)
       aoe: { radius: L.radius, damage: L.damage }, secondary: L.secondary || 0,
     });
@@ -506,6 +522,22 @@
     const r = Math.max(1, Math.min(cad.length, p.rate || 1));
     p.lobCd = cad[r - 1] || 0.6;
     p.throwT = 0.32;
+  }
+
+  // Portee d'un souffle sur une cible : distance du CENTRE d'explosion au point
+  //  le plus proche de sa BOITE de collision (hitbox monde), PAS a son ancre
+  //  'bot' (= les pieds). Sans ca, une patisserie qui eclate AU-DESSUS d'un
+  //  monstre mesurait jusqu'aux pieds -> distance > rayon -> "explosion
+  //  au-dessus du monstre, aucun degat" (le monstre meme touche par la cloche
+  //  pouvait survivre). On clampe le centre dans la boite avant de mesurer.
+  //  Repli sur l'ancre si l'aire a disparu (worldArea absent/cadavre).
+  function blastReaches(e, c, radius) {
+    let box = null;
+    try { box = e.worldArea().bbox(); } catch (_) {}
+    if (!box) return e.pos.dist(c) < radius;
+    const dx = Math.max(box.pos.x - c.x, 0, c.x - (box.pos.x + box.width));
+    const dy = Math.max(box.pos.y - c.y, 0, c.y - (box.pos.y + box.height));
+    return dx * dx + dy * dy < radius * radius;
   }
 
   // Explosion de zone (gateau) : onde + miettes + degats a tout dans le rayon.
@@ -516,10 +548,17 @@
     safeShake(11);
     sfx('spell');
     const c = vec2(x, y);
-    get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
-    get('passant').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });   // souffle = balle -> touche aussi les figurants
-    get('boss').forEach((bo) => { if (bo.exists() && bo.pos.dist(c) < radius) hitBoss(bo, { dmg, channel: channel || 'aoe' }); });
+    get('enemy').forEach((e) => { if (e.exists() && blastReaches(e, c, radius)) hitEnemy(e, { dmg }); });
+    get('passant').forEach((e) => { if (e.exists() && blastReaches(e, c, radius)) hitEnemy(e, { dmg }); });   // souffle = balle -> touche aussi les figurants
+    get('boss').forEach((bo) => { if (bo.exists() && blastReaches(bo, c, radius)) hitBoss(bo, { dmg, channel: channel || 'aoe' }); });
     get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });   // nettoie les tirs ennemis pris dans le souffle
+    // FRIENDLY FIRE : sa propre patisserie blesse Laura si elle est dans le
+    //  souffle (vise de trop pres). Fraction des degats (CONFIG.shot.friendlyFire,
+    //  arrondie au sup, min 1) ; l'invuln evite que les mini-explosions du gateau
+    //  des enfers s'empilent. cf. damagePlayer (le bouclier-soleil encaisse devant).
+    const ff = (C.shot && C.shot.friendlyFire) || 0;
+    const p = PLAYER;
+    if (ff > 0 && p && p.exists() && blastReaches(p, c, radius)) damagePlayer(Math.max(1, Math.ceil(dmg * ff)), x);
   }
 
   // Souffle d'une BOMBE de boss : explose, TUE les monstres (enemy + figurants)
@@ -528,11 +567,11 @@
   function bombBlast(x, y, radius, dmg) {
     addBoom(x, y); safeShake(8); sfx('spell');
     const c = vec2(x, y);
-    get('enemy').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
-    get('passant').forEach((e) => { if (e.exists() && e.pos.dist(c) < radius) hitEnemy(e, { dmg }); });
+    get('enemy').forEach((e) => { if (e.exists() && blastReaches(e, c, radius)) hitEnemy(e, { dmg }); });
+    get('passant').forEach((e) => { if (e.exists() && blastReaches(e, c, radius)) hitEnemy(e, { dmg }); });
     get('ehot').forEach((h) => { if (h.exists() && h.pos.dist(c) < radius) destroy(h); });
     const p = PLAYER;
-    if (p && p.exists() && p.pos.dist(c) < radius) damagePlayer(dmg, x);
+    if (p && p.exists() && blastReaches(p, c, radius)) damagePlayer(dmg, x);
   }
 
   // FX d'explosion : flash + onde de choc qui s'etend + eclats chauds (miettes).
@@ -566,7 +605,7 @@
   //  chips crache une chip, le tuyau une goutte...), repli 'shot_paper' si le
   //  tireur n'en declare pas. Si le PNG manque, retour propre a la forme
   //  generique (cercle rouge boss / rectangle creme).
-  function enemyBullet(x, y, target, speed, kind, spr) {
+  function enemyBullet(x, y, target, speed, kind, spr, piercePanel) {
     const dir = target.pos.sub(vec2(x, y)).unit();
     const sname = (kind === 'boss') ? spr : (spr || 'shot_paper');
     const comps = (sname && hasSprite(sname))
@@ -586,7 +625,14 @@
     ]);
     EHOTS.add(b);
     b.onDestroy(() => EHOTS.delete(b));
-    b.onCollide('solid', () => destroy(b));
+    b.onCollide('solid', (s) => {
+      // Couvert anti-tir : un panneau ('panel') arrete les tirs PAR DEFAUT. Mais
+      //  les tirs des monstres IMMOBILES (shooters, piercePanel) TRAVERSENT les
+      //  panneaux -> pas de couvert contre eux. Le sol/mur reste bloquant, et les
+      //  tirs de BOSS gardent le couvert (piercePanel non passe).
+      if (piercePanel && s && s.is && s.is('panel')) return;
+      destroy(b);
+    });
     // POLISH (dette tech) : rotation + petite trainee -> projectiles moins "plats".
     let trailT = 0;
     b.onUpdate(() => {
@@ -818,37 +864,69 @@
   //  PIEDS (pas un objet pose). Comme addPanel separe collision (tuile invisible) et
   //  deco, on separe ici : le VISUEL (sprite ancre 'top', bord arriere remonte de
   //  HAZ_TUCK sous la levre de terre) descend dans la BANDE DE TERRE. Le jeu n'a
-  //  quasi pas de hauteur sous le sol (HUD juste dessous) -> l'art est LARGE et BAS
-  //  (cf. _hazardgen) et on ne plonge pas plus. Dessine ENTRE le sol (z=-1) et les
+  //  quasi pas de hauteur sous le sol (HUD juste dessous) -> l'art est un CARRE
+  //  TILEABLE (cf. _hazardgen) : des '%' CONTIGUS fusionnent en UNE plaque (un seul
+  //  piege, rectangle qui grandit en largeur ; cf. spawnHazardSpan / buildLevel) et
+  //  on ne plonge pas plus. Dessine ENTRE le sol (z=-1) et les
   //  acteurs (z=0) -> Laura passe DEVANT, le trou reste SOUS ses pieds. La COLLISION
   //  est une bande FINE au niveau de la SURFACE : on encaisse en passant dessus.
   //  Skin par biome via LEVEL.theme.hazard (riziere = piques de bambou / interieur =
   //  acide). Fallback dessine (trou sombre + lisere) tant que le PNG manque.
-  const HAZ_DROP = 12;      // descend le trou SOUS les pieds (bord haut sous la surface)
-  const HAZ_SCALE = 1.3;    // grossit le trou (les piques/acide restent lisibles en jeu)
-  function spawnHazard(cx, groundY) {
+  const HAZ_DROP = -2;        // gueule LEGEREMENT au-dessus de la surface -> plaque bien visible (pas enfoncee)
+  // ART CARRE TILEABLE : chaque cellule de piege est un CARRE de 2*TS px (96) ->
+  //  affichee a TS (48) via artScale(1) -> elle pave EXACTEMENT une tuile, bords
+  //  gauche/droit raccords. Des '%' CONTIGUS fusionnent (cf. buildLevel) : on pose N
+  //  cellules cote a cote + DES PAROIS aux deux bouts (addHazardEnds) + UNE bande de
+  //  collision large de N tuiles -> UN seul piege BORDE, rectangle qui grandit en largeur.
+  const HAZ_TILE_SCALE = 1;   // 96px @artScale(1) = 48px = TS (pavage sans couture)
+  const HAZ_H = TS;           // hauteur affichee d'une cellule (96px @0.5 = 48)
+
+  // PAROIS aux deux bouts (la tuile est tileable DONC sans bord lateral : sans ca les
+  //  extremites de la plaque semblent coupees). Barre ombree + arete externe sombre +
+  //  lisere clair interieur -> lit comme le mur du trou. Teinte terreuse neutre (OK sur
+  //  tous les biomes). Rattachees a `deco` (cullees/detruites avec la plaque).
+  function addHazardEnds(leftX, top, w, h, deco) {
+    const capW = 5, wall = [56, 45, 32], edge = [22, 17, 12], hi = [124, 106, 78];
+    const mk = (x, c, ww, op) => deco.push(add([rect(ww, h), pos(x, top), anchor('topleft'),
+      color(c[0], c[1], c[2]), opacity(op), z(-0.46), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
+    mk(leftX, wall, capW, 1); mk(leftX + w - capW, wall, capW, 1);        // barres-parois
+    mk(leftX, edge, 2, 1); mk(leftX + w - 2, edge, 2, 1);                 // aretes externes sombres
+    mk(leftX + capW - 1, hi, 1, 0.6); mk(leftX + w - capW, hi, 1, 0.6);   // liseres internes eclaires
+  }
+
+  // Pose une plaque-piege large de `tiles` tuiles, centree en centerX, gueule au ras
+  //  de groundY. tiles=1 = piege isole (ou tampon-piege temporaire d'un boss).
+  function spawnHazardSpan(centerX, groundY, tiles) {
+    const n = Math.max(1, tiles | 0);
     const th = (LEVEL && LEVEL.theme) || {};
     const sname = pickSkin(th.hazard, 'hazard');
+    const wpx = n * TS;                            // largeur affichee de la plaque
+    const leftX = centerX - wpx / 2;
+    const top = groundY + HAZ_DROP;
     const deco = [];
     if (sname && hasSprite(sname)) {
-      const o = add([sprite(sname), artScale(HAZ_SCALE), pos(cx, groundY + HAZ_DROP), anchor('top'),
-        z(-0.5), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']);
-      playIfAnim(o, sname);
-      deco.push(o);
-    } else {                                       // bouche-trou : trou sombre + lisere de danger
-      deco.push(add([rect(TS * 1.2, TS * 0.5), pos(cx, groundY + HAZ_DROP), anchor('top'),
+      for (let i = 0; i < n; i++) {                // N cellules carrees jointives -> plaque continue
+        const o = add([sprite(sname), artScale(HAZ_TILE_SCALE),
+          pos(leftX + TS * (i + 0.5), top), anchor('top'),
+          z(-0.5), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']);
+        playIfAnim(o, sname);
+        deco.push(o);
+      }
+    } else {                                       // bouche-trou : plaque sombre + lisere de danger
+      deco.push(add([rect(wpx, HAZ_H), pos(leftX, top), anchor('topleft'),
         color(32, 16, 20), opacity(0.97), z(-0.5), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
-      deco.push(add([rect(TS * 1.0, TS * 0.12), pos(cx, groundY + HAZ_DROP), anchor('top'),
-        color(150, 40, 40), opacity(0.95), z(-0.45), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
+      deco.push(add([rect(wpx, TS * 0.12), pos(leftX, top + 3), anchor('topleft'),
+        color(150, 40, 40), opacity(0.95), z(-0.49), offscreen({ hide: true, distance: TS * 2 }), 'hazarddeco']));
     }
-    // COLLISION : bande a la SURFACE (la gueule de la fosse), NON solide. Large ~
-    //  la fosse visible (degat en passant dessus). deco rattache -> detruit avec
-    //  la bande (tampons-piege temporaires des boss via api.hazard + lifespan).
-    const hit = add([rect(TS * 1.3, TS * 0.46), pos(cx, groundY), anchor('bot'),
+    addHazardEnds(leftX, top, wpx, HAZ_H, deco);   // PAROIS aux deux bouts (bords)
+    // COLLISION : UNE bande a la SURFACE, large de TOUTE la plaque (degat en passant
+    //  dessus, NON solide). deco rattache -> detruit avec la bande (tampons de boss).
+    const hit = add([rect(wpx, TS * 0.46), pos(centerX, groundY), anchor('bot'),
       area(), opacity(0), z(-0.4), 'hazard', { deco }]);
     hit.onDestroy(() => deco.forEach((d) => { if (d.exists()) destroy(d); }));
     return hit;
   }
+  function spawnHazard(cx, groundY) { return spawnHazardSpan(cx, groundY, 1); }   // piege 1 tuile (boss)
 
   // --- PANNEAUX SOLAIRES (plateformes) en perspective + pieds au sol -------
   //  La COLLISION reste une tuile invisible 48x48 (surface marchable = haut de
@@ -990,7 +1068,11 @@
           ? vec2(0.85 / psize.scale, 0.9 / psize.scale)
           : vec2((def.hit && def.hit.w) || 0.85, (def.hit && def.hit.h) || 0.9),
         offset: vec2(0, -feet),   // boite calee sur les pieds DESSINES (cf. FEET_PAD)
-        collisionIgnore: isPersona ? ['enemy', 'boss', 'player'] : ['enemy'],
+        //  def.ignorePanel (engins/cyclistes au sol) -> ils TRAVERSENT les panneaux
+        //  comme le boss (sinon un deck bas les coince dans leur va-et-vient).
+        collisionIgnore: isPersona
+          ? ['enemy', 'boss', 'player']
+          : (def.ignorePanel ? ['enemy', 'panel'] : ['enemy']),
       }),
       // PERF : hors-ecran -> hidden (pas de dessin) + paused (pas d'IA NI de
       //  collision : la grille saute les objets pauses). Seuls les monstres a
@@ -1316,7 +1398,9 @@
         e.t += dt();
         if (Math.abs(toP) < e.def.range && e.t >= e.def.shotEvery) {
           e.t = 0; e.atkT = 0.35;   // fenetre d'anim 'attack' au moment du tir
-          enemyBullet(e.pos.x, e.pos.y - TS * 0.6, p, e.def.shotSpeed, 'enemy', e.def.shot);
+          //  piercePanel=true : shooters = monstres IMMOBILES -> leurs tirs passent
+          //  a travers les panneaux (pas de couvert anti-tir contre eux).
+          enemyBullet(e.pos.x, e.pos.y - TS * 0.6, p, e.def.shotSpeed, 'enemy', e.def.shot, true);
         }
         e.flipX = e.facing < 0;
         break;
@@ -1728,17 +1812,41 @@
     poof: addPoof,
     marker: addImpactMarker,
     dropBomb: dropBomb,                       // bombe qui tombe + explose (dette tech 2)
-    hazard: (atX, groundY, dur, delay) => {   // tampon-piege au sol temporaire (Cendrine / jury)
+    hazard: (atX, groundY, dur, delay, merge) => {   // tampon-piege / FLAQUE au sol temporaire (Cendrine / jury)
       const dl = delay || 0;
-      // RECALE LA CIBLE SUR LA SURFACE (meme logique que dropBomb) : l'IA vise
-      //  p.pos.y, or Laura saute en permanence -> sans ca le piege (et sa
-      //  hitbox) restait SUSPENDU en l'air a la hauteur du saut.
-      const gy = surfaceTopAt(atX);
-      const fy = (gy != null) ? gy : groundY;
+      // RECALE LA CIBLE SUR LE SOL SOUS la position de lancement (surfaceUnderFeet,
+      //  PAS surfaceTopAt qui remonte sur un deck de panneaux AU-DESSUS de Laura ->
+      //  la flaque flottait a mi-hauteur). On part de la rangee visee et on DESCEND
+      //  jusqu'au 1er solide -> la flaque TOMBE jusqu'au plancher. L'IA vise p.pos.y
+      //  (Laura saute en permanence) ; sans recalage, la flaque restait suspendue.
+      const gy = surfaceUnderFeet(atX, groundY);
+      const fy = (gy != null) ? gy : (surfaceTopAt(atX) != null ? surfaceTopAt(atX) : groundY);
       if (dl > 0) addImpactMarker(atX, fy, dl);
       wait(dl, () => {
+        // FUSION DES FLAQUES (cf. spawnHazardSpan / '%' contigus) : si une flaque de
+        //  boss (temp) deja posee est PROCHE (<= merge px, meme sol), on REMPLACE les
+        //  deux par UNE plaque plus large couvrant les deux -> la zone de danger
+        //  grandit en largeur et dure plus longtemps (au lieu de 2 flaques isolees).
+        if (merge && merge > 0) {
+          const near = get('hazard').find((o) => o.temp && o.exists()
+            && Math.abs(o.pos.y - fy) < TS * 0.6
+            && Math.abs(o.pos.x - atX) <= merge);
+          if (near) {
+            const leftX = Math.min(near.pos.x - near.width / 2, atX - TS / 2);
+            const rightX = Math.max(near.pos.x + near.width / 2, atX + TS / 2);
+            const w = rightX - leftX;
+            const tiles = Math.max(1, Math.round(w / TS));
+            const cx = (leftX + rightX) / 2;
+            // duree restante de l'ancienne flaque (au moins `dur`) reportee sur la fusion
+            const remain = Math.max(dur || 0, near._hazEnd ? near._hazEnd - time() : 0);
+            destroy(near);
+            const m = spawnHazardSpan(cx, fy, tiles);
+            if (m) { m.temp = true; m._hazEnd = time() + remain; if (remain) m.use(lifespan(remain, { fade: 0.3 })); }
+            return;
+          }
+        }
         const h = spawnHazard(atX, fy);
-        if (h && dur) { h.temp = true; h.use(lifespan(dur, { fade: 0.3 })); }   // temp -> purge a la mort du boss
+        if (h && dur) { h.temp = true; h._hazEnd = time() + dur; h.use(lifespan(dur, { fade: 0.3 })); }   // temp -> purge a la mort du boss
       });
     },
   };
@@ -1784,7 +1892,12 @@
     //  il ne la pousse pas (le degat passe par l'evenement de contact, heavy).
     b.onBeforePhysicsResolve((col) => {
       const o = col.target;
-      if (o && o.is && o.is('player')) col.preventResolution();
+      // TRAVERSE le joueur (no-shove, cf. spawnPlayer) ET les AUTRES boss : deux
+      //  boss ne coexistent qu'au boss-rush du jury (invite). Sans ce no-collision
+      //  inter-boss, le jury (x1.32) et l'invite se poussaient et se coincaient
+      //  (l'un contre l'autre / le mur d'arene) -> le drive du tracteur n'atteint
+      //  jamais le bord, IA figee ; "les invocations se bloquent mutuellement".
+      if (o && o.is && (o.is('player') || o.is('boss'))) col.preventResolution();
     });
     // ANTI-ENFONCEMENT (bug "le jury rentre dans le sol quand on s'approche") : un
     //  boss est TOUJOURS au sol d'une arene PLATE et ne saute jamais. La gravite +
@@ -1800,6 +1913,20 @@
     return b;
   }
 
+  // VEILLE D'ARENE : un boss du niveau (pas un invite du jury) reste ENDORMI —
+  //  intouchable ET inactif — tant que Laura n'a pas FRANCHI l'entree de son
+  //  arene (meme seuil que addArenaGates / le reveil de bossBehavior :
+  //  homeX - range + 1 tuile). Avant ce franchissement : aucune IA, et surtout
+  //  AUCUN degat encaisse (on ne peut plus lui tirer dessus depuis l'exterieur).
+  //  Une fois reveille (entree d'arene OU respawnAtArena qui re-arme la veille),
+  //  il reste actif/touchable. Les invites (b.guest) spawnent deja engages.
+  function bossDormant(b) {
+    if (!b || b.guest || b._awoken) return false;
+    const p = PLAYER;
+    if (!p || !p.exists()) return true;          // pas de joueur -> reste endormi
+    return p.pos.x < (b.homeX - (b.range || 300) + TS);
+  }
+
   function bossBehavior(b) {
     const p = PLAYER;
     if (!p || !p.exists()) return;
@@ -1813,10 +1940,12 @@
     //  jury (b.guest) spawnent deja engages -> jamais en veille.
     if (!b.guest && !b._awoken) {
       // REVEIL = FRANCHISSEMENT de la ligne d'arene (MEME seuil que addArenaGates :
-      //  homeX - range + 1 tuile). Avant : IMMOBILE en idle, AUCUNE attaque ni
-      //  deplacement (plus d'arenaPad qui le reveillait trop tot). Le coup encaisse
-      //  (hitBoss -> _awoken) reste un reveil legitime (anti-sniping hors arene).
-      if (p.pos.x >= b.homeX - (b.range || 300) + TS) b._awoken = true;
+      //  homeX - range + 1 tuile, via bossDormant). Avant : IMMOBILE en idle,
+      //  AUCUNE attaque ni deplacement. v2.4 : le boss est aussi INTOUCHABLE hors
+      //  arene (hitBoss court-circuite via bossDormant) -> on ne peut plus le
+      //  sniper / le reveiller depuis l'exterieur ; il "apparait" (devient actif
+      //  ET touchable) a l'entree d'arene seulement.
+      if (!bossDormant(b)) b._awoken = true;
     }
     if (!b.guest && !b._awoken) {
       b.flipX = (p.pos.x - b.pos.x) >= 0;     // regarde Laura (sprites boss pointent a gauche)
@@ -1830,6 +1959,7 @@
     //  catVulnLock = re-arm du chat, _chCd = ticks de degat par canal (hitBoss).
     //  p2/p2Just = bascule de PHASE 2 a 50% des HP (lue par l'IA).
     b.guard = (b.def.guard != null) ? b.def.guard : 0.35;
+    b.dmgMult = 1;                            // RESET chaque frame ; une IA le repasse a >1 dans ses fenetres de double-degats (Cendrine : implosion de TP)
     if (b.vulnT > 0) b.vulnT -= dt();
     if (b.catVulnLock > 0) b.catVulnLock -= dt();
     if (b._chCd) { for (const k in b._chCd) if (b._chCd[k] > 0) b._chCd[k] -= dt(); }
@@ -1851,12 +1981,19 @@
       try { b.unuse('color'); } catch (_) {}
     }
     if (b._openMsgT > 0) b._openMsgT -= dt();
-    // FLINCH : hurtT n'ecrase l'anim QUE sur les poses passives (idle). Pendant
-    //  une attaque (feuille _atk), l'ecraser faisait STROBOSCOPER le boss sous
-    //  tir soutenu : swap _atk -> _move 0.12s a chaque tick, puis play() qui
-    //  REDEMARRE le clip d'attaque a la frame 0 — le jet/la charge ne depassait
-    //  jamais la frame ~2. Le flash d'opacite (hitBoss) suffit comme feedback.
-    if (b.hurtT > 0) { b.hurtT -= dt(); if (b.animWant === 'idle') b.animWant = 'hurt'; }
+    // FLINCH : hurtT n'ecrase l'anim QUE sur les poses passives (idle) ET
+    //  seulement en FENETRE OUVERTE (open : stagger/vulnT). Deux raisons :
+    //  1) pendant une ATTAQUE (feuille _atk), l'ecraser faisait STROBOSCOPER le
+    //     boss sous tir soutenu (swap _atk -> _move 0.12s/tick puis play() qui
+    //     REDEMARRE le clip a la frame 0 — le jet/la charge ne depassait jamais
+    //     la frame ~2) ; d'ou le filtre sur 'idle'.
+    //  2) un chip encaisse EN GARDE (guard < 1, ex. le proprio en 'pace') ne
+    //     doit PAS faire reculer le boss : sinon, A LA FIN DE CHAQUE TIR, l'idle
+    //     qui suit le clip 'throw' snappait sur la pose BLESSEE alors que le boss
+    //     garde encore (bug anim niveau2). Le flash d'opacite + le tink (hitBoss)
+    //     suffisent comme feedback en garde ; la frame 'hurt' est reservee aux
+    //     vrais coups (boss ouvert) et a la pose 'essouffle' du stagger.
+    if (b.hurtT > 0) { b.hurtT -= dt(); if (open && b.animWant === 'idle') b.animWant = 'hurt'; }
     // Garde le boss SUR le sol jouable : empeche une IA (teleport de Cendrine,
     //  charges, va-et-vient) de l'envoyer au-dela du bord droit -> chute dans
     //  le vide -> boss injoignable -> niveau infinissable.
@@ -1881,9 +2018,24 @@
   }
 
   function hitBoss(b, bullet) {
+    // INTANGIBLE (jury "en concertation", cf. AI.jury invite) : le boss s'est
+    //  ECARTE du combat -> la balle le TRAVERSE (ni degat, NI destruction du
+    //  projectile) et poursuit sa course vers l'INVITE. Sans ca le jury immortel
+    //  servait de bouclier pare-balles : un invite qui passe DERRIERE lui devenait
+    //  intouchable -> l'interlude ne finissait jamais (softlock). A garder en phase
+    //  avec le no-collision boss<->boss (onBeforePhysicsResolve) qui empeche
+    //  l'invite de rester COINCE derriere le jury.
+    if (b.intangible) return;
+    // VEILLE D'ARENE (v2.4) : tant que Laura n'a pas FRANCHI l'entree de l'arene,
+    //  le boss est INTOUCHABLE — la balle le TRAVERSE (ni degat ni destruction du
+    //  projectile, comme intangible) et il ne se reveille PAS (fini le sniping /
+    //  le reveil hors arene : agriculteur niveau1, michael niveau4 prenaient des
+    //  degats avant meme l'entree). Le reveil legitime = l'entree d'arene
+    //  (bossBehavior, meme seuil). Les invites (b.guest) ne sont jamais en veille.
+    if (bossDormant(b)) return;
     if (bullet && bullet.exists && bullet.exists()) destroy(bullet);
     if (!b.exists()) return;
-    b._awoken = true;                        // etre touche REVEILLE le boss (anti-sniping hors arene)
+    b._awoken = true;                        // touche DANS l'arene -> reste reveille
     // --- v2 (GAMEPLAY.md §4.1) : TICK par canal + GARDE ---------------------
     //  'seed'        : 1 coup / bossHit.seedCd — la volee de graines compte
     //                  pour 1, degat du tick = bullet.bossDmg (arsenal.bossTick).
@@ -1914,7 +2066,11 @@
     const open = (b.vulnT > 0) || (b.guard == null) || b.guard >= 1 || ch === 'cat';
     const raw = bullet ? (bullet.bossDmg != null ? bullet.bossDmg : (bullet.dmg || 1)) : 1;
     if (!open && ch === 'seed') bossTink(b, hx, hy);   // encaisse en garde : feedback
-    b.hp -= raw * (open ? 1 : Math.max(0.05, b.guard));
+    // MULTIPLICATEUR DE VULNERABILITE (b.dmgMult, pose par l'IA frame par frame) :
+    //  fenetre ou le boss prend PLUS de degats. Cendrine pose dmgMult = 2 pendant
+    //  toute son implosion de teleport (b.teleporting) -> double-degats. Defaut 1.
+    const dmgMult = (b.dmgMult != null) ? b.dmgMult : 1;
+    b.hp -= raw * (open ? 1 : Math.max(0.05, b.guard)) * dmgMult;
     b.hurtT = 0.12;
     b.opacity = 0.55;
     wait(0.08, () => { if (b.exists()) b.opacity = 1; });
@@ -1942,6 +2098,7 @@
         get('fx').forEach((o) => { if (o.boom !== undefined) destroy(o); });
         get('hazard').forEach((h) => { if (h.temp) destroy(h); });
         openArenaGates();          // verrou d'arene leve (l'etoile '*' est parfois derriere)
+        revealExitDoor();          // la PORTE CIRAD surgit du sol (cachee jusqu'ici)
       }
       safeShake(14);
       sfx('boss');
@@ -2047,13 +2204,48 @@
     return it;
   }
 
+  // SORTIE de niveau (tuile '*', gating "boss mort") : porte de labo CIRAD si
+  //  l'asset `tile_exit_door` est present, sinon repli sur l'ancien soleil
+  //  `sun_goal`. Le tag interne reste 'sun' -> toute la logique de fin de
+  //  niveau (onCollide('sun') -> tryReachSun) est inchangee.
+  //  - La PORTE se POSE AU SOL (ancre 'bot' sur le bas de la tuile) au lieu de
+  //    flotter centree : plus haute qu'une tuile, elle s'enfoncait sinon dans le
+  //    sol. Le soleil de repli, lui, flotte centre comme avant.
+  //  - La porte n'APPARAIT qu'a la MORT DU BOSS : posee cachee (cf. buildLevel),
+  //    revelee avec un effet de MONTAGE (_grow) par revealExitDoor (hitBoss).
   function spawnSun(x, y) {
+    const door = hasSprite('tile_exit_door');
+    const spr  = door ? 'tile_exit_door' : 'sun_goal';
     const s = add([
-      sprite('sun_goal'), pos(x, y), anchor('center'), area({ scale: 0.7 }), artScale(), z(-3), 'sun', { t: 0 },
+      sprite(spr), pos(x, door ? y + TS / 2 : y), anchor(door ? 'bot' : 'center'),
+      area({ scale: 0.7 }), artScale(), z(-3), 'sun', { t: 0, _isDoor: door, _grow: 1 },
     ]);
-    s.onUpdate(() => { s.t += dt(); s.scale = vec2((1 + Math.sin(s.t * 2) * 0.04) / ART); });
-    playIfAnim(s, 'sun_goal');
+    // Porte fixe : pas de pulsation marquee (un soleil pulse, pas une porte) ;
+    //  juste une micro-oscillation d'echelle pour attirer l'oeil. `_grow` (0->1,
+    //  ease-out-back) joue le MONTAGE de la porte au reveal (elle sort du sol).
+    const amp = door ? 0.015 : 0.04;
+    const spd = door ? 1.5 : 2;
+    s.onUpdate(() => {
+      s.t += dt();
+      if (s._grow < 1) s._grow = Math.min(1, s._grow + dt() / 0.45);
+      const u = s._grow, c1 = 1.70158, c3 = c1 + 1;
+      const grow = (u < 1) ? (1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2)) : 1;   // ease-out-back -> petit depassement, ca "claque"
+      s.scale = vec2(grow * (1 + Math.sin(s.t * spd) * amp) / ART);
+    });
+    playIfAnim(s, spr);
     return s;
+  }
+
+  // Reveal de la PORTE CIRAD a la mort du boss : elle surgit du sol (effet de
+  //  montage _grow) avec quelques poofs + un petit shake. No-op si pas une porte,
+  //  deja visible, ou pas de sortie. Appele depuis hitBoss (bossesAlive -> 0).
+  function revealExitDoor() {
+    const s = LEVEL && LEVEL.sun;
+    if (!s || !s.exists() || !s._isDoor || !s.hidden) return;
+    s.hidden = false;
+    s._grow = 0;
+    for (let i = 0; i < 8; i++) addPoof(s.pos.x + rand(-30, 30), s.pos.y - rand(0, TS * 1.2));
+    safeShake(6);
   }
 
   function collectPickup(it) {
@@ -2075,6 +2267,12 @@
       else                { if (p.rate  < cap) { p.rate++;  } p.rateFlash  = 0.8; flashMsg('CADENCE ' + p.rate); }
     }
     if (it.def.equip) equip(it.def.equip);       // equipement (rollers, etc.)
+    if (it.def.trap === 'invert') {              // PIEGE : pilule/champignon piege -> camera renversee (PAS de benefice)
+      const dur = (C.trap && C.trap.invertDuration) || 4;
+      if (LEVEL) LEVEL.invertT = dur;            // (re)arme/rafraichit le timer ; applique dans la boucle cam (setCam)
+      flashMsg((C.story && C.story.trapInvert) || 'OUPS... TOUT TOURNE !');
+      safeShake(6);
+    }
     p.score += it.def.score || 0;
     sfx('pickup');
     destroy(it);
@@ -2308,6 +2506,7 @@
     //  pour leur defilement VERTICAL. cf. setCam + addBandLayer/addScatterLayer.
     LEVEL.baseCamY = C.height / 2 - CAM_DROP + Math.max(0, LEVEL.height - C.height);
     LEVEL.camY = LEVEL.baseCamY;
+    LEVEL.invertT = 0; LEVEL._camRot = 0; setCamAngle(0);   // piege "vue inversee" remis a zero a l'entree du niveau
 
     // Bord droit JOUABLE = derniere case de SOL des 2 rangees du bas. Les
     //  rangees ASCII ne sont pas toujours de meme longueur (la ligne du boss
@@ -2345,6 +2544,8 @@
           case 'c': spawnPickup('cafe', cx, y + TS / 2); break;
           case 'd': LEVEL.dataTotal++; spawnPickup('data', cx, y + TS / 2); break;
           case 'p': LEVEL.pageTotal++; spawnPickup('page', cx, y + TS / 2); break;
+          case 'q': spawnPickup('pilulepiege', cx, y + TS / 2); break;    // pilule PIEGEE (meme look que 'd' en interieur) -> cam inversee
+          case 'w': spawnPickup('champipiege', cx, y + TS / 2); break;    // champignon PIEGE -> cam inversee
           case 'P': LEVEL.hasPubli = true; spawnPickup('publi', cx, y + TS / 2); break;
           case 'k': spawnPickup('croquette', cx, y + TS / 2); break;
           case 'L': spawnPickup('rollers', cx, y + TS / 2); break;
@@ -2352,7 +2553,13 @@
           case 'e': spawnPickup('puissance', cx, y + TS / 2); break;     // upgrade arsenal : +1 PUISSANCE
           case 'i': spawnPickup('cadence', cx, y + TS / 2); break;       // upgrade arsenal : +1 CADENCE
           case '^': addRock(cx, groundY); break;
-          case '%': spawnHazard(cx, groundY); break;   // sol piege (degat au contact)
+          case '%': {                                  // sol piege : '%' CONTIGUS -> UNE plaque (degat au contact)
+            if (c > 0 && row[c - 1] === '%') break;    // pas le debut du run -> deja pose par la cellule de gauche
+            let cEnd = c;
+            while (cEnd + 1 < row.length && row[cEnd + 1] === '%') cEnd++;
+            spawnHazardSpan((c + (cEnd - c + 1) / 2) * TS, groundY, cEnd - c + 1);
+            break;
+          }
           case '|': if (c < skyMinC) skyMinC = c; if (c > skyMaxC) skyMaxC = c; break;   // ZONE-CIEL : la cam suit en hauteur (rien d'autre pose ; cf. skyZone)
           case '[': arenaLcol = (arenaLcol == null) ? c : Math.min(arenaLcol, c); break;   // BORD GAUCHE d'arene (rien d'autre pose)
           case ']': arenaRcol = (arenaRcol == null) ? c : Math.max(arenaRcol, c); break;   // BORD DROIT d'arene (rien d'autre pose)
@@ -2390,6 +2597,11 @@
         }
       }
     });
+
+    // PORTE DE SORTIE : cachee tant qu'un boss vit (bossesAlive compte apres la
+    //  boucle) -> elle n'APPARAIT qu'a sa mort (cf. revealExitDoor, hitBoss).
+    //  Repli soleil (pas une porte) : visible comme avant (gating par tryReachSun).
+    if (LEVEL.sun && LEVEL.sun._isDoor && LEVEL.bossesAlive > 0) LEVEL.sun.hidden = true;
 
     // BORNES D'ARENE ('['/']') : redimensionnent l'arene du boss (gates, reveil,
     //  clamp IA, checkpoint). Sans symbole -> taille par defaut (def.range). On
@@ -2429,6 +2641,24 @@
       addRock(TS / 2, ry, wall);                                     // bord GAUCHE (colonne 0)
       const exitRight = (exitCx != null) ? exitCx + TS / 2 : 0;
       addRock(Math.max(LEVEL.maxX, exitRight) + TS / 2, ry, wall);   // bord DROIT
+    }
+
+    // MURS INVISIBLES DE BORD (pleine hauteur) : le caillou de bord ci-dessus ne
+    //  bloque qu'a hauteur de tuile au sol -> Laura peut le franchir par le haut
+    //  (decks secrets en altitude, zone-ciel). On double-le par deux colliders
+    //  statiques INVISIBLES, pleins, qui couvrent TOUTE la hauteur de la map
+    //  (et au-dela vers le haut pour les etages caches) : un a gauche (face droite
+    //  alignee sur x=0), un a droite (face gauche alignee sur la largeur de la map,
+    //  au-dela de la sortie '*' et du clamp boss -> n'entrave ni la sortie ni le
+    //  combat). Pas de sprite (opacity 0) ; SOLIDES comme les colliders de sol.
+    {
+      const exitRight = (exitCx != null) ? exitCx + TS / 2 : 0;
+      const rightX = Math.max(LEVEL.maxX, levelW, exitRight + TS / 2);  // bord droit jouable le plus a droite
+      const wallW = TS, wallTop = -LEVEL.height, wallH = LEVEL.height * 2;  // deborde 1 hauteur de map vers le haut
+      add([rect(wallW, wallH), pos(-wallW, wallTop), anchor('topleft'), opacity(0),
+        area(), body({ isStatic: true }), 'solid', 'edgewall']);          // GAUCHE : face droite sur x=0
+      add([rect(wallW, wallH), pos(rightX, wallTop), anchor('topleft'), opacity(0),
+        area(), body({ isStatic: true }), 'solid', 'edgewall']);          // DROIT : face gauche sur rightX
     }
   }
 
@@ -2962,8 +3192,13 @@
       // machine d'etats vierge : chaque IA se re-initialise sur champ undefined
       b.cs = b.ts = b.ms = b.state = b.ps = b.jPhase = undefined;
       b.t = 0; b.stun = 0; b.hurtT = 0; b.knockT = 0;
+      // RE-ENDORT le boss : Laura respawne DEHORS (checkpoint avant l'entree), le
+      //  boss redevient INTOUCHABLE/INACTIF jusqu'a la RE-ENTREE d'arene (meme
+      //  regle qu'a la 1re approche). Sans ca il restait reveille -> on pouvait
+      //  le re-sniper depuis l'exterieur apres un "reprendre au boss".
+      b._awoken = false; b._openMsgT = 0;
       b.vulnT = 0; b.catVulnLock = 0; b.openT = 0; b.p2 = false; b.p2Just = false;
-      b._guest = null; b._chCd = null; b._guardMsgDone = false;
+      b._guest = null; b._chCd = null; b._guardMsgDone = false; b.intangible = false;
       if (b._baseScale) { b.scale = b._baseScale.clone(); }   // cendrine morte mi-implosion
       b.opacity = 1; b.animWant = 'idle';
       // NB : unuse('color') est sur meme depuis un onCollide — la regle "jamais
@@ -3291,7 +3526,23 @@
       if (!PLAYER || !PLAYER.exists()) return;
       if (!PLAYER.isGrounded() && PLAYER.vel && PLAYER.vel.y < 0) PLAYER.vel = vec2(PLAYER.vel.x, PLAYER.vel.y * 0.45);
     });
-    onPlayKey(C.controls.lob, lobShoot);
+    // PATISSERIE (X) : CHARGEABLE. Maintenir X gonfle la portee (cf. lobChargeT
+    //  dans l'update + jauge cgBg/cgFill) ; relacher lance dans le SENS de Laura.
+    //  En mode AUTO-VISEE (tactile assiste, ou option CONFIG.shot.lobAutoAim /
+    //  PLAYER.lobAuto), X tire direct sur la cible la plus proche (pas de charge).
+    const lobAuto = () => assistAim() || (C.shot && C.shot.lobAutoAim) || (PLAYER && PLAYER.lobAuto);
+    onPlayKey(C.controls.lob, () => {
+      const p = PLAYER; if (!p || !p.exists()) return;
+      if (lobAuto()) { lobShoot(1, true); return; }   // assiste : tir immediat auto-vise
+      p.lobCharging = true; p.lobChargeT = 0;          // manuel : commence a charger
+    });
+    onKeysRelease(C.controls.lob, () => {
+      const p = PLAYER; if (!p || !p.exists() || !p.lobCharging) return;
+      p.lobCharging = false;
+      if (paused) return;                              // relache pendant la pause = annule
+      const ct = (C.shot && C.shot.lobChargeTime) || 0.7;
+      lobShoot(Math.max(0, Math.min(1, (p.lobChargeT || 0) / ct)), false);
+    });
     // DASH (Maj) : ruee horizontale + i-frames (via p.invuln). GRATUIT (cf.
     //  GAMEPLAY.md), simple cooldown. La ruee elle-meme est appliquee dans la
     //  boucle d'update via move() (transitoire) -> aucune vitesse residuelle.
@@ -3359,7 +3610,10 @@
     //  les i-frames permettait de camper a l'interieur et de tirer a bout
     //  portant sans plus jamais subir le contact (meme piege moteur que le coup
     //  retour du chat). Le tick effectif reste ~1 coup lourd/s (gate p.invuln).
-    PLAYER.onCollideUpdate('boss', (b) => damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false));
+    //  b.intangible : le jury "en concertation" s'est ecarte -> il ne roule plus
+    //  sur Laura (sinon un invite pousse pres de lui punissait par contact un boss
+    //  cense etre inerte).
+    PLAYER.onCollideUpdate('boss', (b) => { if (!b.intangible) damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false); });
     PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
     PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
@@ -3389,11 +3643,33 @@
       PLAYER.onUpdate(() => { PLAYER.move(C.player.speed, 0); PLAYER.facing = 1; });
       try {
         loop(0.25, () => { if (PLAYER.exists()) playerShoot('graine', 1); });
-        loop(2.0, () => { if (PLAYER.exists()) lobShoot(); });
+        loop(2.0, () => { if (PLAYER.exists()) lobShoot(1, true); });
         loop(3.0, () => { if (PLAYER.exists()) PLAYER.jump(C.player.jumpForce); });
         loop(4.0, () => { if (PLAYER.exists()) deployCat(); });
       } catch (e) {}
     }
+
+    // JAUGE DE CHARGE de la patisserie : barre au-dessus de Laura qui se remplit
+    //  tant qu'on tient X (lecture de la portee). Deux OBJETS MONDE (fond sombre +
+    //  jauge doree) qui SUIVENT Laura, masques (opacity 0) hors charge. Doree a
+    //  pleine charge. (objet plutot que player.onDraw : l'artScale du joueur
+    //  ecrasait le repere local du draw.)
+    const CG_W = 30, CG_H = 5, CG_DY = TS * 2.7;
+    const cgBg = add([rect(CG_W, CG_H, { radius: 2 }), pos(0, -9999), anchor('center'),
+      color(34, 24, 18), opacity(0), outline(2, rgb(20, 14, 10)), z(50)]);
+    const cgFill = add([rect(CG_W, CG_H, { radius: 2 }), pos(0, -9999), anchor('left'),
+      color(255, 206, 96), opacity(0), z(51)]);
+    PLAYER.onUpdate(() => {
+      const p = PLAYER;
+      if (!p.lobCharging) { cgBg.opacity = 0; cgFill.opacity = 0; return; }
+      const ct = (C.shot && C.shot.lobChargeTime) || 0.7;
+      const f = Math.max(0, Math.min(1, (p.lobChargeT || 0) / ct));
+      const bx = p.pos.x, by = p.pos.y - CG_DY;
+      cgBg.pos.x = bx; cgBg.pos.y = by; cgBg.opacity = 0.85;
+      cgFill.pos.x = bx - CG_W / 2; cgFill.pos.y = by;
+      cgFill.width = Math.max(0.001, CG_W * f);
+      cgFill.opacity = 1; cgFill.color = f >= 1 ? rgb(255, 238, 168) : rgb(255, 206, 96);
+    });
 
     PLAYER.onUpdate(() => {
       const p = PLAYER;
@@ -3440,6 +3716,9 @@
       //  (X) part via onPlayKey(C.controls.lob, lobShoot), pas ici.
       p.fireCd -= dt();
       if (p.lobCd > 0) p.lobCd -= dt();
+      // CHARGE DE LA PATISSERIE : tant qu'on tient X (mode manuel), la portee
+      //  gonfle jusqu'a lobChargeTime (cf. onKeysRelease/lob + jauge p.onDraw).
+      if (p.lobCharging) p.lobChargeT = Math.min((C.shot && C.shot.lobChargeTime) || 0.7, (p.lobChargeT || 0) + dt());
       if (keysDown(C.controls.shoot) && p.fireCd <= 0) {   // rollers/velo = powerup positif : on garde le tir
         fireBase(p);
         p.fireCd = grainesCd(p);                 // cadence pilotee par la CADENCE (p.rate)
@@ -3594,6 +3873,14 @@
       }
       LEVEL.camY += (targetY - LEVEL.camY) * Math.min(1, dt() * 6);     // lissage (ease)
       setCam(cx, LEVEL.camY);
+
+      // PIEGE "camera inversee" (pilule/champignon piege, cf. collectPickup) : tant
+      //  que LEVEL.invertT > 0 on renverse la vue (rotation 180 deg = sens dessus
+      //  dessous). On l'applique APRES setCam (qui ne touche que la position) pour ne
+      //  pas etre ecrase chaque frame. A l'expiration on remet la cam droite UNE fois.
+      LEVEL.invertT = Math.max(0, (LEVEL.invertT || 0) - dt());
+      const wantRot = LEVEL.invertT > 0 ? 180 : 0;
+      if (wantRot !== (LEVEL._camRot || 0)) { setCamAngle(wantRot); LEVEL._camRot = wantRot; }
     });
   });
 
@@ -3717,7 +4004,7 @@
 
   scene('title', () => {
     playMusic((C.music || {}).title);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     if (hasSprite('bg_title')) add([sprite('bg_title', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(143, 208, 240), z(-10)]);
 
@@ -3769,7 +4056,7 @@
     // --- bandeau bas : controles -------------------------------------
     pill(C.width / 2, C.height - 22, C.width, 56, [26, 18, 12], 0.5, 0, 3);
     inkText('Q/D ou Fleches : bouger     HAUT : sauter     ESPACE : tir de base', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
-    inkText('X : lob lourd     MAJ : dash     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
+    inkText('X (maintenir) : lob charge     MAJ : dash     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
 
     // --- invite "ESPACE pour commencer" : pastille doree clignotante ---
     const startPill = pill(C.width / 2, 430, 500, 44, [40, 26, 16], 0.78, 22, 5);
@@ -3793,7 +4080,7 @@
   // --- SELECTION DE SAUVEGARDE (3 slots) ------------------------------
   scene('slots', () => {
     playMusic((C.music || {}).slots);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     if (hasSprite('bg_save')) add([sprite('bg_save', { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(120, 196, 232), z(-10)]);
     // Les cadres (bandeau + 3 panneaux) sont PEINTS dans bg_save : on ne dessine
@@ -3877,7 +4164,7 @@
   scene('overworld', () => {
     if (!SAVE) { go('title'); return; }
     playMusic((C.music || {}).overworld);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
 
     // --- palette + helpers (carte-tresor) ------------------------------
     const INK = [52, 32, 20];          // brun encre (contours)
@@ -4030,7 +4317,7 @@
   // --- CHAPITRE ECRIT (apres chaque boss de niveau) : bureau de redaction ---
   scene('chapter', (data) => {
     playMusic((C.music || {}).chapter);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     const idx = (data && data.idx) || 0;
     const N = SAVEAPI.N_LEVELS;
     const gotPubli = !!(SAVE && SAVE.publis && SAVE.publis[idx]);
@@ -4088,7 +4375,7 @@
   // --- SOUTENANCE REUSSIE (apres le jury) : remise du diplome ---------------
   scene('win', (data) => {
     playMusic((C.music || {}).win);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     const parts = String(C.story.win).split(/\s{2,}/).filter(Boolean);
     const head = parts[0] || String(C.story.win);
     const sub = parts.slice(1).join(' ');
@@ -4209,7 +4496,7 @@
 
   scene('lose', (data) => {
     playMusic((C.music || {}).lose);
-    setCam(C.width / 2, C.height / 2);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     add([rect(C.width, C.height), pos(0, 0), color(90, 110, 130)]);
     add([sprite('hero_hurt'), pos(C.width / 2, 200), anchor('center'), artScale(1.6)]).play('hurt');
     bigText(C.story.lose, 300, 28, [255, 255, 255]);

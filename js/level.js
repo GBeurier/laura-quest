@@ -16,6 +16,9 @@
  *    'd'  collectible THEMATIQUE du niveau (skin via theme.pickups.data :
  *         graines / plans de riz / courbes / histogrammes / feuilles)
  *    'p'  page de these (collectible)
+ *    'q'  pilule PIEGEE      (MEME look que 'd' en interieur (pilule), indiscernable :
+ *                            AUCUN benefice, RENVERSE la camera qq s. cf. CONFIG.trap.)
+ *    'w'  champignon PIEGE   (MEME look qu'un champignon : meme piege "cam inversee".)
  *    'P'  PUBLICATION cachee (1/niveau -> 100%)
  *    'k'  croquette (recharge le chat)
  *    'L'  rollers (equipement : + rapide, saute + haut ; perdu si touchee)

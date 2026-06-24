@@ -1,18 +1,22 @@
 # _hazardgen — art des SOLS PIEGES ('%')
 
-Génère les **fosses à dégât** profondes en perspective (`hazard_paddy`,
+Génère les **fosses à dégât CARRÉES, vues de dessus** (`hazard_paddy`,
 `hazard_acid`, `hazard`) avec l'`image_gen` de Codex, comme les autres `_*gen/`
 (cf. `_bossgen/SPEC.md` pour le contrat de style commun).
 
-En jeu : l'objet est **ancré `'top'` au ras du sol et plonge vers le bas**
-(`spawnHazard` dans `js/game.js`) → la **gueule est en HAUT** du PNG, la
-profondeur descend, le danger (piques / acide) est **en bas**. Skin par biome via
-`LEVELS[x].theme.hazard` (`hazard_paddy` extérieur riziere / `hazard_acid`
+Chaque sprite est **UNE tuile carrée** (96×96 = 48×48 affiché = une case). En jeu,
+des `%` **contigus fusionnent** : le moteur pose N tuiles bord à bord pour former
+**UNE plaque-piège qui grandit en largeur** (`spawnHazardSpan` dans `js/game.js`)
+→ la tuile **DOIT être TILEABLE gauche↔droite** (danger + liserés haut/bas qui
+débordent des deux bords latéraux ; **pas de mur gauche/droit**, seulement un
+liseré **HAUT** = bord lointain sombre et un liseré **BAS** = bord proche éclairé).
+L'objet est **ancré `'top'` au ras du sol et plonge vers le bas**. Skin par biome
+via `LEVELS[x].theme.hazard` (`hazard_paddy` extérieur riziere / `hazard_acid`
 intérieur). Spec sprite : `SPRITES.md`.
 
 ## Cibles
 
-| Sprite          | Fosse                                              |
+| Sprite          | Fosse (tuile carrée tileable)                      |
 |-----------------|----------------------------------------------------|
 | `hazard_paddy`  | EXTÉRIEUR : piques de bambou dans l'eau boueuse    |
 | `hazard_acid`   | INTÉRIEUR : bassin d'acide vert qui bouillonne     |
@@ -30,9 +34,9 @@ python3 _hazardgen/build.py                 # chroma-key + normalise -> assets/s
 python3 gen_assets_data.py                  # ré-embarque window.ASSETS
 ```
 
-`build.py` est idempotent (ne traite que les `raw/` présents) et normalise au
-canevas du jeu **144×128** (= les placeholders `tools/gen_hazard_placeholders.py`),
-gueule alignée en haut.
+`build.py` est idempotent (ne traite que les `raw/` présents) et normalise en
+**carré 96×96** plein cadre (cover-fit, = les placeholders
+`tools/gen_hazard_placeholders.py`) → tuile pavable bord à bord.
 
 ## Placeholders
 

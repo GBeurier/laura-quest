@@ -61,7 +61,7 @@ Les vrais sprites/fonds sont du **pixel-art généré par l'`image_gen` de Codex
 | `_bggen/` | fonds de narration (chapitre / écran de victoire) | écrans `chapter`/`win` |
 | `_icongen/` | pickups, munitions, projectiles | `pickup_*`, `ammo_*`, tirs |
 | `_shelfgen/` | décor d'étagères | étagères du labo |
-| `_hazardgen/` | sols piégés (`%`) : fosses à dégât en trompe-l'œil, **vues de dessus** (larges/basses, ancre `bot`, danger qui remplit l'ouverture — le jeu n'a pas de hauteur sous le sol) | `hazard_paddy` (riziere), `hazard_acid` (interieur), `hazard` |
+| `_hazardgen/` | sols piégés (`%`) : **tuiles CARRÉES vues de dessus, tileables** (96×96 = 1 case ; danger qui remplit le carré + déborde gauche/droite, liserés haut/bas only). Des `%` contigus **fusionnent en UNE plaque qui grandit en largeur** (`spawnHazardSpan`, `js/game.js`) | `hazard_paddy` (riziere), `hazard_acid` (interieur), `hazard` |
 
 **Piège connu** (cf. mémoire *Indoor bg pipeline*) : lancer plusieurs `image_gen` en parallèle pour les fonds fait fuiter des éléments d'un prompt dans un autre (têtes parasites) → générer **séquentiellement** et valider chaque `raw/` (`_levelgen/validate_raws.py`).
 
