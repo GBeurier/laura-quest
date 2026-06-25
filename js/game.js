@@ -1713,7 +1713,7 @@
     const gy = columnGroundY(Math.floor(x / TS));
     const b = spawnBoss(key, x, gy - 2);
     b.guest = true;
-    b.hp = Math.max(5, Math.round((def.maxHp || def.hp) * (hpFrac || 0.35)));
+    b.hp = Math.max(5, Math.round((def.maxHp || def.hp) * (hpFrac || 0.30)));
     b.maxHp = b.hp;                                 // barre pleine a l'invocation
     b.homeX = x;
     if (LEVEL && LEVEL.bossRange) b.range = LEVEL.bossRange;   // l'invite roame DANS l'arene du jury
@@ -2077,9 +2077,14 @@
     if (b.hp <= 0) {
       b.hp = 0;
       if (b.guest) {
-        // boss INVITE (jury) : pas de cafe / message / bossesAlive — le jury reprend.
+        // boss INVITE (jury) : pas de message / bossesAlive — le jury reprend.
         PLAYER.score += Math.round((b.def.score || 0) * 0.25);
         for (let i = 0; i < 10; i++) addPoof(b.pos.x + rand(-26, 26), b.pos.y - rand(0, TS * 1.6));
+        // REBALANCE "combat final trop dur" : l'invite vaincu LACHE un cafe (+1 coeur)
+        //  et un rayon de soleil -> fenetre de soin AVANT la phase suivante du jury
+        //  ("fais pop des vies"). cf. config.js bosses.jury.
+        spawnPickup('cafe', b.pos.x, b.pos.y - TS);
+        spawnPickup('sunray', b.pos.x + TS * 1.2, b.pos.y - TS);
         destroy(b);
         safeShake(8); sfx('boss');
         return;
@@ -3187,7 +3192,10 @@
     p.medNoHit = false;                          // la medaille "sans degat" est perdue de toute facon
     get('boss').forEach((b) => {
       if (b.guest) { destroy(b); return; }       // les invites du jury disparaissent
-      b.hp = b.maxHp;
+      // CHECKPOINT DE PHASE (rebalance jury) : le jury reprend aux HP de DEBUT de sa
+      //  phase courante (jCheckpointHp, pose par AI.jury) au lieu de full reset -> on
+      //  ne refait pas tout le megaboss a chaque mort. Les autres boss : full heal.
+      b.hp = (b.jCheckpointHp != null) ? b.jCheckpointHp : b.maxHp;
       b.pos.x = b.homeX;
       // machine d'etats vierge : chaque IA se re-initialise sur champ undefined
       b.cs = b.ts = b.ms = b.state = b.ps = b.jPhase = undefined;

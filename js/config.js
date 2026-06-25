@@ -524,8 +524,9 @@ window.CONFIG = {
     //  sur leur feuille _atk (le marteau shot_gavel etait iconique mais aucun jure
     //  n'en brandit ; il reste sur disque si on veut revenir en arriere).
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
-                    hp: 270, maxHp: 270, guard: 0.35, touchDamage: 3, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
+                    hp: 220, maxHp: 220, guard: 0.35, touchDamage: 2, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
                     enrageTime: 0.7, ringN: 8, panicN: 7, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve ; panicN = largeur de l'eventail verdict (phase 2 rotationne UNE menace/beat, cf. AI.jury)
+                    // REBALANCE "combat final trop dur" : hp 270->220, touchDamage 3->2 (contact plus ecrasant), + checkpoints de phase (AI.jury / respawnAtArena) + cafe lache par chaque invite vaincu (game.js).
   },
 
   // --- Collectibles ---------------------------------------------------

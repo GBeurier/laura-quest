@@ -708,8 +708,17 @@ window.BOSS_AI = (() => {
   AI.jury = function (b, p, api) {
     faceOnly(b, p);
     if (b.jPhase === undefined) {
-      b.jPhase = 0; b.t = 0; b.cyc = 0; b.enrage = 0;
+      b.t = 0; b.cyc = 0; b.enrage = 0;
       b.openT = 0; b.jMode = 'fight'; b._guest = null; b.intangible = false;
+      // CHECKPOINT DE PHASE (rebalance "combat final trop dur") : jPhase est
+      //  initialise d'apres les HP COURANTS (pas toujours 0). A la mort, le joueur
+      //  reprend AU DEBUT DE LA PHASE (respawnAtArena restaure b.hp = jCheckpointHp,
+      //  cf. game.js) -> on RE-ENTRE dans la phase SANS rejouer l'interlude boss-rush
+      //  (l'invite deja vaincu n'est pas reconvoque). jCheckpointHp = HP de debut de
+      //  la phase courante = point de reprise.
+      const f0 = b.hp / b.maxHp;
+      b.jPhase = f0 > 0.66 ? 0 : (f0 > 0.33 ? 1 : 2);
+      b.jCheckpointHp = b.hp;
     }
     const frac = b.hp / b.maxHp;
     const phase = frac > 0.66 ? 0 : (frac > 0.33 ? 1 : 2);
@@ -721,11 +730,16 @@ window.BOSS_AI = (() => {
     if (phase !== b.jPhase) {
       const from = b.jPhase;
       b.jPhase = phase;
+      // point de reprise = HP de DEBUT de la nouvelle phase (cf. respawnAtArena).
+      //  floor (PAS round) : le checkpoint doit retomber STRICTEMENT dans la phase
+      //  (frac <= seuil) -> sinon, restaure a frac > seuil, le joueur recroise le
+      //  seuil et RE-declenche l'interlude boss-rush (invite reconvoque). cf. AI init.
+      b.jCheckpointHp = Math.floor(b.maxHp * (phase === 1 ? 0.66 : 0.33));
       let invited = false;
       if (api.addGuestBoss && phase > from && b.jMode !== 'invite') {
         // 0->1 : l'agriculteur ; 1->2 : rstudio OU michael (au hasard)
         const key = (from === 0) ? 'agriculteur' : (rand(0, 1) < 0.5 ? 'rstudio' : 'michael');
-        b._guest = api.addGuestBoss(key, b.homeX, 0.35) || null;
+        b._guest = api.addGuestBoss(key, b.homeX, 0.30) || null;   // rebalance : 35% -> 30% des HP de l'invite
         if (b._guest) {
           invited = true;
           b.jMode = 'invite';
@@ -782,7 +796,7 @@ window.BOSS_AI = (() => {
     // DERNIER TIER (phase 2, verdict <33% HP) : cadence DIVISEE PAR DEUX (delai
     //  double : 0.7 -> 1.4) -> le verdict tire MOITIE MOINS souvent que la phase
     //  0/1, le temps de lire chaque telegraphe rotatif. Tiers 0/1 inchanges.
-    const every = (phase === 0) ? baseEvery : (phase === 1 ? baseEvery * 0.75 : baseEvery * 1.4);
+    const every = (phase === 0) ? baseEvery : (phase === 1 ? baseEvery * 0.85 : baseEvery * 1.4);
 
     if (b.t >= every) {
       b.t = 0; b.animWant = 'attack'; b.cyc++;
@@ -791,17 +805,18 @@ window.BOSS_AI = (() => {
         // Q&A calme : eventail vise de 3
         [-0.14, 0, 0.14].forEach((s) => shoot(b, p, api, sp, s));
       } else if (phase === 1) {
-        // debat : eventail de 5 + un anneau de 8 un coup sur deux + minion fragile
+        // debat : eventail de 5 + un anneau de 8 (rebalance : 1 coup sur 3 au lieu
+        //  d'1 sur 2 -> mur de balles moins dense) + minion fragile (1 sur 4)
         const half = 2;
         for (let i = 0; i < 5; i++) shoot(b, p, api, sp, (i - half) * 0.14);
-        if (b.cyc % 2 === 0) {
+        if (b.cyc % 3 === 0) {
           const ringN = b.def.ringN || 8;
           for (let i = 0; i < ringN; i++) {
             const a = (i / ringN) * Math.PI * 2;
             shootDir(b, api, vec2(Math.cos(a), Math.sin(a)), sp * 0.7, 'boss');
           }
         }
-        if (b.cyc % 3 === 0) spawnEnFace(b, p, api, 'bug');   // vrai minion fragile (pas de passant)
+        if (b.cyc % 4 === 0) spawnEnFace(b, p, api, 'bug');   // vrai minion fragile (pas de passant)
       } else {
         // verdict / panique : on ROTATIONNE entre 3 menaces LISIBLES (une seule
         //  par beat) au lieu de toutes les empiler. Avant, chaque demi-seconde
