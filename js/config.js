@@ -554,6 +554,7 @@ window.CONFIG = {
 
   // --- Pieges (pickups piegees, cf. pickups.*.trap) -------------------
   trap: {
+    invertEnabled: false, // DESACTIVE : le piege "camera renversee" (pilule/champignon piege) ne s'arme plus (gameplay pas apprecie). Code conserve, repasser a true pour le reactiver.
     invertDuration: 4,   // secondes pendant lesquelles la camera reste renversee (vue sens dessus dessous)
   },
 

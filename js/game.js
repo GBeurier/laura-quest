@@ -2272,7 +2272,7 @@
       else                { if (p.rate  < cap) { p.rate++;  } p.rateFlash  = 0.8; flashMsg('CADENCE ' + p.rate); }
     }
     if (it.def.equip) equip(it.def.equip);       // equipement (rollers, etc.)
-    if (it.def.trap === 'invert') {              // PIEGE : pilule/champignon piege -> camera renversee (PAS de benefice)
+    if (it.def.trap === 'invert' && C.trap && C.trap.invertEnabled) {   // PIEGE : pilule/champignon piege -> camera renversee (PAS de benefice). DESACTIVE via CONFIG.trap.invertEnabled (gameplay pas apprecie) ; le code reste, le piege ne s'arme plus.
       const dur = (C.trap && C.trap.invertDuration) || 4;
       if (LEVEL) LEVEL.invertT = dur;            // (re)arme/rafraichit le timer ; applique dans la boucle cam (setCam)
       flashMsg((C.story && C.story.trapInvert) || 'OUPS... TOUT TOURNE !');
