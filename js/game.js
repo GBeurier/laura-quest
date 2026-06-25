@@ -1872,7 +1872,13 @@
       //  tracteur en plein 'drive' : edge jamais atteint -> plus de stall ni de
       //  demi-tour, boss fige qui bombarde (bug boss niveau1). Les BALLES, elles,
       //  collisionnent toujours les panneaux (couvert inchange).
-      area({ scale: vec2(0.8, 0.92), offset: vec2(0, -FEET_PAD.boss), collisionIgnore: ['panel'] }),
+      // collisionIgnore 'boss' : deux boss ne coexistent qu'au boss-rush du jury.
+      //  Le onBeforePhysicsResolve plus bas le voulait deja, mais il a un TROU a la
+      //  frame de spawn -> un invite ne au-dessus du jury "atterrissait" sur son dos
+      //  et son anti-enfoncement verrouillait _restY trop haut = invite FLOTTANT
+      //  (repro CDP : rstudio a -45px). En l'ignorant au niveau de la boite, l'invite
+      //  TRAVERSE le jury et tombe sur le VRAI sol. (Sans effet hors jury : 1 seul boss.)
+      area({ scale: vec2(0.8, 0.92), offset: vec2(0, -FEET_PAD.boss), collisionIgnore: ['panel', 'boss'] }),
       body(),
       opacity(1),
       'boss',
@@ -2082,11 +2088,10 @@
         // boss INVITE (jury) : pas de message / bossesAlive — le jury reprend.
         PLAYER.score += Math.round((b.def.score || 0) * 0.25);
         for (let i = 0; i < 10; i++) addPoof(b.pos.x + rand(-26, 26), b.pos.y - rand(0, TS * 1.6));
-        // REBALANCE "combat final trop dur" : l'invite vaincu LACHE un cafe (+1 coeur)
-        //  et un rayon de soleil -> fenetre de soin AVANT la phase suivante du jury
-        //  ("fais pop des vies"). cf. config.js bosses.jury.
+        // REBALANCE : l'invite vaincu LACHE un cafe (+1 coeur) -> fenetre de soin
+        //  AVANT la phase suivante du jury. Plus de rayon de soleil ici : le soleil
+        //  vient UNIQUEMENT du spawn regulier en hauteur (cf. C.sun.bossDropEvery).
         spawnPickup('cafe', b.pos.x, b.pos.y - TS);
-        spawnPickup('sunray', b.pos.x + TS * 1.2, b.pos.y - TS);
         destroy(b);
         safeShake(8); sfx('boss');
         return;
@@ -3675,10 +3680,11 @@
     //  Volontairement MESURE : un cafe poses sur le SOL de l'arene, jamais plus
     //  d'UN a la fois, et avec un DEBIT lent (cf. juryLifeEvery). Le but reste un
     //  defi : on ne noie pas le sol de soins.
-    //   - un cafe a chaque CHANGEMENT DE PHASE du jury (seuils de HP), +
-    //   - un cafe au compte-gouttes (timer lent) tant qu'il reste des coeurs a gagner.
+    //   - un cafe au compte-gouttes LENT (timer /3, ex-15s -> 45s), +
+    //   - un cafe GARANTI aux paliers 75% et 50% des PV du jury (PAS a 25% : la
+    //     panique finale reste tendue). Globalement bien moins de spawns de vie qu'avant.
     if (C.levels[CUR_IDX] === 'jury' && LEVEL.bossesAlive > 0) {
-      const everyS = 15;            // debit lent : ~1 cafe / 15 s au sol (en plus des drops d'invites)
+      const everyS = 45;            // debit /3 (etait 15 s) : ~1 cafe / 45 s au sol (en plus du cafe d'invite vaincu)
       // sol de l'arene + bornes (on pose le cafe au sol, atteignable, autour du jury)
       const arenaY = () => columnGroundY(Math.floor((LEVEL.bossX || PLAYER.pos.x) / TS)) - TS * 0.6;
       const arenaX = () => {
@@ -3695,17 +3701,17 @@
         lifeOut++;
         it.onDestroy(() => { lifeOut = Math.max(0, lifeOut - 1); });
       };
-      // compte-gouttes lent
+      // compte-gouttes lent (debit /3 : 45 s).
       loop(everyS, dropLifeCafe);
-      // bonus par PHASE : on surveille les HP du jury et on lache un cafe a chaque
-      //  franchissement d'un quart de vie (3 seuils : 75/50/25 %) -> fenetre de soin
-      //  AVANT que ca tape plus fort. Lecture seule de b.hp/b.maxHp (l'IA vit dans bosses.js).
-      let phaseStep = 0;            // nb de seuils deja franchis (0..3)
+      // + un cafe aux paliers 75% et 50% des PV du jury (entree des phases 1 et 2)
+      //  -> fenetre de soin avant que ca tape plus fort. PAS au palier 25% (panique
+      //  finale = on serre les dents). Lecture seule de b.hp/b.maxHp (IA dans bosses.js).
+      let phaseStep = 0;
       onUpdate(() => {
         const b = get('boss').find((x) => !x.guest);   // le jury (pas les invites)
         if (!b || b.maxHp <= 0) return;
-        const crossed = Math.floor((1 - Math.max(0, b.hp) / b.maxHp) * 4);  // 0,1,2,3 selon les quarts perdus
-        if (crossed > phaseStep) { phaseStep = crossed; dropLifeCafe(); }
+        const crossed = Math.floor((1 - Math.max(0, b.hp) / b.maxHp) * 4);  // 1 a 75%, 2 a 50%, 3 a 25%
+        if (crossed > phaseStep && crossed <= 2) { phaseStep = crossed; dropLifeCafe(); }   // SEULEMENT 75% et 50%
       });
     }
 
