@@ -110,8 +110,23 @@ window.BOSS_AI = (() => {
     if (b.pos.x > b.homeX + r) b.pos.x = b.homeX + r;
   }
   // tir vise le joueur, avec un ecart angulaire "spread" (radians)
+  //  CIBLE = TORSE du joueur (p.pos.y - TS), PAS ses pieds (p.pos) : joueur et
+  //  boss sont ancres 'bot', donc viser p.pos depuis le torse du boss
+  //  (b.pos.y - TS) ajoutait un biais de +TS vers le BAS -> a hauteur de sol
+  //  egale l'eventail entier plongeait dans le plancher (et partait en bas-gauche
+  //  quand Laura etait a gauche : le "boss qui tire dans le sol de droite a
+  //  gauche" signale). Meme intention que shootH plus bas, mais ici on garde un
+  //  vrai vecteur visee (pour toucher en surplomb) : on PLAFONNE juste la pente
+  //  VERS LE BAS (SHOOT_DOWN_MAX) pour qu'aucun tir ne pique raide dans le sol
+  //  meme joueur colle au boss. La visee VERS LE HAUT (y<0) reste LIBRE -> un
+  //  boss qui doit tirer sur un joueur en surplomb continue de le viser.
+  const SHOOT_DOWN_MAX = 0.30;   // pente max vers le bas (~17 deg) : a plat -> a peine descendant
   function shoot(b, p, api, speed, spread) {
-    const base = p.pos.sub(b.pos.add(0, -api.TS)).unit();
+    const torso = vec2(p.pos.x, p.pos.y - api.TS);         // vise le torse, pas les pieds
+    let base = torso.sub(b.pos.add(0, -api.TS)).unit();
+    // repere ecran : y>0 = vers le BAS -> on borne UNIQUEMENT la composante
+    //  descendante (les tirs vers le haut, y<0, ne sont jamais touches).
+    if (base.y > SHOOT_DOWN_MAX) base = vec2(base.x, SHOOT_DOWN_MAX).unit();
     const c = Math.cos(spread), s = Math.sin(spread);
     const d = vec2(base.x * c - base.y * s, base.x * s + base.y * c);
     api.bullet(b.pos.x, b.pos.y - api.TS, { pos: b.pos.add(d.scale(100)) }, speed, 'boss', b.def.shot);

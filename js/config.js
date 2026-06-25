@@ -461,9 +461,13 @@ window.CONFIG = {
     //  Esquive : lob depuis panneaux + saut/dash sous bombes.
     agriculteur:  { sprite: 'boss_agriculteur_move', attackSprite: 'boss_agriculteur_atk', behavior: 'tracteur',
                     hp: 42, maxHp: 42, guard: 0.5, touchDamage: 2, shotSpeed: 240, speed: 150, range: 500, score: 1000, name: 'L AGRICULTEUR FOU', shot: 'shot_fork',
-                    //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd ~ 2.5s),
+                    //  skyEvery DOIT etre < duree d'une traversee (2*range/driveSpd),
                     //  sinon AUCUNE bombe ne part en drive (bug v1 : 3.4 > 2.5).
-                    revTime: 0.5, stallTime: 1.8, skyEvery: 1.6, skyDelay: 0.9, arenaPad: 2,
+                    //  Passe de 1.6 a 2.0 : moins de bombes-ciel par drive -> l'agriculteur
+                    //  presse moins, "surtout" comme 1er INVITE du jury (il roame dans
+                    //  l'arene jury range<=420 -> traversee ~3.5s, donc 2.0 laisse encore
+                    //  >=1 bombe/drive ; idem niveau1, traversee ~4.2s).
+                    revTime: 0.5, stallTime: 1.8, skyEvery: 2.0, skyDelay: 0.9, arenaPad: 2,
                     p2DriveMul: 1.25, p2SkyEvery: 1.1 },
 
     // niveau2 (Appart) — proprio (IA 'charger').

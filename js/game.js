@@ -3621,7 +3621,18 @@
     //  b.intangible : le jury "en concertation" s'est ecarte -> il ne roule plus
     //  sur Laura (sinon un invite pousse pres de lui punissait par contact un boss
     //  cense etre inerte).
-    PLAYER.onCollideUpdate('boss', (b) => { if (!b.intangible) damagePlayer(b.def ? b.def.touchDamage : 2, b.pos.x, C.sun.bossTouchPierces !== false); });
+    //  BOSS INVITE (b.guest, boss-rush du jury) : contact ADOUCI. L'agriculteur
+    //  qui roule sur Laura (touchDamage 2 + lourd = traverse le bouclier) etait
+    //  le pire — "surtout le premier boss invoque". Pour un invite : degats /2
+    //  (min 1) ET coup NON-lourd -> le bouclier-soleil l'encaisse a nouveau. Le
+    //  jury lui-meme (pas guest) garde son contact plein.
+    PLAYER.onCollideUpdate('boss', (b) => {
+      if (b.intangible) return;
+      const base = b.def ? b.def.touchDamage : 2;
+      const dmg = b.guest ? Math.max(1, Math.floor(base / 2)) : base;     // invite : moitie moins, min 1
+      const heavy = b.guest ? false : (C.sun.bossTouchPierces !== false); // invite : non-lourd -> le bouclier encaisse
+      damagePlayer(dmg, b.pos.x, heavy);
+    });
     PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
     PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
