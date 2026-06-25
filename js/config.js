@@ -754,7 +754,12 @@ window.CONFIG = {
   //  gen_assets_data.py). En jeu : piste = LEVELS[clef].music || clef du
   //  niveau (niveau1.mid, ..., jury.mid). Piste absente = silence, rien ne
   //  casse. Scene absente de cette table = la musique s'arrete.
-  music: { title: 'title', slots: 'title', overworld: 'map', chapter: 'chapter', win: 'win', lose: 'lose' },
+  //  TOUS les ecrans menu/narratifs (title, slots, overworld/map, chapter)
+  //  partagent la piste 'title' : rejouer la meme piste est un no-op (cf.
+  //  playMusic) -> la musique du titre NE S'ARRETE PAS en passant de l'un a
+  //  l'autre. Seuls win / lose / les niveaux ont leur propre piste. (Les anciens
+  //  map.mid / chapter.mid ont ete retires.)
+  music: { title: 'title', slots: 'title', overworld: 'title', chapter: 'title', win: 'win', lose: 'lose' },
 
   // --- Mobile / tactile (web, pas de natif) ---------------------------
   //  La manette tactile (js/mobile.js) s'active TOUTE SEULE sur ecran tactile
