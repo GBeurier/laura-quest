@@ -705,15 +705,17 @@ window.BOSS_AI = (() => {
 
   /* =====================================================================
    *  JURY DE THESE — megaboss final : BOSS RUSH en 3 phases selon HP.
-   *   >66%  (calme, Q&A)      : volees visees, deplacement lent, eventails 3.
-   *   33-66% (debat)          : + minions + salves en ANNEAU.
-   *   <33%  (verdict/panique) : ROTATION d'UNE menace par beat (eventail rapide
-   *                             de panicN / MUR A TROU a dasher / bombe ciblee +
-   *                             tampon) — plus de cumul, chaque beat = 1 esquive.
-   *  Aux transitions 0->1 et 1->2 : INTERLUDE 'invite' — le jury "se
+   *  V3 : 4 PHASES en quarts (calme -> debat -> panique -> panique).
+   *   >75%  (calme, Q&A)      : volees visees, deplacement lent, eventails 3.
+   *   50-75% (debat)          : + minions + salves en ANNEAU.
+   *   <50%  (verdict/panique) : "tir a fond" DES la phase 2 (et continue en
+   *                             phase 3, <25% — MEME pattern) : ROTATION d'UNE
+   *                             menace par beat (eventail rapide de panicN / MUR A
+   *                             TROU a dasher / bombe ciblee + tampon), 1 esquive/beat.
+   *  Aux transitions 0->1, 1->2 et 2->3 : INTERLUDE 'invite' — le jury "se
    *  concerte" (recule au fond, INVULNERABLE guard=0, aucun tir) et invoque
-   *  un ANCIEN boss via api.addGuestBoss (0->1 : agriculteur ; 1->2 :
-   *  rstudio ou michael au hasard, ~35% de leurs HP). L'invite vaincu, pose
+   *  un ANCIEN boss via api.addGuestBoss (0->1 agriculteur ; 1->2 rstudio ou
+   *  michael ; 2->3 le complement — 3 invites DISTINCTS, ~30% de leurs HP). L'invite vaincu, pose
    *  d'enrage puis reprise. Sans api.addGuestBoss (ancien game.js),
    *  l'interlude est saute proprement (enrage seul, comportement historique).
    *  BATTEMENT DE VULNERABILITE : apres CHAQUE volee, b.openT = openTime
@@ -732,11 +734,15 @@ window.BOSS_AI = (() => {
       //  (l'invite deja vaincu n'est pas reconvoque). jCheckpointHp = HP de debut de
       //  la phase courante = point de reprise.
       const f0 = b.hp / b.maxHp;
-      b.jPhase = f0 > 0.66 ? 0 : (f0 > 0.33 ? 1 : 2);
+      b.jPhase = f0 > 0.75 ? 0 : (f0 > 0.5 ? 1 : (f0 > 0.25 ? 2 : 3));   // 4 phases en quarts
       b.jCheckpointHp = b.hp;
     }
     const frac = b.hp / b.maxHp;
-    const phase = frac > 0.66 ? 0 : (frac > 0.33 ? 1 : 2);
+    // 4 PHASES en quarts (V3) : 0 calme (>75%), 1 debat (50-75%), 2 ET 3 panique
+    //  ("tir a fond" DES la phase 2, <50%, et continue en phase 3, <25%). Le
+    //  dispatch d'attaque et la cadence traitent deja tout phase>=2 comme panique
+    //  (branche 'else'), donc la 4e phase = 2e phase de panique, MEME intensite.
+    const phase = frac > 0.75 ? 0 : (frac > 0.5 ? 1 : (frac > 0.25 ? 2 : 3));
     const sp = b.def.shotSpeed || 220;
     const baseEvery = b.def.shotEvery || 1.4;
     const range = b.range || 360;
@@ -749,11 +755,18 @@ window.BOSS_AI = (() => {
       //  floor (PAS round) : le checkpoint doit retomber STRICTEMENT dans la phase
       //  (frac <= seuil) -> sinon, restaure a frac > seuil, le joueur recroise le
       //  seuil et RE-declenche l'interlude boss-rush (invite reconvoque). cf. AI init.
-      b.jCheckpointHp = Math.floor(b.maxHp * (phase === 1 ? 0.66 : 0.33));
+      b.jCheckpointHp = Math.floor(b.maxHp * (phase === 1 ? 0.75 : phase === 2 ? 0.5 : 0.25));
       let invited = false;
       if (api.addGuestBoss && phase > from && b.jMode !== 'invite') {
-        // 0->1 : l'agriculteur ; 1->2 : rstudio OU michael (au hasard)
-        const key = (from === 0) ? 'agriculteur' : (rand(0, 1) < 0.5 ? 'rstudio' : 'michael');
+        // 4 phases -> 3 invites (une par transition 0->1, 1->2, 2->3) :
+        //  0->1 l'agriculteur ; 1->2 rstudio OU michael (au hasard, on retient
+        //  lequel via b._jGuest1) ; 2->3 le COMPLEMENT (l'autre des deux) -> les
+        //  trois invites sont distincts. "tout le reste identique" : on n'a fait
+        //  qu'AJOUTER la 3e invite a la nouvelle transition.
+        let key;
+        if (from === 0) key = 'agriculteur';
+        else if (from === 1) { key = (rand(0, 1) < 0.5 ? 'rstudio' : 'michael'); b._jGuest1 = key; }
+        else key = (b._jGuest1 === 'rstudio') ? 'michael' : 'rstudio';
         b._guest = api.addGuestBoss(key, b.homeX, 0.30) || null;   // rebalance : 35% -> 30% des HP de l'invite
         if (b._guest) {
           invited = true;
@@ -808,9 +821,10 @@ window.BOSS_AI = (() => {
     moveClamp(b, p, (b.def.speed || 90) * (phase === 0 ? 0.4 : 0.55));
     b.animWant = 'idle';
     b.t += dt();
-    // DERNIER TIER (phase 2, verdict <33% HP) : cadence DIVISEE PAR DEUX (delai
+    // PANIQUE (phases 2 ET 3, verdict <50% HP) : cadence DIVISEE PAR DEUX (delai
     //  double : 0.7 -> 1.4) -> le verdict tire MOITIE MOINS souvent que la phase
     //  0/1, le temps de lire chaque telegraphe rotatif. Tiers 0/1 inchanges.
+    //  (phase>=2 tombe dans la meme branche -> la 4e phase tire comme la 3e.)
     const every = (phase === 0) ? baseEvery : (phase === 1 ? baseEvery * 0.85 : baseEvery * 1.4);
 
     if (b.t >= every) {

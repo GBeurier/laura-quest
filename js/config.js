@@ -529,9 +529,10 @@ window.CONFIG = {
     //  sur leur feuille _atk (le marteau shot_gavel etait iconique mais aucun jure
     //  n'en brandit ; il reste sur disque si on veut revenir en arriere).
     jury:         { sprite: 'boss_jury_move', attackSprite: 'boss_jury_atk', behavior: 'jury',
-                    hp: 220, maxHp: 220, guard: 0.35, touchDamage: 2, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
-                    enrageTime: 0.7, ringN: 8, panicN: 7, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve ; panicN = largeur de l'eventail verdict (phase 2 rotationne UNE menace/beat, cf. AI.jury)
+                    hp: 293, maxHp: 293, guard: 0.35, touchDamage: 2, shotEvery: 0.9, shotSpeed: 340, speed: 75, range: 420, score: 5000, name: 'LE JURY DE THESE', shot: 'shot_page', scale: 1.32,
+                    enrageTime: 0.7, ringN: 8, panicN: 7, openTime: 0.8 },   // openTime = battement VULNERABLE apres chaque salve ; panicN = largeur de l'eventail verdict (phases 2-3 rotationnent UNE menace/beat, cf. AI.jury)
                     // REBALANCE "combat final trop dur" : hp 270->220, touchDamage 3->2 (contact plus ecrasant), + checkpoints de phase (AI.jury / respawnAtArena) + cafe lache par chaque invite vaincu (game.js).
+                    // V3 (4e phase) : hp 220->293 (+1/3, le combat dure plus longtemps mais MEME intensite par phase) ; 4 phases en quarts (75/50/25%) -> 3 invites au lieu de 2 ; "tir a fond" (panique) des la phase 2 et continue en phase 3. cf. AI.jury.
   },
 
   // --- Collectibles ---------------------------------------------------
@@ -759,7 +760,7 @@ window.CONFIG = {
   //  playMusic) -> la musique du titre NE S'ARRETE PAS en passant de l'un a
   //  l'autre. Seuls win / lose / les niveaux ont leur propre piste. (Les anciens
   //  map.mid / chapter.mid ont ete retires.)
-  music: { title: 'title', slots: 'title', overworld: 'title', chapter: 'title', win: 'win', lose: 'lose' },
+  music: { title: 'title', slots: 'title', overworld: 'title', chapter: 'title', win: 'title', lose: 'lose' },
 
   // --- Mobile / tactile (web, pas de natif) ---------------------------
   //  La manette tactile (js/mobile.js) s'active TOUTE SEULE sur ecran tactile
