@@ -167,7 +167,8 @@ window.CONFIG = {
     //  dans game.js) -> relacher tot = petit saut. jumpCutG (ancien systeme
     //  "tenir BAS") laisse a 0 : BAS sert UNIQUEMENT a s'accroupir.
     jumpCutG: 0,
-    maxHp: 4,             // v2 : 4 coeurs (le bouclier soleil encaisse devant, cf. GAMEPLAY.md §2)
+    maxHp: 8,            // PLAFOND de coeurs (v3) : on peut monter jusqu'a 8 via les popups de vie (surtout au jury). Le HUD se resserre pour rentrer (cf. game.js HUD coeurs)
+    startHp: 4,          // coeurs au DEPART/respawn de chaque niveau : on garde 4 (les niveaux 1-5 restent un defi) ; les coeurs en plus se gagnent en ramassant des cafes
     invulnTime: 1.1,
     startAmmo: 'graine',  // tir de base
     knockback: 300,       // recul quand Laura touche un monstre / un tir

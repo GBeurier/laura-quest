@@ -661,7 +661,9 @@
       opacity(1),
       'player',
       {
-        hp: C.player.maxHp, maxHp: C.player.maxHp,
+        // VIE : on DEMARRE a startHp (4) mais le plafond est maxHp (8) -> les cafes
+        //  peuvent surcharger jusqu'a 8 (surtout au jury). startHp clampe <= maxHp.
+        hp: Math.min(C.player.maxHp, C.player.startHp || C.player.maxHp), maxHp: C.player.maxHp,
         facing: 1, invuln: 0, sunRegenLockT: 0, medNoHit: true, throwT: 0, throwReplay: false,
         catTossT: 0, catRegenT: 0, _actOv: null,   // pose "lance le chat" (brieve) + recharge auto + calque d'action
         aimAngle: C.shot.aimDefault,           // angle de lancer du lob (resolu par autoAimArc)
@@ -2856,16 +2858,23 @@
       panel(PL_X, PL_Y, PL_W, PL_H);
 
       // Ligne 1 : coeurs + crane
+      //  La rangee doit rentrer dans le panneau a 4 coeurs COMME a 8 (maxHp peut
+      //  monter a 8 via les cafes). On RESSERRE l'espacement (et un poil la taille
+      //  du coeur) quand maxHp grandit, et on recale le crane sur le meme pas.
       const R1Y = PL_Y + 30;
       const lowHp = p.hp === 1;
+      const HX0 = PL_X + 18;                          // centre du 1er coeur
+      const SKW = 40;                                 // place reservee a droite pour le crane + compteur
+      const hStep = Math.min(30, (PL_W - 24 - (HX0 - PL_X) - SKW) / Math.max(1, p.maxHp - 1));  // pas qui se resserre au-dela de ~6 coeurs
+      const hSize = Math.min(28, hStep * 0.95);       // coeur legerement reduit si le pas se resserre
       for (let i = 0; i < p.maxHp; i++) {
         const full = i < p.hp;
         const panic = (full && lowHp) ? 1 + 0.10 * Math.sin(t * 9) : 1;
         const bob = full ? Math.sin(t * 4 + i * 0.6) * 1.2 : 0;
-        icon('heart', PL_X + 18 + i * 30, R1Y + bob, 28 * panic, { frame: full ? 0 : 1, opacity: full ? 1 : 0.28 });
+        icon('heart', HX0 + i * hStep, R1Y + bob, hSize * panic, { frame: full ? 0 : 1, opacity: full ? 1 : 0.28 });
       }
       if (p.kills > 0) {
-        const skx = PL_X + 18 + p.maxHp * 30 + 10;
+        const skx = HX0 + (p.maxHp - 1) * hStep + Math.max(20, hStep * 0.8);   // juste apres le dernier coeur
         const fk = Math.min(1, (p.killFlash || 0) / 0.6);
         if (fk > 0) drawCircle({ pos: vec2(skx, R1Y), radius: 13 + fk * 8, color: COL.red, opacity: 0.28 * fk });
         icon('skull', skx, R1Y + Math.sin(t * 3) * 0.7, 24 * (1 + 0.28 * fk));
@@ -3183,7 +3192,9 @@
 
   function respawnAtArena() {
     const p = PLAYER, ck = LEVEL.checkpoint;
-    p.hp = p.maxHp;
+    // REPRISE AU BOSS : on rend startHp (4) coeurs, PAS le plafond (8) -> les coeurs
+    //  surcharges via cafes sont a regagner. Clamp <= maxHp par securite.
+    p.hp = Math.min(p.maxHp, C.player.startHp || p.maxHp);
     p.sun = Math.min(p.sunMax, Math.max(p.sun, 50));
     p.sunRegenLockT = 0;
     p.pos.x = ck.x; p.pos.y = ck.y;
@@ -3654,6 +3665,47 @@
         if (!it) return;
         drops++;
         it.onDestroy(() => { drops = Math.max(0, drops - 1); });
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    //  POPUPS DE VIE au JURY (rebalance "combat final trop dur") : en plus du
+    //  cafe lache par chaque invite vaincu (cf. hitBoss), on fait POPER des cafes
+    //  (+1 coeur) pendant le megaboss pour qu'un joueur prudent grimpe vers 8.
+    //  Volontairement MESURE : un cafe poses sur le SOL de l'arene, jamais plus
+    //  d'UN a la fois, et avec un DEBIT lent (cf. juryLifeEvery). Le but reste un
+    //  defi : on ne noie pas le sol de soins.
+    //   - un cafe a chaque CHANGEMENT DE PHASE du jury (seuils de HP), +
+    //   - un cafe au compte-gouttes (timer lent) tant qu'il reste des coeurs a gagner.
+    if (C.levels[CUR_IDX] === 'jury' && LEVEL.bossesAlive > 0) {
+      const everyS = 15;            // debit lent : ~1 cafe / 15 s au sol (en plus des drops d'invites)
+      // sol de l'arene + bornes (on pose le cafe au sol, atteignable, autour du jury)
+      const arenaY = () => columnGroundY(Math.floor((LEVEL.bossX || PLAYER.pos.x) / TS)) - TS * 0.6;
+      const arenaX = () => {
+        const bx = LEVEL.bossX || PLAYER.pos.x, rg = (LEVEL.bossRange || 300) * 0.7;
+        return Math.max(TS, Math.min(LEVEL.width - TS, bx + rand(-rg, rg)));
+      };
+      // un seul cafe "de vie" present a la fois (les drops d'invites restent en plus)
+      let lifeOut = 0;
+      const dropLifeCafe = () => {
+        if (!PLAYER.exists() || !get('boss').length || lifeOut >= 1) return;
+        if (PLAYER.hp >= PLAYER.maxHp) return;        // deja au plafond -> on n'encombre pas le sol
+        const it = spawnPickup('cafe', arenaX(), arenaY());
+        if (!it) return;
+        lifeOut++;
+        it.onDestroy(() => { lifeOut = Math.max(0, lifeOut - 1); });
+      };
+      // compte-gouttes lent
+      loop(everyS, dropLifeCafe);
+      // bonus par PHASE : on surveille les HP du jury et on lache un cafe a chaque
+      //  franchissement d'un quart de vie (3 seuils : 75/50/25 %) -> fenetre de soin
+      //  AVANT que ca tape plus fort. Lecture seule de b.hp/b.maxHp (l'IA vit dans bosses.js).
+      let phaseStep = 0;            // nb de seuils deja franchis (0..3)
+      onUpdate(() => {
+        const b = get('boss').find((x) => !x.guest);   // le jury (pas les invites)
+        if (!b || b.maxHp <= 0) return;
+        const crossed = Math.floor((1 - Math.max(0, b.hp) / b.maxHp) * 4);  // 0,1,2,3 selon les quarts perdus
+        if (crossed > phaseStep) { phaseStep = crossed; dropLifeCafe(); }
       });
     }
 
