@@ -192,7 +192,7 @@
     armFullscreen();
 
     // Boucle legere : visibilite selon la scene (gamepad complet en jeu, reduit en menu).
-    let wasInGame = null;
+    let wasInGame = null, hadCat = null;
     const tick = () => {
       const sc = (typeof getSceneName === 'function') ? getSceneName() : null;
       const inGame = (sc === 'game' || sc == null);
@@ -201,6 +201,8 @@
         root.classList.toggle('lq-menu', !inGame);
         if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
       }
+      const cat = !!(window.LQ && window.LQ.abilities.cat);
+      if (cat !== hadCat) { hadCat = cat; root.classList.toggle('lq-no-cat', !cat); }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -275,6 +277,7 @@ html.lq-mobile canvas{ width:100vw !important; height:100vh !important; height:1
 .lq-pause{ left:calc(var(--lq-sl) + var(--lq-pad)); top:calc(var(--lq-st) + var(--lq-pad)); }
 
 /* en menu (hors jeu) : on masque les boutons "combat", on garde deplacement + OK + pause */
+#lq-touch.lq-no-cat .lq-cat{ display:none; }
 #lq-touch.lq-menu .lq-shoot, #lq-touch.lq-menu .lq-cat, #lq-touch.lq-menu .lq-lob,
 #lq-touch.lq-menu .lq-dash, #lq-touch.lq-menu .lq-crouch{ display:none; }
 

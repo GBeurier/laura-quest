@@ -116,6 +116,21 @@ const LEVEL_MAPS = window.LEVEL_MAPS || {};
 
 window.LEVELS = {
 
+  // Petit parcours de validation multi-personnage. Sol de bois / plateformes,
+  // objets et boss reutilises ; le fond et la carte appartiennent a Marcos.
+  marcos_bateau: {
+    boss: 'marcos_gardien', music: 'niveau1', npcLevel: null,
+    par: { or: 75, argent: 120, bronze: 180 },
+    theme: {
+      sky: [91, 183, 231], tint: [255, 255, 255],
+      layers: [{ sprite: 'bg_marcos_port', fullscreen: true, z: -30 }],
+      tiles: { '=': ['tile_sol_appart'], '-': ['tile_shelf_books'], 'x': ['tile_shelf_books'] },
+      panelLeg: 'shelf_leg', pickups: { data: 'pickup_graine', page: 'pickup_plant' },
+      passant: PASSANT('champ'),
+    },
+    map: LEVEL_MAPS.marcos_bateau,
+  },
+
   // --- INTRODUCTION : L'agriculteur fou — RIZIERES DE CAMARGUE, plein jour ----
   //  Installation de la manip + recolte de donnees. Le niveau INTRODUCTIF : le
   //  plus LONG mais le plus FACILE. Long couloir tres aere ou les ennemis sont

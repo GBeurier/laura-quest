@@ -50,6 +50,7 @@ KNOWN = SOLID | ITEMS | GROUND_CHARS | FLYERS | MARKERS | set('@B*^% ')
 
 # équipement disponible par niveau + portée du boss (px -> tuiles)
 META = {
+    'marcos_bateau': dict(W=100, R=13, g=11, gear=[], boss_range=420 / 48),
     'niveau1': dict(W=148, R=13, g=11, gear=[],          boss_range=500 / 48),
     'niveau2': dict(W=260, R=14, g=12, gear=['velo'],    boss_range=500 / 48),
     'niveau3': dict(W=280, R=14, g=12, gear=['rollers'], boss_range=470 / 48),

@@ -3,13 +3,38 @@
  *  Lit CONFIG (js/config.js), LEVELS (js/level.js), LQ_SAVE (js/save.js)
  *  et BOSS_AI (js/bosses.js). Moteur : KAPLAY (engine/kaplay.js), 100% client.
  *
- *  Scenes : title -> slots -> overworld -> game -> chapter -> overworld
+ *  Scenes : title -> characters -> slots -> introduction -> overworld -> game
  *           ... jury -> win.   (mort : sequence in-scene -> le niveau
  *           redemarre ; la scene 'lose' n'est plus atteinte depuis le jeu)
  * ===================================================================== */
 (() => {
   'use strict';
-  const C = window.CONFIG;
+  const BASE = window.CONFIG;
+  const CONTENT = window.LQ_CONTENT;
+  const CHARACTERS = window.LQ_CHARACTERS;
+  let CHARACTER = CHARACTERS.laura;
+  let CAMPAIGN = CONTENT.campaignFor(CHARACTER.id);
+  let C = BASE;
+  function selectCharacter(id) {
+    CHARACTER = CHARACTERS[id];
+    CAMPAIGN = CONTENT.campaignFor(id);
+    // Un contexte neuf a chaque selection : aucun reglage de Marcos ne fuit
+    // dans la partie Laura. Audio / controles restent des preferences globales.
+    C = Object.assign({}, BASE, {
+      levels: CAMPAIGN.levels, world: CAMPAIGN.world,
+      story: Object.assign({}, BASE.story, CAMPAIGN.story),
+      music: Object.assign({}, BASE.music, CAMPAIGN.music),
+      player: Object.assign({}, BASE.player, CHARACTER.player),
+      equipment: Object.assign({}, BASE.equipment, CHARACTER.equipment),
+      startVehicle: CAMPAIGN.startVehicle || BASE.startVehicle,
+    });
+  }
+  selectCharacter('laura');
+  const chapterKeys = () => CONTENT.chapters(CAMPAIGN);
+  const characterSprite = (name, character = CHARACTER) =>
+    character.sprites && Object.hasOwn(character.sprites, name) ? character.sprites[name] : name;
+  const hasCat = () => !!(CHARACTER.abilities && CHARACTER.abilities.cat);
+  const medalKeys = () => hasCat() ? ['t', 'd', 's'] : ['t', 'd'];
   const LEVELS = window.LEVELS;
   const SAVEAPI = window.LQ_SAVE;
   // Tactile (web mobile) : js/mobile.js est charge AVANT game.js et a pose ce
@@ -41,7 +66,12 @@
     const cv = document.querySelector('canvas');
     if (cv) {
       cv.style.transformOrigin = 'center center';
-      cv.style.transform = `scale(${C.desktopZoom})`;
+      const fit = () => {
+        const zoom = Math.min(C.desktopZoom, (window.innerWidth - 16) / C.width,
+          (window.innerHeight - 32) / C.height);
+        cv.style.transform = `scale(${Math.max(0.1, zoom)})`;
+      };
+      fit(); window.addEventListener('resize', fit);
     }
   }
 
@@ -124,6 +154,8 @@
   // charge TOUT ce qui est dans window.ASSETS -> les variants numerotes
   // (enemy_criquet2, ...) sont pris en compte automatiquement.
   const SPRITES_FALLBACK = [
+    'body_champ_h', 'body_champ_h_dead', 'head_npc_h_25', 'head_npc_h_25_dead', 'bg_marcos_port',
+    'marcos_idle', 'marcos_run', 'marcos_jump', 'marcos_throw', 'marcos_hurt', 'marcos_duck', 'marcos_dash', 'marcos_dead',
     'hero_idle', 'hero_run', 'hero_jump', 'hero_hurt', 'hero_throw', 'cat_run',
     'ammo_graine', 'ammo_gateau',
     'enemy_caillou', 'enemy_camion', 'enemy_assureur', 'enemy_ademe', 'enemy_corbeau', 'enemy_criquet',
@@ -255,6 +287,7 @@
   let BOSS_LIST = [];   // boss du niveau + invites (spawnBoss les enregistre)
   const EHOTS = new Set();   // tirs ennemis vivants (enemyBullet les enregistre)
   const catOut = () => !!(CAT_REF && CAT_REF.exists());
+  const DEV_SESSION = /^#(game|map|winscreen|chapterscreen)/.test(location.hash);
   let SAVE = null;      // slot courant (objet de save.js)
   let SLOT = 0;         // index du slot courant
   let CUR_IDX = 0;      // index du niveau dans C.levels
@@ -282,6 +315,21 @@
 
   // bascule de sprite + animation (ne rejoue que si ca change)
   function setAnim(o, spr, anim) {
+    if (o._heroCharacter) spr = characterSprite(spr, o._heroCharacter);
+    const rig = o._heroCharacter && o._heroCharacter.rig;
+    if (rig) {
+      const clip = rig.clips[anim] == null ? 0 : rig.clips[anim];
+      spr = rig.body;
+      if (typeof clip === 'number') {
+        if (o._spr !== spr || o._anim !== anim) {
+          if (o._spr !== spr) { o.use(sprite(spr)); o._spr = spr; }
+          if (o.stop) o.stop();
+          o.frame = clip; o._anim = anim;
+        }
+        return;
+      }
+      anim = clip;
+    }
     if (o._spr !== spr) { o.use(sprite(spr)); o._spr = spr; o._anim = null; }
     if (anim && o._anim !== anim) { try { o.play(anim); } catch (e) {} o._anim = anim; }
   }
@@ -289,6 +337,7 @@
   // SAC VIDE : tant que le chat est DEHORS (deploye), Laura porte un sac vide -> on
   //  joue la variante "<spr>_nocat" si elle existe (sinon on garde le sprite avec chat).
   function noCat(spr) {
+    spr = characterSprite(spr);
     return (catOut() && hasSprite(spr + '_nocat')) ? spr + '_nocat' : spr;
   }
 
@@ -307,6 +356,8 @@
   //  de Laura). Absent (pas d'asset) -> on ne fait rien (repli gere par l'appelant).
   //  `replay` (nouveau tir) rejoue le calque depuis la 1re frame.
   function setActionOverlay(p, sprName, anim, replay) {
+    if (sprName) sprName = characterSprite(sprName);
+    if (CHARACTER.rig) sprName = null;
     if (!sprName || !hasSprite(sprName)) {
       if (p._actOv && p._actOv.exists()) { destroy(p._actOv); p._actOv = null; }
       return false;
@@ -652,11 +703,11 @@
   // ---------------------------------------------------------------------
   function spawnPlayer(x, y) {
     const p = add([
-      sprite('hero_idle'),
+      sprite(CHARACTER.rig ? CHARACTER.rig.body : characterSprite('hero_idle')),
       artScale(),
       pos(x, y),
       anchor('bot'),
-      area({ scale: vec2(0.68, 0.86) }),
+      area({ scale: vec2(...(C.player.areaScale || [0.68, 0.86])) }),
       body({ jumpForce: C.player.jumpForce }),
       opacity(1),
       'player',
@@ -679,7 +730,7 @@
         score: 0, kills: 0, saved: 0,          // kills = passants abattus ; saved = passants sauves par le chat
         levelTime: 0,                          // chrono du niveau (time-attack : meilleur temps sur la carte)
         data: 0, pages: 0, gotPubli: false,
-        catCharges: C.cat.startCharges,
+        catCharges: hasCat() ? C.cat.startCharges : 0,
         catLock: false,
         _sunCharging: false, _sunShaded: false, sunFlash: 0,   // etat de recharge solaire (HUD glow)
         killFlash: 0,                                          // pulse du compteur tete-de-mort a chaque meurtre
@@ -689,6 +740,7 @@
         _spr: 'hero_idle', _anim: null,
       },
     ]);
+    attachHero(p, CHARACTER);
     // Le BOSS n'est pas un MUR : sa masse ne pousse jamais Laura. Sans ca,
     //  pendant l'invuln post-coup (damagePlayer sort tot : ni degat ni lock),
     //  la RESOLUTION physique du body continuait de la bulldozer devant le
@@ -702,6 +754,25 @@
       if (o && o.is && o.is('boss')) col.preventResolution();
     });
     return p;
+  }
+
+  function attachHero(o, character, dead) {
+    o._heroCharacter = character;
+    const rig = character.rig;
+    if (rig) {
+      const h = attachHead(o, Object.assign({}, C.theme.passant, rig, { headBob: dead ? 0 : 0.6 }), 'h',
+        dead ? rig.deadHead : rig.head);
+      if (dead && h) { h.dead = true; h.pos.y += C.theme.passant.deadHeadDrop; }
+    }
+    return o;
+  }
+
+  function menuHero(character, x, y, size, zz) {
+    const o = add([sprite(character.rig ? character.rig.body : characterSprite('hero_idle', character)),
+      pos(x, y), anchor('bot'), artScale(size), z(zz || 6)]);
+    attachHero(o, character);
+    setAnim(o, 'hero_idle', 'idle');
+    return o;
   }
 
   // Camionnette d'arrivee : sprite statique au PREMIER PLAN au depart du niveau.
@@ -1137,14 +1208,16 @@
     return a;
   }
   function pickHead(pool, key) {
-    const ok = (pool || []).filter(hasSprite);
+    const ok = (pool || []).filter((name) => hasSprite(name) && name !== (CHARACTER.npcHead || (CHARACTER.rig && CHARACTER.rig.head)));
     if (!ok.length) return null;
     if (ok.length === 1) return ok[0];
     const k = key || 'all';
     let deck = HEAD_DECKS[k];
     if (!deck || !deck.length) {
       const isJury = C.levels[CUR_IDX] === 'jury';
-      const own = isJury ? [] : ok.filter((n) => window.NPC && window.NPC[n] && window.NPC[n].level === CUR_IDX);
+      const def = LEVELS[C.levels[CUR_IDX]] || {};
+      const npcLevel = def.npcLevel === undefined ? CUR_IDX : def.npcLevel;
+      const own = isJury ? [] : ok.filter((n) => window.NPC && window.NPC[n] && window.NPC[n].level === npcLevel);
       const rest = ok.filter((n) => own.indexOf(n) === -1);
       deck = shuffleInPlace(rest).concat(shuffleInPlace(own));
       HEAD_DECKS[k] = deck;
@@ -2122,6 +2195,7 @@
   //  CHAT ANGORA (allie deploye)
   // ---------------------------------------------------------------------
   function deployCat() {
+    if (!hasCat()) return;
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if (catOut()) return;                     // un seul chat a la fois
@@ -2196,6 +2270,7 @@
   //  COLLECTIBLES & SORTIE-CHAPITRE
   // ---------------------------------------------------------------------
   function spawnPickup(kind, x, y) {
+    if (kind === 'croquette' && !hasCat()) kind = 'sunray';
     const def = C.pickups[kind];
     if (!def) return null;
     // SKIN PAR NIVEAU : LEVEL.theme.pickups[kind] remplace le sprite du pickup
@@ -2345,7 +2420,12 @@
   function buildBackground() {
     const th = (LEVEL && LEVEL.theme) || {};
     if (th.sky) add([rect(C.width, C.height), pos(0, 0), fixed(), z(-40), color(th.sky[0], th.sky[1], th.sky[2]), 'bg']);
-    (th.layers || []).forEach((spec) => { spec.scatter ? addScatterLayer(spec, th) : addBandLayer(spec, th); });
+    (th.layers || []).forEach((spec) => {
+      if (spec.fullscreen && hasSprite(spec.sprite)) {
+        add([sprite(spec.sprite, { width: C.width, height: C.height }), pos(0, 0), fixed(),
+          z(spec.z == null ? -30 : spec.z), 'bg'].concat(layerTint(spec, th)));
+      } else spec.scatter ? addScatterLayer(spec, th) : addBandLayer(spec, th);
+    });
   }
 
   // teinte d'une couche : couche.color > theme.tint -> composant color() (ou rien)
@@ -2966,7 +3046,7 @@
       // =====================================================================
       // PANNEAU BAS CENTRE : armes · munitions (ancre en bas de l'ecran)
       // =====================================================================
-      const WEP_H = 56, WEP_W = 650;
+      const WEP_H = 56, WEP_W = hasCat() ? 650 : (TOUCH_ON ? 370 : 430);
       const WEP_X = (W - WEP_W) / 2;
       const WEP_Y = H - WEP_H - 6;
       const WEP_ROW = WEP_Y + WEP_H / 2;
@@ -3007,22 +3087,24 @@
       wx += 25;
       for (let i = 0; i < rmax; i++) chev(wx + i * 15, WEP_ROW, i < (p.rate || 1), rgb(96, 196, 244), (p.rateFlash || 0) > 0);
       wx += rmax * 15 + 12;
-      drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(210, 155, 72) });
-      wx += 16;
-      // Chat + charges + SAUVES
-      icon('cat_run', wx + 20, WEP_ROW, 32);
-      wx += 48;
-      for (let i = 0; i < C.cat.maxCharges; i++) pip(wx + i * 16, WEP_ROW, i < p.catCharges);
-      if ((C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
-        const frac = Math.min(1, (p.catRegenT || 0) / C.cat.regenTime);
-        drawCircle({ pos: vec2(wx + p.catCharges * 16, WEP_ROW), radius: 1 + 5 * frac, color: COL.leaf, opacity: 0.9 });
+      // Specialite de Laura : chat, charges et sauvetages.
+      if (hasCat()) {
+        drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(210, 155, 72) });
+        wx += 16;
+        icon('cat_run', wx + 20, WEP_ROW, 32);
+        wx += 48;
+        for (let i = 0; i < C.cat.maxCharges; i++) pip(wx + i * 16, WEP_ROW, i < p.catCharges);
+        if (hasCat() && (C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+          const frac = Math.min(1, (p.catRegenT || 0) / C.cat.regenTime);
+          drawCircle({ pos: vec2(wx + p.catCharges * 16, WEP_ROW), radius: 1 + 5 * frac, color: COL.leaf, opacity: 0.9 });
+        }
+        wx += C.cat.maxCharges * 16 + 8;
+        keycap('C', wx + 9, WEP_ROW);
+        wx += TOUCH_ON ? 12 : 24;
+        const savedN = p.saved || 0;
+        if ((p.saveFlash || 0) > 0) drawCircle({ pos: vec2(wx + 40, WEP_ROW), radius: 13, color: COL.leaf, opacity: 0.38 });
+        inkT('SAUVES ' + savedN, wx, WEP_ROW, 14, savedN > 0 ? COL.leaf : COL.dim);
       }
-      wx += C.cat.maxCharges * 16 + 8;
-      keycap('C', wx + 9, WEP_ROW);
-      wx += TOUCH_ON ? 12 : 24;
-      const savedN = p.saved || 0;
-      if ((p.saveFlash || 0) > 0) drawCircle({ pos: vec2(wx + 40, WEP_ROW), radius: 13, color: COL.leaf, opacity: 0.38 });
-      inkT('SAUVES ' + savedN, wx, WEP_ROW, 14, savedN > 0 ? COL.leaf : COL.dim);
 
       // =====================================================================
       // BOSS : fin ruban haut-centre, entre les deux panneaux.
@@ -3063,14 +3145,14 @@
   // ---------------------------------------------------------------------
   //  FIN DE NIVEAU / SAUVEGARDE
   // ---------------------------------------------------------------------
-  function persist() { if (SAVE) SAVEAPI.save(SLOT, SAVE); }
+  function persist() { if (SAVE && !DEV_SESSION) SAVEAPI.save(SLOT, SAVE); }
 
   // v2 : MENTION TRES HONORABLE = or partout (t/d/s) sur les 5 niveaux + jury battu.
   function hasMention(d) {
-    if (!d || !d.juryDone || !d.medals) return false;
-    for (let i = 0; i < SAVEAPI.N_LEVELS; i++) {
-      const m = d.medals[i];
-      if (!m || m.t < 3 || m.d < 3 || m.s < 3) return false;
+    if (!SAVEAPI.finished(d)) return false;
+    for (const key of chapterKeys()) {
+      const m = SAVEAPI.progress(d, key).medals;
+      if (!m || medalKeys().some((key) => m[key] < 3)) return false;
     }
     return true;
   }
@@ -3096,37 +3178,23 @@
     if (SAVE) {
       SAVE.totalScore += p.score;
       SAVE.bestScore = Math.max(SAVE.bestScore, p.score);
-      if (!SAVE.medals) SAVE.medals = [];
-      if (CUR_IDX < SAVEAPI.N_LEVELS) {
-        SAVE.levelsDone[CUR_IDX] = true;
-        if (p.gotPubli) SAVE.publis[CUR_IDX] = true;
-        SAVE.dataPct[CUR_IDX] = Math.max(SAVE.dataPct[CUR_IDX] || 0, pct);
-        if (tsec > 0) {                           // MEILLEUR TEMPS : garde le plus court. tsec>0 ignore une
-          if (!SAVE.bestTime) SAVE.bestTime = [];  //  fin INSTANTANEE (triche '0') qui sinon ecraserait un vrai temps via Math.min(.,0).
-          const prev = SAVE.bestTime[CUR_IDX] || 0;
-          SAVE.bestTime[CUR_IDX] = (prev > 0) ? Math.min(prev, tsec) : tsec;
-        }
-        // medailles : on garde le MEILLEUR palier atteint par categorie
-        const pm = SAVE.medals[CUR_IDX] || { t: 0, d: 0, s: 0 };
-        SAVE.medals[CUR_IDX] = { t: Math.max(pm.t || 0, medT), d: Math.max(pm.d || 0, medD), s: Math.max(pm.s || 0, medS) };
-        if (!SAVE.savedPct) SAVE.savedPct = [];
-        SAVE.savedPct[CUR_IDX] = Math.max(SAVE.savedPct[CUR_IDX] || 0, savedPct);
-        if (p.medNoHit && tsec > 0) {              // medaille cachee "sans degat" (pas via triche '0')
-          if (!SAVE.feli) SAVE.feli = [];
-          SAVE.feli[CUR_IDX] = true;
-        }
-        SAVE.unlockedMax = Math.max(SAVE.unlockedMax, CUR_IDX + 1);
-        SAVE.cursor = Math.min(C.levels.length - 1, CUR_IDX + 1);
-      } else {
-        SAVE.juryDone = true;
-        // jury : medaille TEMPS seulement (pas de data/sauves — que des invoques)
-        const pj = SAVE.medals[SAVEAPI.N_LEVELS] || { t: 0 };
-        SAVE.medals[SAVEAPI.N_LEVELS] = { t: Math.max(pj.t || 0, medT) };
-      }
+      const key = C.levels[CUR_IDX];
+      const r = SAVEAPI.progress(SAVE, key);
+      r.done = true;
+      r.publi = r.publi || p.gotPubli;
+      r.dataPct = Math.max(r.dataPct, pct);
+      if (tsec > 0) r.bestTime = r.bestTime > 0 ? Math.min(r.bestTime, tsec) : tsec;
+      r.medals = { t: Math.max(r.medals.t, medT), d: Math.max(r.medals.d, medD), s: Math.max(r.medals.s, medS) };
+      r.savedPct = Math.max(r.savedPct, savedPct);
+      r.feli = r.feli || !!(p.medNoHit && tsec > 0);
+      SAVE.progress[key] = r;
+      const next = C.levels[Math.min(C.levels.length - 1, CUR_IDX + 1)];
+      if (!SAVE.unlocked.includes(next)) SAVE.unlocked.push(next);
+      SAVE.cursorLevel = next;
       persist();
     }
     sfx('win');
-    if (CUR_IDX >= SAVEAPI.N_LEVELS) go('win', { score: p.score });
+    if (C.levels[CUR_IDX] === CAMPAIGN.finalLevel) go('win', { score: p.score });
     else go('chapter', { idx: CUR_IDX, score: p.score, meds, tsec, pct, savedPct, par, feli: !!(p.medNoHit && tsec > 0) });
   }
 
@@ -3171,14 +3239,15 @@
       // surfaceUnderFeet (PAS surfaceTopAt) : le cadavre se pose sur le sol SOUS
       //  Laura, jamais sur un deck de panneaux au-dessus. CORPSE_SINK : on
       //  l'enfonce un poil dans le sol (sprite couche) pour qu'il y repose.
-      const CORPSE_SINK = 12;
+      const CORPSE_SINK = C.player.corpseSink == null ? 12 : C.player.corpseSink;
       const gy = surfaceUnderFeet(p.pos.x, p.pos.y);
       const c = add([
-        sprite(hasSprite('hero_dead') ? 'hero_dead' : 'hero_hurt'),
+        sprite(CHARACTER.rig ? CHARACTER.rig.deadBody : characterSprite(hasSprite(characterSprite('hero_dead')) ? 'hero_dead' : 'hero_hurt')),
         artScale(), pos(p.pos.x, (gy != null ? gy : p.pos.y) + CORPSE_SINK),
         anchor('bot'), z(-0.6), 'corpse',
       ]);
-      if (hasSprite('hero_dead')) playIfAnim(c, 'hero_dead');
+      if (CHARACTER.rig) attachHero(c, CHARACTER, true);
+      else if (hasSprite(characterSprite('hero_dead'))) playIfAnim(c, characterSprite('hero_dead'));
       else c.angle = (p.facing >= 0 ? 90 : -90);        // repli : bascule au sol
     }
     p.hidden = true; p.paused = true;
@@ -3188,7 +3257,7 @@
     add([
       text(C.story.dead, { size: 34, align: 'center' }), pos(C.width / 2, C.height / 2 - 36),
       anchor('center'), fixed(), z(951), color(255, 255, 255), opacity(1),
-      lifespan(1.6, { fade: 0.5 }),
+      lifespan(1.6, { fade: 0.5 }), 'deathcaption',
     ]);
     // v3 : plus de redemarrage AUTO -> on ouvre un popup (recommencer niveau /
     //  reprendre au boss). Hors scene game (openDeathBox null) : repli redemarrage.
@@ -3276,6 +3345,7 @@
   // ---------------------------------------------------------------------
   scene('game', (levelKey) => {
     CUR_IDX = C.levels.indexOf(levelKey);
+    if (CUR_IDX < 0 || !LEVELS[levelKey]) { go('overworld'); return; }
     const def = LEVELS[levelKey];
     playMusic((def && def.music) || levelKey);   // piste du niveau (niveau1.mid... ou override LEVELS[x].music)
     buildLevel(def);
@@ -3328,8 +3398,8 @@
         const sunY = top;                                            // foyer du soleil (derriere le ruban)
 
         // 1) FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile chaud
-        if (hasSprite('ui_popup_bg')) {
-          drawSprite({ sprite: 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+        if (hasSprite(CAMPAIGN.screens.popup || 'ui_popup_bg')) {
+          drawSprite({ sprite: CAMPAIGN.screens.popup || 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.26 * ap });
         } else {
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.54 * ap });
@@ -3455,6 +3525,8 @@
     };
     openDeathBox = () => {
       if (deathBox) return;
+      // La pause gele aussi lifespan : retirer le titre KO avant le dialogue.
+      get('deathcaption').forEach((o) => destroy(o));
       // defaut : REPRENDRE AU BOSS si Laura est morte DANS la zone du boss
       //  (gates d'arene posees, ou x dans l'arene) -> sinon RECOMMENCER LE NIVEAU.
       const arenaEdge = (LEVEL.bossX != null) ? (LEVEL.bossX - (LEVEL.bossRange || 300) - TS * 2) : Infinity;
@@ -3479,8 +3551,8 @@
         const bw = 560, bh = 250, top = cy - bh / 2, L = cx - bw / 2;
 
         // FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile.
-        if (hasSprite('ui_popup_bg')) {
-          drawSprite({ sprite: 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+        if (hasSprite(CAMPAIGN.screens.popup || 'ui_popup_bg')) {
+          drawSprite({ sprite: CAMPAIGN.screens.popup || 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.28 * ap });
         } else {
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.6 * ap });
@@ -3620,7 +3692,7 @@
         PLAYER.power = (C.arsenal && C.arsenal.power.max) || 3;   // ARSENAL au max
         PLAYER.rate = (C.arsenal && C.arsenal.rate.max) || 3;
         PLAYER.powerFlash = 0.8; PLAYER.rateFlash = 0.8;
-        PLAYER.catCharges = C.cat.maxCharges; flashMsg('PLEIN !');
+        PLAYER.catCharges = hasCat() ? C.cat.maxCharges : 0; flashMsg('PLEIN !');
       });
     }
 
@@ -3802,13 +3874,13 @@
       }
 
       // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
-      const canCat = p.catCharges > 0 && !catOut();
+      const canCat = hasCat() && p.catCharges > 0 && !catOut();
       if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
       if (!keysDown(C.controls.cat)) p.catLock = false;
 
       // RECHARGE AUTO DU CHAT : une charge revient seule toutes les cat.regenTime s
       //  (jamais bloquee a 0). Les croquettes ('k') donnent EN PLUS un +1 instantane.
-      if ((C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+      if (hasCat() && (C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
         p.catRegenT = (p.catRegenT || 0) + dt();
         if (p.catRegenT >= C.cat.regenTime) { p.catRegenT -= C.cat.regenTime; p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); sfx('pickup'); }
       } else p.catRegenT = 0;
@@ -3826,7 +3898,7 @@
       p.duckProg = crouching
         ? Math.min(1, (p.duckProg || 0) + dt() / dDown)
         : Math.max(0, (p.duckProg || 0) - dt() / dUp);
-      const duckSpr = p.isGrounded() && p.duckProg > 0 && hasSprite('hero_duck');
+      const duckSpr = !CHARACTER.rig && p.isGrounded() && p.duckProg > 0 && hasSprite(characterSprite('hero_duck'));
 
       // --- ACTION (lancer / chat) : CALQUE superpose OU plein-corps selon equipement
       //  + assets dispos (cf. SPRITES.md "rig en couches"). word = 'throw' | 'cat'.
@@ -3857,7 +3929,7 @@
         else if (moving) loco = 'run';
         else loco = 'idle';
         const arm = 'hero_' + loco + '_throw';
-        if (hasSprite(arm)) actOvSpr = arm;          // calque bras : locomotion inchangee dessous
+        if (!CHARACTER.rig && hasSprite(characterSprite(arm))) actOvSpr = arm;
         else actBody = hasSprite('hero_throw') ? 'hero_throw' : actAmmoSpr;   // idle/saut -> plein-corps
       }
       setActionOverlay(p, actOvSpr, actClip, actReplay);            // (de)pose le calque d'action
@@ -3872,7 +3944,7 @@
       else if (duckSpr) {                               // scrub manuel : frame = progression
         const ds = noCat('hero_duck');                 // sac vide si le chat est dehors
         if (p._spr !== ds) { p.use(sprite(ds)); p._spr = ds; p._anim = null; }
-        const lastF = ((C.anims.hero_duck && C.anims.hero_duck.sliceX) || 7) - 1;
+        const lastF = ((C.anims[baseName(ds)] && C.anims[baseName(ds)].sliceX) || 7) - 1;
         p.frame = Math.max(0, Math.min(lastF, Math.round(p.duckProg * lastF)));
       }
       // HURT AVANT le saut : une blessure prise EN L'AIR (bombe, piquet en
@@ -3892,10 +3964,10 @@
       const baseS = 1 / ART;
       if (duckSpr) {
         p.scale = vec2(baseS, baseS);
-        if (p.area) p.area.scale = vec2(0.68, 0.55);
+        if (p.area) p.area.scale = vec2((C.player.areaScale || [0.68])[0], 0.55);
       } else {
         p.scale = crouching ? vec2(baseS, baseS * 0.6) : vec2(baseS, baseS);
-        if (p.area) p.area.scale = vec2(0.68, 0.86);
+        if (p.area) p.area.scale = vec2(...(C.player.areaScale || [0.68, 0.86]));
       }
 
       if (p.invuln > 0) { p.invuln -= dt(); p.opacity = (Math.floor(time() * 20) % 2) ? 0.4 : 1; }
@@ -4119,21 +4191,22 @@
     ]);
 
     // --- decor : Laura plantee sur l'herbe, en bas a gauche -------------
-    add([sprite('hero_idle'), pos(132, C.height - 38), anchor('bot'), artScale(1.7), z(4)]).play('idle');
+    menuHero(CHARACTERS.laura, 116, C.height - 54, 1.45, 4);
+    menuHero(CHARACTERS.marcos, 228, C.height - 54, 1.3, 4);
 
     // --- titre : grand, dore, contour epais + bob ----------------------
     const titleY = 74;
-    const title = inkText(C.story.title, C.width / 2, titleY, 50, GOLD, { outline: 4, shadow: true, z: 8 });
+    const title = inkText('LAURA QUEST', C.width / 2, titleY, 50, GOLD, { outline: 4, shadow: true, z: 8 });
     // --- sous-titre : creme sur ruban terracotta -----------------------
     pill(C.width / 2, 128, 470, 38, RED, 0.9, 19, 5);
-    inkText(C.story.subtitle, C.width / 2, 128, 22, CREAM, { outline: 2, ink: [120, 30, 24], z: 6 });
+    inkText('Les aventures des explorateurs', C.width / 2, 128, 22, CREAM, { outline: 2, ink: [120, 30, 24], z: 6 });
     // --- accroche : une ligne qui claque -------------------------------
-    inkText('Des rizières à la soutenance : bats chaque boss et rédige ta thèse !', C.width / 2, 178, 17, CREAM, { outline: 2, z: 6 });
+    inkText('Choisis ton personnage, explore son monde et defie ses boss !', C.width / 2, 178, 17, CREAM, { outline: 2, z: 6 });
 
     // --- bandeau bas : controles -------------------------------------
     pill(C.width / 2, C.height - 22, C.width, 56, [26, 18, 12], 0.5, 0, 3);
     inkText('Q/D ou Fleches : bouger     HAUT : sauter     ESPACE : tir de base', C.width / 2, C.height - 33, 14, CREAM, { outline: 2, z: 6 });
-    inkText('X (maintenir) : lob charge     MAJ : dash     C : chat', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
+    inkText('X (maintenir) : lob charge     MAJ : dash     C : chat (Laura)', C.width / 2, C.height - 13, 14, [220, 214, 198], { outline: 2, z: 6 });
 
     // --- invite "ESPACE pour commencer" : pastille doree clignotante ---
     const startPill = pill(C.width / 2, 430, 500, 44, [40, 26, 16], 0.78, 22, 5);
@@ -4149,12 +4222,88 @@
       startPill.opacity = 0.30 + 0.50 * blink;
     });
 
-    const go1 = () => go('slots');
+    const go1 = () => go('characters');
     onConfirm(go1);
     onClick(go1);
   });
 
-  // --- SELECTION DE SAUVEGARDE (3 slots) ------------------------------
+  // --- SELECTION DU PERSONNAGE (2 cartes par page, catalogue extensible) ---
+  scene('characters', () => {
+    playMusic(BASE.music.title);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);
+    uiBg('bg_marcos_port', [91, 183, 231]);
+    uiScrim(0, C.height, UI.NIGHT, 0.25);
+    uiText('CHOISIS TON PERSONNAGE', 480, 46, 32, UI.GOLD, { shadow: true });
+    uiText('1. PERSONNAGE    /    2. SAUVEGARDE    /    3. AVENTURE', 480, 90, 13, UI.CREAM, { outline: 2 });
+    const ids = Object.keys(CHARACTERS);
+    let cur = Math.max(0, ids.indexOf(SAVEAPI.loadPrefs().lastCharacter || CHARACTER.id));
+    let objects = [];
+    const keep = (o) => { objects.push(...(o.group || [o])); return o; };
+    function render() {
+      objects.forEach((o) => destroy(o)); objects = [];
+      const page = Math.floor(cur / 2);
+      ids.slice(page * 2, page * 2 + 2).forEach((id, j) => {
+        const ch = CHARACTERS[id], selected = id === ids[cur], cx = 274 + j * 412;
+        keep(add([rect(354, 298, { radius: 20 }), pos(cx, 272), anchor('center'),
+          color(255, 244, 219), opacity(selected ? 0.97 : 0.85),
+          outline(selected ? 5 : 2, rgb(...(selected ? UI.GOLD : UI.INK))), z(3)]));
+        keep(uiPill(cx, 153, 326, 42, ch.accent, 1, 13, 4));
+        keep(uiText(ch.name.toUpperCase(), cx, 153, 26, UI.CREAM, { width: 310, outline: 2 }));
+        keep(menuHero(ch, cx, 325, 1.45));
+        keep(uiText(ch.tagline, cx, 350, 15, UI.INK, { width: 320, outline: 0 }));
+        keep(uiText(ch.description, cx, 383, 13, [113, 83, 56], { width: 320, outline: 0 }));
+      });
+      keep(uiText((cur + 1) + ' / ' + ids.length, 480, 436, 13, UI.CREAM, { outline: 2 }));
+    }
+    const move = (d) => { cur = (cur + ids.length + d) % ids.length; sfx('pickup'); render(); };
+    const pick = () => {
+      selectCharacter(ids[cur]); SAVE = null;
+      SAVEAPI.setPref('lastCharacter', CHARACTER.id);
+      go('slots');
+    };
+    render();
+    uiPill(480, 473, 330, 42, UI.RED, 1, 18, 5);
+    uiText('CHOISIR CE PERSONNAGE', 480, 473, 18, UI.CREAM, { outline: 2 });
+    uiText('<', 46, 270, 32, UI.GOLD); uiText('>', 914, 270, 32, UI.GOLD);
+    uiText('RETOUR', 86, 477, 14, UI.CREAM, { width: 140, outline: 2 });
+    uiText('Fleches / Q D : choisir    Entree : valider    Echap : retour', 480, 512, 12, UI.CREAM, { outline: 2 });
+    onKeys(C.controls.left, () => move(-1)); onKeys(C.controls.right, () => move(1));
+    onConfirm(pick); onBack(() => go('title'));
+    onClick(() => {
+      const m = mousePos();
+      if (m.y > 451 && m.y < 496) {
+        if (m.x < 166) go('title');
+        else if (Math.abs(m.x - 480) < 165) pick();
+      } else if (m.y > 122 && m.y < 422) {
+        if (m.x < 75) move(-1);
+        else if (m.x > 885) move(1);
+        else {
+          const j = Math.abs(m.x - 274) < 177 ? 0 : (Math.abs(m.x - 686) < 177 ? 1 : -1);
+          const n = Math.floor(cur / 2) * 2 + j;
+          if (j >= 0 && n < ids.length) { cur = n; render(); }
+        }
+      }
+    });
+  });
+
+  scene('introduction', () => {
+    playMusic(C.music.chapter);
+    setCam(C.width / 2, C.height / 2); setCamAngle(0);
+    uiBg(CHARACTER.preview, [91, 183, 231]);
+    uiScrim(0, C.height, UI.NIGHT, 0.3);
+    uiText(CHARACTER.name.toUpperCase(), 480, 68, 40, UI.GOLD, { shadow: true });
+    uiText(CAMPAIGN.title, 480, 114, 23, UI.CREAM);
+    uiPill(480, 260, 810, 204, UI.NIGHT, 0.88, 20, 4);
+    menuHero(CHARACTER, 180, 328, 1.55);
+    uiText(C.story.intro, 570, 252, 20, UI.CREAM, { width: 550, lineSpacing: 9, outline: 1 });
+    uiPill(480, 435, 360, 46, CHARACTER.accent, 1, 20, 5);
+    uiText('DECOUVRIR LA CARTE', 480, 435, 21, UI.CREAM);
+    uiText('Entree / clic : continuer     Echap : sauvegardes', 480, 489, 14, UI.CREAM, { outline: 2 });
+    const next = () => go('overworld');
+    onConfirm(next); onClick(next); onBack(() => go('slots'));
+  });
+
+  // --- SELECTION DE SAUVEGARDE (3 slots PAR PERSONNAGE) ----------------
   scene('slots', () => {
     playMusic((C.music || {}).slots);
     setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
@@ -4167,14 +4316,15 @@
     const PANEL_CY = 282;               // centre vertical du panneau
 
     // --- titre cale dans le bandeau peint du haut ----------------------
-    add([text(C.story.slots, { size: 27, align: 'center', width: 440 }), pos(481, 61), anchor('center'), color(74, 44, 24), z(6)]);
+    add([text(CHARACTER.name.toUpperCase() + ' - SAUVEGARDES', { size: 23, align: 'center', width: 440 }), pos(481, 61), anchor('center'), color(74, 44, 24), z(6)]);
 
     // --- bandeau d'aide en bas (pastille sombre pour lisibilite sur l'herbe) ---
     add([rect(652, 46, { radius: 14 }), pos(480, C.height - 26), anchor('center'), color(28, 18, 12), opacity(0.42), z(3)]);
     add([text('Flèches : choisir     ESPACE : valider     E : effacer', { size: 15, align: 'center' }), pos(480, C.height - 33), anchor('center'), color(255, 244, 222), z(6)]);
     if (!SAVEAPI.persistent) add([text('(sauvegarde non persistante en file:// : sers via http pour garder)', { size: 11, align: 'center' }), pos(480, C.height - 14), anchor('center'), color(255, 200, 178), z(6)]);
 
-    let cur = 0;
+    const lastSlot = SAVEAPI.loadPrefs()['slot_' + CHARACTER.id];
+    let cur = Number.isInteger(lastSlot) && lastSlot >= 0 && lastSlot < SAVEAPI.SLOTS ? lastSlot : 0;
     const cards = [];
     let selGlow = null, selArrow = null;
 
@@ -4182,7 +4332,7 @@
       cards.forEach((c) => c.forEach((o) => destroy(o)));
       cards.length = 0;
       selGlow = null; selArrow = null;
-      const data = SAVEAPI.list();
+      const data = SAVEAPI.list(CHARACTER.id);
       for (let i = 0; i < 3; i++) {
         const cx = PANEL_CX[i];
         const sel = i === cur;
@@ -4199,14 +4349,14 @@
         if (!d) {
           objs.push(add([text('Nouvelle\npartie', { size: 21, align: 'center', lineSpacing: 4 }), pos(cx, PANEL_CY + 8), anchor('center'), color(122, 96, 70), opacity(sel ? 1 : 0.7), z(6)]));
         } else {
-          const chap = d.levelsDone.filter(Boolean).length;
-          const pub = d.publis.filter(Boolean).length;
+          const chap = chapterKeys().filter((key) => SAVEAPI.progress(d, key).done).length;
+          const pub = chapterKeys().filter((key) => SAVEAPI.progress(d, key).publi).length;
           const comp = SAVEAPI.completion(d);
           const lines = [
-            d.name || 'LAURA',
-            'Chapitres : ' + chap + '/' + SAVEAPI.N_LEVELS,
-            'Publis : ' + pub + '/' + SAVEAPI.N_LEVELS,
-            'PhD : ' + (d.juryDone ? 'OUI' : 'non'),
+            d.name || CHARACTER.name.toUpperCase(),
+            C.story.levelLabel + ' : ' + chap + '/' + chapterKeys().length,
+            C.story.collectibleLabel + ' : ' + pub + '/' + chapterKeys().length,
+            C.story.finishLabel + ' : ' + (SAVEAPI.finished(d) ? 'FINI' : 'en cours'),
             'Complete : ' + comp + '%',
             'Best : ' + d.bestScore,
           ];
@@ -4226,15 +4376,58 @@
 
     const pick = () => {
       SLOT = cur;
-      SAVE = SAVEAPI.load(cur) || SAVEAPI.fresh('LAURA');
+      SAVEAPI.setPref('slot_' + CHARACTER.id, cur);
+      const previous = SAVEAPI.load(cur, CHARACTER.id);
+      SAVE = previous || SAVEAPI.fresh(CHARACTER.id);
       persist();
-      go('overworld');
+      go(previous ? 'overworld' : 'introduction');
     };
-    onKeys(C.controls.left, () => { cur = (cur + 2) % 3; render(); });    // fleches ET Q/D (annonces a l'ecran titre)
-    onKeys(C.controls.right, () => { cur = (cur + 1) % 3; render(); });
-    onKeyPress('e', () => { SAVEAPI.erase(cur); render(); });
-    onConfirm(pick);
-    onBack(() => go('title'));   // ESC : retour ecran titre
+    let deletion = null;
+    const cancelDelete = () => { if (deletion) deletion.forEach((o) => destroy(o)); deletion = null; };
+    const requestDelete = () => {
+      if (deletion || !SAVEAPI.load(cur, CHARACTER.id)) return;
+      deletion = [
+        add([rect(C.width, C.height), pos(0, 0), color(20, 14, 24), opacity(0.8), z(70)]),
+        uiPill(480, 264, 600, 228, UI.NIGHT, 1, 20, 71),
+        ...uiText('EFFACER ' + CHARACTER.name.toUpperCase() + ' - SLOT ' + String.fromCharCode(65 + cur) + ' ?', 480, 201, 23, UI.GOLD, { z: 74 }).group,
+        ...uiText('La progression de cette partie sera perdue.', 480, 244, 17, UI.CREAM, { z: 74 }).group,
+        uiPill(350, 314, 208, 44, UI.RED, 1, 14, 73),
+        ...uiText('EFFACER', 350, 314, 19, UI.CREAM, { z: 74, width: 200 }).group,
+        uiPill(610, 314, 208, 44, UI.GREEN, 1, 14, 73),
+        ...uiText('ANNULER', 610, 314, 19, UI.CREAM, { z: 74, width: 200 }).group,
+        ...uiText('E : effacer    Entree / Echap : annuler', 480, 357, 12, UI.CREAM, { z: 74 }).group,
+      ];
+    };
+    const erase = () => { SAVEAPI.erase(cur, CHARACTER.id); cancelDelete(); render(); };
+    uiPill(165, 459, 192, 35, UI.NIGHT, 0.9, 14, 5);
+    uiText('PERSONNAGES', 165, 459, 15, UI.CREAM, { width: 190, outline: 2 });
+    uiPill(480, 459, 218, 35, UI.RED, 1, 14, 5);
+    uiText('JOUER', 480, 459, 17, UI.CREAM, { width: 210, outline: 2 });
+    uiPill(795, 459, 192, 35, UI.NIGHT, 0.9, 14, 5);
+    uiText('EFFACER', 795, 459, 15, UI.CREAM, { width: 190, outline: 2 });
+    onKeys(C.controls.left, () => { if (!deletion) { cur = (cur + 2) % 3; render(); } });
+    onKeys(C.controls.right, () => { if (!deletion) { cur = (cur + 1) % 3; render(); } });
+    onKeyPress('e', () => { if (deletion) erase(); else requestDelete(); });
+    onConfirm(() => { if (deletion) cancelDelete(); else pick(); });
+    onBack(() => { if (deletion) cancelDelete(); else go('characters'); });
+    onClick(() => {
+      const m = mousePos();
+      if (deletion) {
+        if (Math.abs(m.y - 314) < 23) {
+          if (Math.abs(m.x - 350) < 104) erase();
+          else if (Math.abs(m.x - 610) < 104) cancelDelete();
+        }
+        return;
+      }
+      if (Math.abs(m.y - 459) < 19) {
+        if (Math.abs(m.x - 165) < 96) go('characters');
+        else if (Math.abs(m.x - 480) < 109) pick();
+        else if (Math.abs(m.x - 795) < 96) requestDelete();
+      } else if (m.y >= PANEL_TOP && m.y < 414) {
+        const idx = PANEL_CX.findIndex((x) => Math.abs(x - m.x) < 104);
+        if (idx >= 0) { cur = idx; render(); }
+      }
+    });
   });
 
   // --- CARTE DU MONDE (overworld facon Dora) --------------------------
@@ -4276,7 +4469,7 @@
     };
 
     // --- fond de carte (vue de dessus) ---------------------------------
-    if (hasSprite('bg_map')) add([sprite('bg_map'), pos(0, 0), anchor('topleft'), artScale(1), z(-10)]);
+    if (hasSprite(C.world.background)) add([sprite(C.world.background, { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(143, 208, 240), z(-10)]);
     // cadre facon vieille carte (dessine en outline-only, au-dessus de tout)
     add([pos(0, 0), z(7), {
@@ -4317,9 +4510,10 @@
 
     // --- noeuds : medaillons stylises ----------------------------------
     nodes.forEach((n, i) => {
-      const isJury = i === nodes.length - 1;
-      const unlocked = i <= SAVE.unlockedMax;
-      const done = (i < SAVEAPI.N_LEVELS) ? SAVE.levelsDone[i] : SAVE.juryDone;
+      const isJury = n.key === CAMPAIGN.finalLevel;
+      const unlocked = SAVEAPI.isUnlocked(SAVE, n.key);
+      const result = SAVEAPI.progress(SAVE, n.key);
+      const done = result.done;
       const R = isJury ? 25 : 21;
       const disc = !unlocked ? [110, 122, 134] : done ? [92, 191, 74] : (isJury ? GOLD : RED);
       add([circle(R), pos(n.x, n.y + 7), anchor('center'), color(16, 10, 6), opacity(0.26), z(1.4)]);            // ombre portee
@@ -4340,15 +4534,15 @@
       // nom du boss (sous le noeud) — masque tant que le niveau n'est pas fini
       inkText(done ? n.boss : '? ? ?', n.x, n.y + R + 12, 11, done ? [255, 236, 206] : [210, 216, 222], { outline: 2, z: 3 });
       // MEILLEUR TEMPS (time-attack) sous le nom du boss, si le niveau est fini
-      if (done && i < SAVEAPI.N_LEVELS && SAVE.bestTime && SAVE.bestTime[i] > 0) {
-        const bt = SAVE.bestTime[i], bm = Math.floor(bt / 60), bs = Math.floor(bt % 60);
+      if (done && result.bestTime > 0) {
+        const bt = result.bestTime, bm = Math.floor(bt / 60), bs = Math.floor(bt % 60);
         inkText('TEMPS ' + (bm < 10 ? '0' : '') + bm + ':' + (bs < 10 ? '0' : '') + bs,
           n.x, n.y + R + 25, 10, [255, 222, 128], { outline: 2, z: 3 });
       }
       // v2 : pastilles MEDAILLES sous le noeud (TEMPS/DATA/SAUVES ; jury = temps seul)
-      const md = done && SAVE.medals ? SAVE.medals[(i < SAVEAPI.N_LEVELS) ? i : SAVEAPI.N_LEVELS] : null;
+      const md = done ? result.medals : null;
       if (md) {
-        const vals = (i < SAVEAPI.N_LEVELS) ? [md.t, md.d, md.s] : [md.t];
+        const vals = !isJury ? medalKeys().map((key) => md[key]) : [md.t];
         const tcol = (v) => v >= 3 ? [255, 206, 71] : (v === 2 ? [206, 212, 222] : (v === 1 ? [206, 140, 80] : [96, 90, 84]));
         vals.forEach((v, k) => {
           const cc = tcol(v || 0);
@@ -4360,20 +4554,19 @@
 
     // --- bandeaux titre + aide -----------------------------------------
     pill(C.width / 2, 28, 376, 36, [40, 26, 16], 0.66, 18, 6);
-    inkText('CARTE  -  ' + SAVEAPI.completion(SAVE) + '% complete', C.width / 2, 28, 22, GOLD, { outline: 3, shadow: true, z: 7 });
+    inkText(CHARACTER.name.toUpperCase() + '  -  ' + SAVEAPI.completion(SAVE) + '% complete', C.width / 2, 28, 22, GOLD, { outline: 3, shadow: true, z: 7 });
     pill(C.width / 2, C.height - 24, 540, 34, [26, 18, 12], 0.62, 17, 6);
     inkText(C.story.overworld, C.width / 2, C.height - 24, 16, CREAM, { outline: 2, z: 7 });
 
     // --- Laura sur la carte (se deplace vers le noeud selectionne) ------
-    let cur = Math.min(SAVE.cursor, SAVE.unlockedMax);
+    let cur = Math.max(0, nodes.findIndex((n) => n.key === SAVE.cursorLevel && SAVEAPI.isUnlocked(SAVE, n.key)));
     const ringR = (i) => (i === nodes.length - 1 ? 25 : 21) + 8;
     const cursorRing = add([circle(ringR(cur)), pos(nodes[cur].x, nodes[cur].y), anchor('center'), color(GOLD[0], GOLD[1], GOLD[2]), outline(3, rgb(120, 78, 20)), opacity(0.85), z(1.6), { t: 0 }]);
     cursorRing.onUpdate(() => { cursorRing.t += dt(); cursorRing.scale = vec2(1 + Math.sin(cursorRing.t * 3.2) * 0.09); });
-    const laura = add([sprite('hero_idle'), pos(nodes[cur].x, nodes[cur].y - 24), anchor('bot'), artScale(0.9), z(10)]);
-    laura._spr = 'hero_idle'; laura._anim = null;
+    const laura = menuHero(CHARACTER, nodes[cur].x, nodes[cur].y - 62, 0.9, 10);
 
     laura.onUpdate(() => {
-      const tx = nodes[cur].x, ty = nodes[cur].y - 26;
+      const tx = nodes[cur].x, ty = nodes[cur].y - 62;
       const dx = tx - laura.pos.x;
       if (Math.abs(dx) > 3) { laura.pos.x += Math.sign(dx) * Math.min(Math.abs(dx), 220 * dt()); laura.flipX = dx < 0; setAnim(laura, 'hero_run', 'run'); }
       else { laura.pos.x = tx; setAnim(laura, 'hero_idle', 'idle'); }
@@ -4382,12 +4575,30 @@
       cursorRing.radius = ringR(cur);
     });
 
-    const move = (d) => { const n = cur + d; if (n >= 0 && n <= SAVE.unlockedMax && n < nodes.length) { cur = n; SAVE.cursor = cur; persist(); } };
+    const move = (d) => {
+      let n = cur + d;
+      while (n >= 0 && n < nodes.length) {
+        if (SAVEAPI.isUnlocked(SAVE, nodes[n].key)) { cur = n; SAVE.cursorLevel = nodes[n].key; persist(); break; }
+        n += d;
+      }
+    };
     onKeys(C.controls.left, () => move(-1));     // fleches ET Q/D (annonces a l'ecran titre)
     onKeys(C.controls.right, () => move(1));
-    const enter = () => { if (cur <= SAVE.unlockedMax) go('game', nodes[cur].key); };
+    const enter = () => { if (SAVEAPI.isUnlocked(SAVE, nodes[cur].key)) go('game', nodes[cur].key); };
     onConfirm(enter);
     onBack(() => go('slots'));   // ESC : retour selection de sauvegarde
+    uiPill(112, 28, 170, 32, UI.NIGHT, 0.8, 14, 8);
+    uiText('SAUVEGARDES', 112, 28, 14, UI.CREAM, { width: 160, outline: 2, z: 9 });
+    onClick(() => {
+      const m = mousePos();
+      if (m.x < 202 && m.y < 48) { go('slots'); return; }
+      if (Math.abs(m.y - (C.height - 24)) < 20) { enter(); return; }
+      const idx = nodes.findIndex((n) => Math.abs(n.x - m.x) < 52 && Math.abs(n.y - m.y) < 70);
+      if (idx >= 0 && SAVEAPI.isUnlocked(SAVE, nodes[idx].key)) {
+        if (idx === cur) enter();
+        else { cur = idx; SAVE.cursorLevel = nodes[cur].key; persist(); }
+      }
+    });
   });
 
   // --- CHAPITRE GAGNE -------------------------------------------------
@@ -4396,11 +4607,11 @@
     playMusic((C.music || {}).chapter);
     setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     const idx = (data && data.idx) || 0;
-    const N = SAVEAPI.N_LEVELS;
-    const gotPubli = !!(SAVE && SAVE.publis && SAVE.publis[idx]);
-    const done = SAVE ? SAVE.levelsDone.filter(Boolean).length : (idx + 1);
+    const N = chapterKeys().length;
+    const gotPubli = SAVEAPI.progress(SAVE, C.levels[idx]).publi;
+    const done = SAVE ? chapterKeys().filter((key) => SAVEAPI.progress(SAVE, key).done).length : (idx + 1);
 
-    uiBg('bg_chapter', [34, 28, 46]);
+    uiBg(CAMPAIGN.screens.chapter, [34, 28, 46]);
     uiScrim(0, 150, [20, 14, 30], 0.34);                 // voile haut -> titre lisible
     uiConfetti([UI.GOLD, UI.CREAM, [255, 226, 120]], 0.2, // fine poussiere doree qui monte
       { dir: 270, y: C.height + 10, vmin: 22, vmax: 52, min: 3, max: 6, life: 4.2 });
@@ -4410,8 +4621,8 @@
     uiAppear(uiText(C.story.chapterDone, C.width / 2, 74, 29, UI.GOLD, { outline: 3, shadow: true, z: 7 }), 0.15, -14);
 
     // progression du manuscrit (+ mention publi si 100%)
-    let prog = 'Manuscrit : ' + Math.min(done, N) + ' / ' + N + ' chapitres';
-    if (gotPubli) prog += '     +  PUBLICATION !';
+    let prog = C.story.progressLabel + ' : ' + Math.min(done, N) + ' / ' + N;
+    if (gotPubli) prog += '     +  ' + C.story.collectibleLabel.toUpperCase() + ' !';
     uiAppear(uiText(prog, C.width / 2, 118, 15, UI.CREAM, { outline: 2, z: 7 }), 0.26, -8);
 
     // --- v2 : recap des 3 MEDAILLES du niveau (sprite medal_* si embarque,
@@ -4425,8 +4636,9 @@
         { v: meds.d, name: (C.story.medals || [])[1] || 'DATA',   info: (data.pct != null ? data.pct : 0) + '%  (or 100%)' },
         { v: meds.s, name: (C.story.medals || [])[2] || 'SAUVES', info: (data.savedPct != null ? data.savedPct : 0) + '%  (or 100%)' },
       ];
+      if (!hasCat()) rows.pop();
       rows.forEach((m, i) => {
-        const mx = C.width / 2 + (i - 1) * 196, my = 174;
+        const mx = C.width / 2 + (i - (rows.length - 1) / 2) * 196, my = 174;
         const sprName = m.v >= 3 ? 'medal_or' : (m.v === 2 ? 'medal_argent' : (m.v === 1 ? 'medal_bronze' : 'medal_lock'));
         if (hasSprite(sprName)) {
           uiAppear(add([sprite(sprName), pos(mx - 56, my), anchor('center'), artScale(0.9), z(7), opacity(m.v > 0 ? 1 : 0.55)]), 0.3 + i * 0.06, -8);
@@ -4442,10 +4654,10 @@
 
     // cartouche : le texte du chapitre (pose sur le bas, laisse voir le decor)
     uiAppear(uiPill(C.width / 2, 420, 772, 116, UI.NIGHT, 0.72, 16, 4), 0.32, 16);
-    uiAppear(uiText(C.story.chapters[idx] || '', C.width / 2, 418, 17, UI.CREAM, { outline: 2, z: 7, width: 724, lineSpacing: 6 }), 0.4, 16);
+    uiAppear(uiText(C.story.chapters[C.levels[idx]] || '', C.width / 2, 418, 17, UI.CREAM, { outline: 2, z: 7, width: 724, lineSpacing: 6 }), 0.4, 16);
 
     uiPrompt(C.story.retry, C.width / 2, 492, 0.58);
-    const next = () => go('overworld');
+    const next = () => go(!CAMPAIGN.finalLevel && idx === C.levels.length - 1 && SAVEAPI.finished(SAVE) ? 'win' : 'overworld', data);
     onConfirm(next); onClick(next); onBack(next);
   });
 
@@ -4459,7 +4671,8 @@
     const comp = SAVE ? SAVEAPI.completion(SAVE) : 0;
     const best = SAVE ? SAVE.bestScore : (data ? data.score : 0);
 
-    uiBg('bg_win', [255, 206, 110]);
+    uiBg(CAMPAIGN.screens.win, [255, 206, 110]);
+    if (CHARACTER.id !== 'laura') menuHero(CHARACTER, 480, 310, 1.4, 4);
     uiConfetti([UI.GOLD, UI.RED, UI.CREAM, [120, 200, 255], UI.GREEN], 0.05, {});  // pluie de confettis
 
     // --- Cortege d'applaudissements ------------------------------------
@@ -4575,7 +4788,8 @@
     playMusic((C.music || {}).lose);
     setCam(C.width / 2, C.height / 2); setCamAngle(0);   // pas d'inversion residuelle hors-jeu
     add([rect(C.width, C.height), pos(0, 0), color(90, 110, 130)]);
-    add([sprite('hero_hurt'), pos(C.width / 2, 200), anchor('center'), artScale(1.6)]).play('hurt');
+    const hurtHero = menuHero(CHARACTER, C.width / 2, 240, 1.6);
+    setAnim(hurtHero, 'hero_hurt', 'hurt');
     bigText(C.story.lose, 300, 28, [255, 255, 255]);
     bigText('SCORE : ' + (data ? data.score : 0), 350, 24, [255, 226, 120]);
     bigText(C.story.retry, 420, 22, [255, 255, 255]);
@@ -4586,6 +4800,8 @@
   // debug handle
   window.LQ = {
     get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; },
+    get character() { return CHARACTER.id; }, get campaign() { return CAMPAIGN.id; },
+    get abilities() { return CHARACTER.abilities || {}; },
     // debug : abat le i-eme passant a l'ecran (teste le cadavre) ; sans arg, tous
     kill: (i) => { const l = get('passant'); (i == null ? l : [l[i]]).forEach((e) => e && e.exists() && hitEnemy(e, { dmg: 99 })); },
     // debug : bulle BD immediate sur le i-eme passant (0 par defaut) ; phrase du
@@ -4596,27 +4812,32 @@
   };
 
   // --- GO ! ------------------------------------------------------------
-  if (typeof location !== 'undefined' && location.hash.indexOf('game') >= 0) {
-    SLOT = 0; SAVE = SAVEAPI.load(0) || SAVEAPI.fresh('DEV');
-    // #game (niveau 1), #gameauto (autopilote), ou cible : #game/niveau4, #gamejury...
-    const m = location.hash.match(/(niveau[1-9]|jury)/);
-    go('game', (m && C.levels.indexOf(m[1]) >= 0) ? m[1] : C.levels[0]);
-  } else if (typeof location !== 'undefined' && location.hash.indexOf('map') >= 0) {
-    SLOT = 0; SAVE = SAVEAPI.load(0) || SAVEAPI.fresh('DEV');   // #map : carte du monde (dev)
+  // Les apercus sont jetables : aucun smoke test ne modifie un vrai slot.
+  const debugParts = location.hash.slice(1).split('/');
+  const debugCharacter = debugParts.find((id) => Object.hasOwn(CHARACTERS, id)) || 'laura';
+  if (DEV_SESSION) { selectCharacter(debugCharacter); SAVE = SAVEAPI.fresh(CHARACTER.id, 'DEV'); }
+  if (location.hash.indexOf('game') >= 0) {
+    const legacy = location.hash.match(/(niveau[1-9]|jury)/);
+    const key = debugParts.find((id) => C.levels.includes(id)) || (legacy && legacy[1]);
+    go('game', C.levels.includes(key) ? key : C.levels[0]);
+  } else if (location.hash.indexOf('map') >= 0) {
     go('overworld');
-  } else if (typeof location !== 'undefined' && location.hash.indexOf('winscreen') >= 0) {
-    SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #winscreen : apercu ecran soutenance (save jetable, non persistee)
-    SAVE.levelsDone.fill(true); SAVE.publis.fill(true); SAVE.dataPct.fill(100); SAVE.juryDone = true; SAVE.bestScore = 4200;
-    SAVE.medals = SAVE.medals.map((_, i) => (i < SAVEAPI.N_LEVELS) ? { t: 3, d: 3, s: 3 } : { t: 3 });  // apercu MENTION
+  } else if (location.hash.indexOf('winscreen') >= 0) {
+    C.levels.forEach((key) => { SAVE.progress[key] = { done: true, publi: true, dataPct: 100,
+      bestTime: 120, medals: { t: 3, d: 3, s: 3 }, savedPct: 100, feli: true }; });
+    SAVE.bestScore = 4200;
     go('win', { score: 4200 });
-  } else if (typeof location !== 'undefined' && location.hash.indexOf('chapterscreen') >= 0) {
-    SLOT = 0; SAVE = SAVEAPI.fresh('DEV');   // #chapterscreen[0-4] : apercu ecran chapitre (save jetable)
-    const cm = location.hash.match(/chapterscreen([0-4])/); const ci = cm ? parseInt(cm[1], 10) : 1;
-    for (let i = 0; i <= ci; i++) SAVE.levelsDone[i] = true;
-    if (ci % 2 === 0) SAVE.publis[ci] = true;
-    go('chapter', { idx: ci, score: 1500,        // apercu : medailles factices (recap v2)
-      meds: { t: 2, d: 3, s: 1 }, tsec: 137, pct: 100, savedPct: 40,
-      par: { or: 115, argent: 175, bronze: 255 }, feli: true });
+  } else if (location.hash.indexOf('chapterscreen') >= 0) {
+    const cm = location.hash.match(/chapterscreen([0-9]+)/);
+    const ci = Math.min(chapterKeys().length - 1, cm ? parseInt(cm[1], 10) : 0);
+    for (let i = 0; i <= ci; i++) {
+      const r = SAVEAPI.progress(SAVE, C.levels[i]); r.done = true; r.publi = i % 2 === 0;
+      SAVE.progress[C.levels[i]] = r;
+    }
+    go('chapter', { idx: ci, score: 1500, meds: { t: 2, d: 3, s: 1 },
+      tsec: 137, pct: 100, savedPct: 40, par: { or: 115, argent: 175, bronze: 255 }, feli: true });
+  } else if (location.hash === '#characters') {
+    go('characters');
   } else {
     go('title');
   }

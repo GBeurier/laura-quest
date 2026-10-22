@@ -1,5 +1,41 @@
 # Sprites de « Laura l'exploratrice » — propriétés & guide de modification
 
+## Personnages jouables et aventures
+
+`js/characters.js` définit l'apparence et les capacités des personnages. Marcos
+utilise huit feuilles **Imagegen** dédiées, avec des cellules transparentes de
+**224 × 224 px**, affichées à l'échelle commune 1/2. Sa silhouette debout mesure
+200 px dans l'asset (100 px en jeu), de profil, sans chat.
+
+| Feuille | Frames | Animation |
+| --- | ---: | --- |
+| `marcos_idle` | 2 | repos |
+| `marcos_run` | 4 | course |
+| `marcos_jump` | 2 | saut |
+| `marcos_throw` | 2 | lancer plein corps |
+| `marcos_hurt` | 1 | blessure |
+| `marcos_duck` | 3 | accroupissement progressif |
+| `marcos_dash` | 1 | dash |
+| `marcos_dead` | 2 | K.O. |
+
+Références : Laura (`hero_idle`), identité (`head_npc_h_25`) et tenue
+(`body_champ_h`). Prompt complet : `_marcosskingen/prompt.txt`. Le script
+`_marcosskingen/build.py` découpe la sortie Imagegen sans redessiner, nettoie
+le voile alpha quasi invisible, conserve une échelle commune et aligne les pieds.
+Les originaux de Laura et des PNJ restent intacts.
+
+Le dictionnaire `sprites` mappe les poses `hero_*` vers ces feuilles.
+Une valeur `null` désactive les calques de bras de Laura pour cette skin.
+`player.areaScale` adapte la collision au torse, sans inclure toute la marge
+transparente des poses de lancer. `abilities.cat` réserve le chat à Laura.
+
+`assets/sprites/bg_marcos_port.png` est un fond opaque généré avec **Imagegen
+intégré**, en prenant `bg_title.jpg` comme référence de style. Il est partagé par
+la sélection, la carte, le niveau et les écrans narratifs de Marcos. Le prompt
+complet et la référence sont conservés dans `_campaigngen/port.prompt.txt`.
+Le niveau peut déclarer une couche `fullscreen: true` pour un fond fixe unique,
+sans créer les copies d'un panorama défilant.
+
 Tu remplaces les images toi-même : pose tes PNG (fond **transparent**) dans
 `assets/sprites/` puis ré-embarque (section 2). Plus aucun script de dessin :
 juste les assets, ce doc, et le ré-embarqueur `gen_assets_data.py`.

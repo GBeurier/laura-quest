@@ -442,6 +442,12 @@ window.CONFIG = {
   //  Champs de tuning IA (windTime, revTime, aimTime, ...) lus par bosses.js ;
   //  l'IA a des defauts, donc aucun champ n'est obligatoire pour eviter un crash.
   bosses: {
+    // Marcos : premiere rencontre, IA / sprites du proprietaire partages.
+    marcos_gardien: { sprite: 'boss_proprietaire_move', attackSprite: 'boss_proprietaire_atk', behavior: 'charger',
+      hp: 40, maxHp: 40, guard: 0.6, touchDamage: 1, shotSpeed: 210, speed: 45,
+      range: 420, dashSpeed: 340, score: 900, name: 'LE GARDIEN DU PONT', shot: 'shot_bail',
+      paceTime: 1.2, windTime: 0.9, dashTime: 0.7, staggerTime: 1.6, throwTime: 0.6,
+      p2StaggerTime: 1.3, p2RewindTime: 0.5 },
     // === FINETUNING : pour chaque boss, TOUS les params de timing lus par
     //  js/bosses.js sont exposes ici (avant, beaucoup n'avaient qu'un defaut code
     //  en dur, et certaines valeurs ici etaient PERIMEES et ecrasaient l'IA).
@@ -594,6 +600,15 @@ window.CONFIG = {
   //  Seuls les sprites listes ici sont des feuilles multi-frames ;
   //  les autres restent des PNG simples (1 image).
   anims: {
+    // Marcos : silhouettes completes de profil, cellules de 224 x 224 px.
+    marcos_idle:  { sliceX: 2, anims: { idle: { from: 0, to: 1, loop: true, speed: 2 } } },
+    marcos_run:   { sliceX: 4, anims: { run: { from: 0, to: 3, loop: true, speed: 10 }, idle: { from: 0, to: 3, loop: true, speed: 5 } } },
+    marcos_jump:  { sliceX: 2, anims: { jump: { from: 0, to: 1, loop: false, speed: 3 } } },
+    marcos_hurt:  { sliceX: 1, anims: { hurt: { from: 0, to: 0 } } },
+    marcos_throw: { sliceX: 2, anims: { throw: { from: 0, to: 1, loop: false, speed: 12 } } },
+    marcos_duck:  { sliceX: 3, anims: { duck: { from: 0, to: 2, loop: false, speed: 12 } } },
+    marcos_dash:  { sliceX: 1, anims: { dash: { from: 0, to: 0 } } },
+    marcos_dead:  { sliceX: 2, anims: { dead: { from: 0, to: 1, loop: false, speed: 5 } } },
     hero_idle:        { sliceX: 8, sliceY: 1, anims: { idle:  { from: 0, to: 7, loop: true,  speed: 8  } } },
     hero_run:         { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 14 } } },
     hero_jump:        { sliceX: 8, sliceY: 1, anims: { jump:  { from: 0, to: 7, loop: true,  speed: 10 } } },
