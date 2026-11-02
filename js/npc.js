@@ -24,7 +24,8 @@
  *            0 = niveau1 ... 4 = niveau5). Dans un niveau, on fait d'abord
  *            apparaitre SES PNJ, puis on complete avec le pool general.
  *            Au JURY (dernier niveau), tout le monde est la. '' = pool
- *            general uniquement. cf. pickHead() dans game.js.
+ *            general uniquement. 'marcos' = prioritaire dans les 3 niveaux
+ *            de Marcos (LEVELS[x].npcLevel). cf. pickHead() dans game.js.
  *    prenom  prenom affiche.
  *    nom     nom affiche.
  *    phrases []  repliques perso : de temps en temps, une BULLE BD apparait
@@ -139,11 +140,12 @@ window.NPC = {
     phrases: ["Font ch** ces ravageurs"] },
   "head_npc_h_26":  { sexe: "h", src: "male_florian_dubois.png",   taille: "M",  level: "",  prenom: "Florian", nom: "Dubois",
     phrases: [] },
-  // --- PNJ DEDIES a la campagne MARCOS (niveaux 'm1'..'m3', cf. LEVELS[x].npcLevel) ---
+  // --- PNJ DEDIES a la campagne MARCOS (level 'marcos' = prioritaires dans SES 3
+  //  niveaux, cf. LEVELS[x].npcLevel ; le reste des figurants vient du pool de Laura) ---
   //  Ade = chef de "l'armee des etudiants" (allie C de Marcos) ; Afif = le durian.
-  "head_npc_h_27":  { sexe: "h", src: "ade.jpg",                   taille: "M",  level: "m1", prenom: "Ade", nom: "",
+  "head_npc_h_27":  { sexe: "h", src: "ade.jpg",                   taille: "M",  level: "marcos", prenom: "Ade", nom: "",
     phrases: ["The army of students is ready to help you!"] },
-  "head_npc_h_28":  { sexe: "h", src: "afif.jpeg",                 taille: "M",  level: "m2", prenom: "Afif", nom: "",
+  "head_npc_h_28":  { sexe: "h", src: "afif.jpeg",                 taille: "M",  level: "marcos", prenom: "Afif", nom: "",
     phrases: ["Marcos, il faut goûter les Durian !"] },
 
 };
