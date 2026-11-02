@@ -1,8 +1,8 @@
 # Laura l'exploratrice 🌾☀️🐈
 
 > **Version legacy, figée.** La suite du jeu (Laura + Marcos et les autres doctorants de
-> l'équipe PhenoMEn) continue dans **[Pheno-Quest](https://github.com/GBeurier/Pheno-Quest)** :
-> <https://gbeurier.github.io/Pheno-Quest/>.
+> l'équipe PhenoMEn) continue dans **[Pheno-Quest](https://github.com/GBeurier/pheno-quest)** :
+> <https://gbeurier.github.io/pheno-quest/>.
 
 Jeu web façon Mario/run-and-gun, **100 % côté client, sans serveur**, fait pour
 l'anniversaire de Laura (docteure en agroclimato). On incarne **Laura**, qui prépare son
