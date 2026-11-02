@@ -42,18 +42,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LVL = os.path.join(ROOT, 'levels')
 
 SOLID = set('=-x')
-ITEMS = set('ocdpqwPkLYeig b'.replace(' ', ''))   # q/w = pilule/champignon PIEGES (cam inversee) : se ramassent comme 'd'/'p' ; g = durian (Marcos)
-GROUND_CHARS = set('TARJKWGCIHUSFDN@B^%rZ~')   # posés sur une surface (r rat, Z scooter, ~ boue : campagne Marcos)
-FLYERS = set('VMEy')                           # spawn 1.5-1.6 tuile au-dessus (y = oiseau qui pique)
-FREE = set('u')                                # durian : au sol OU suspendu sous un panneau (aucun support requis)
+ITEMS = set('ocdpqwPkLYei b'.replace(' ', ''))   # q/w = pilule/champignon PIEGES (cam inversee) : se ramassent comme 'd'/'p'
+GROUND_CHARS = set('TARJKWGCIHUSFDN@B^%')      # posés sur une surface
+FLYERS = set('VME')                            # spawn 1.5-1.6 tuile au-dessus
 MARKERS = set('|')                             # marqueurs non-physiques (zone-ciel '|' : ni solide ni support requis)
-KNOWN = SOLID | ITEMS | GROUND_CHARS | FLYERS | MARKERS | FREE | set('@B*^% ')
+KNOWN = SOLID | ITEMS | GROUND_CHARS | FLYERS | MARKERS | set('@B*^% ')
 
 # équipement disponible par niveau + portée du boss (px -> tuiles)
 META = {
-    'marcos_rizieres': dict(W=182, R=13, g=11, gear=[], boss_range=470 / 48),
-    'marcos_village':  dict(W=200, R=13, g=11, gear=[], boss_range=500 / 48),
-    'marcos_parcelle': dict(W=200, R=13, g=11, gear=[], boss_range=500 / 48),
     'niveau1': dict(W=148, R=13, g=11, gear=[],          boss_range=500 / 48),
     'niveau2': dict(W=260, R=14, g=12, gear=['velo'],    boss_range=500 / 48),
     'niveau3': dict(W=280, R=14, g=12, gear=['rollers'], boss_range=470 / 48),
@@ -193,8 +189,8 @@ class Level:
                     below = self.at(r + 1, c)
                     if below not in SOLID:
                         self.err(f'{ch!r} en ({r},{c}) sans solide dessous ({below!r})')
-                    if ch in '%~' and below != '=':
-                        self.err(f"{ch!r} en ({r},{c}) posé sur {below!r} (sol '=' requis)")
+                    if ch == '%' and below != '=':
+                        self.err(f"'%' en ({r},{c}) posé sur {below!r} (sol '=' requis)")
         # position B / *
         bpos = spos = ppos = None
         for r in range(self.R):
@@ -234,8 +230,8 @@ class Level:
             lo, hi = int(bc - m['boss_range']) - 1, int(bc + m['boss_range']) + 1
             for c in range(max(0, lo), min(W, hi + 1)):
                 ch = self.at(g - 1, c)
-                if ch in '%~':
-                    self.err(f"fosse/boue {ch!r} en ({g-1},{c}) DANS l'arène du boss")
+                if ch == '%':
+                    self.err(f"fosse '%' en ({g-1},{c}) DANS l'arène du boss")
                 if ch in (GROUND_CHARS - set('NB^@')) and ch != ' ':
                     self.warn(f'{ch!r} en ({g-1},{c}) dans l\'arène du boss')
                 # v2 (GAMEPLAY.md §4.6) : les plateformes h>=3 DANS l'arène sont

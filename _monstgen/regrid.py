@@ -15,11 +15,7 @@ frame) doivent etre re-derivees (w_new = w_old * 176 / CW_imprime).
 Sortie = 6*CW x CH RGBA -> assets/sprites/enemy_<name>.png
 (+ apercu QA dans _monstgen/final/). game.js slice en 6 (cf. CONFIG.anims).
 
-Usage: python3 _monstgen/regrid.py <in_strip.png> <name> [--frames 6] [--fit] [--despill]
-  --fit     : reduit l'echelle commune pour que la frame la plus large tienne
-              dans la cellule standard CW (pas d'elargissement) -> sujets longs
-              et bas (rat + queue, vehicules) gardent la cellule 176 de l'analogue.
-  --despill : chroma-key plus agressif (frange violette autour des traits fins).
+Usage: python3 _monstgen/regrid.py <in_strip.png> <name> [--frames 6]
 """
 import sys, argparse, os
 from PIL import Image
@@ -27,23 +23,21 @@ import numpy as np
 
 CW, CH, BASE = 176, 192, 182          # cellule + baseline pieds
 TARGETH, MAXW = 150, 168              # hauteur cible du perso / largeur max
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
+ROOT = '/home/delete/laura_quest'
 SPR = ROOT + '/assets/sprites'
 FINAL = ROOT + '/_monstgen/final'
 
 
-def key_magenta(im, tol=72, despill=False):
+def key_magenta(im, tol=72):
     a = np.array(im.convert('RGBA')).astype(np.int16)
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
     bg = (np.abs(r - 255) + np.abs(g - 0) + np.abs(b - 255) < tol) | ((r > 150) & (b > 150) & (g < 110))
-    if despill:   # meme regle que _bossgen/regrid.py : franges magenta sombres
-        bg |= (r > 70) & (b > 70) & (g < 120) & (np.abs(r - b) < 105) & ((r + b - 2 * g) > 140)
     a[..., 3] = np.where(bg, 0, 255)
     return Image.fromarray(a.astype(np.uint8), 'RGBA')
 
 
-def run(inp, name, N, fit=False, despill=False):
-    img = key_magenta(Image.open(inp), despill=despill)
+def run(inp, name, N):
+    img = key_magenta(Image.open(inp))
     W, H = img.size
     cw = W // N
     cells = []
@@ -59,8 +53,6 @@ def run(inp, name, N, fit=False, despill=False):
     #  elargit la cellule (jamais de clamp par-frame -> echelle inter-frames
     #  garantie). cw_out reste CW pour toutes les feuilles historiques.
     maxw = max(c.width for c in cells) or 1
-    if fit:
-        s = min(s, MAXW / maxw)
     cw_out = CW
     if round(maxw * s) > MAXW:
         cw_out = int(np.ceil(maxw * s)) + (CW - MAXW)   # meme marge laterale qu'avant
@@ -86,7 +78,5 @@ if __name__ == '__main__':
     ap.add_argument('inp')
     ap.add_argument('name')
     ap.add_argument('--frames', type=int, default=6)
-    ap.add_argument('--fit', action='store_true')
-    ap.add_argument('--despill', action='store_true')
     a = ap.parse_args()
-    run(a.inp, a.name, a.frames, a.fit, a.despill)
+    run(a.inp, a.name, a.frames)

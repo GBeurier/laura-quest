@@ -6,7 +6,7 @@ Each prompt is intended for sequential built-in image_gen calls. Save raw strips
 to _bossgen/raw/, then run regrid.py to normalize them into 6x 248x280 sheets.
 """
 import os
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
+ROOT = '/home/delete/laura_quest'
 OUT = os.path.join(ROOT, '_bossgen', 'prompts'); os.makedirs(OUT, exist_ok=True)
 
 COMMON = """Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster artwork. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate TWO sprite sheets for one boss character.
@@ -62,31 +62,11 @@ BOSSES = {
    hurt="all three jolting back in their chairs, papers flying up",
    atk="frame1 seated, frames2-3 all three lean forward with documents raised, frame4 they fling papers / criticism sheets to the LEFT together, frame5 papers flying left across the desk, frame6 settle",
    facenote=" (a forward-facing panel is fine; angle their attention/gestures toward the left)"),
- # ---- CAMPAGNE MARCOS (Java) ----
- 'tikus': dict(
-   character="RAJA TIKUS, the RAT KING of the Javanese rice paddies: a GIANT fat rice-field rat standing semi-upright on its hind legs, scruffy grey-brown fur heavily caked with wet brown MUD on legs and belly, a small dented GOLD CROWN tilted on its head, a tattered red royal cape, huge yellow buck teeth, glowing red eyes, long thick bare grey tail, sharp claws, a few rice stalks stuck in its fur. Comedic but menacing crop-pest monarch.",
-   idle="hunched on its hind legs, crown wobbling, tail swishing, sniffing and gnashing its teeth toward the left, claws flexing",
-   hurt="recoiling backward, crown flying up off its head, mud splattering, eyes squeezed shut, impact stars",
-   atk="frame1 crouches low, frame2 DIGS / burrows head-first into a mound of brown mud (half buried, mud spraying), frame3 only a mud mound with the crown and ears poking out, frame4 ERUPTS upward out of the mud, claws raised, mud clods flying, frame5 spins and WHIPS its long tail toward the LEFT, frame6 recover on hind legs"),
- 'pakdurian': dict(
-   character="PAK DURIAN, a stocky middle-aged Indonesian DURIAN VENDOR riding a small step-through SCOOTER / moped that is absurdly OVERLOADED with a tall wobbly pile of spiky green DURIAN fruits tied with ropes on a rack behind him. He wears a black peci cap, a batik shirt, a towel around his neck, flip-flops, a thick moustache and a big grin. The scooter is red with a round headlight and a horn. Keep the scooter and the durian pile visible and dominant in every frame. Comedic boss vehicle.",
-   idle="idling on the scooter, wheels rocking slightly, durian pile wobbling, exhaust puffing, the vendor grinning and twirling his moustache toward the left",
-   hurt="the scooter jolting backward, durians bouncing off the pile, vendor's cap flying off, smoke puffing from the engine, impact stars",
-   atk="frame1 vendor grabs a durian from the pile, frame2 winds up holding the spiky durian high, frame3 THROWS the durian in an arc toward the LEFT, frame4 revs the engine with a big smoke cloud from the exhaust, frame5 scooter lunges / charges LEFT with front wheel lifted, frame6 recover"),
- 'garuda': dict(
-   character="GARUDA, a majestic humanoid BIRD-MAN warrior inspired by Javanese mythology: an EAGLE head with a sharp curved golden-yellow beak and fierce eyes, a golden crown-like crest of feathers, a muscular human torso with brown-and-gold feathers, huge brown-and-gold feathered WINGS instead of arms (feathered wing-hands with claw fingers), wearing a red-and-gold BATIK SARONG around the waist, golden armbands, bird talons for feet. Heroic-villain look, powerful and proud (the final boss).",
-   idle="standing proudly on his talons, wings half spread and slowly flapping, head turning, glaring to the left",
-   hurt="recoiling backward, feathers bursting off, wings flung up, beak open in a squawk, impact stars",
-   atk="frame1 wings raised high, frame2 pulls a rope fishing NET from behind with a wing, frame3 THROWS the spread rope net toward the LEFT, frame4 big WING FLAP sending sharp feathers flying left, frame5 BEAK LUNGE: whole body thrust forward-left, beak first, frame6 recover"),
 }
 
-import sys
-ONLY = set(sys.argv[1:])            # noms en argument = n'ecrit que ceux-la
 for boss, d in BOSSES.items():
-    if ONLY and boss not in ONLY:
-        continue
     body = COMMON.format(boss=boss, root=ROOT, character=d['character'],
                          idle=d['idle'], hurt=d['hurt'], atk=d['atk'],
                          textnote=d.get('textnote', ''), facenote=d.get('facenote', ''))
-    open(os.path.join(OUT, boss + '.txt'), 'w', encoding='utf-8').write(body)
+    open(os.path.join(OUT, boss + '.txt'), 'w').write(body)
     print('wrote', boss + '.txt')

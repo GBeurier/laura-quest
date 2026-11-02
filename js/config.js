@@ -361,49 +361,6 @@ window.CONFIG = {
   //  tools/gen_hazard_placeholders.py. Spec sprite : SPRITES.md.
   hazards: { touchDamage: 1 },
 
-  // --- BOUE ('~', campagne Marcos) : sol COLLANT, non solide, SANS degat ----
-  //  Tant que les pieds sont dedans : vitesse x speedMul, saut x jumpMul. Le
-  //  DASH en sort (sa ruee ignore la boue). Contigus fusionnes en une plaque.
-  //  Skin via LEVELS[x].theme.mud (defaut 'hazard_mud', repli rect brun).
-  mud: { speedMul: 0.4, jumpMul: 0.62, sprite: 'hazard_mud' },
-
-  // --- KITS de personnage (CHARACTER.kit, js/characters.js) ------------
-  //  Un kit REMPLACE le comportement des touches ESPACE / X / C SANS toucher a
-  //  Laura (pas de kit = gameplay historique). Les axes PUISSANCE / CADENCE de
-  //  l'arsenal restent communs (memes pickups 'e' / 'i').
-  kits: {
-    guitar: {
-      // ESPACE : NOTES de guitare. Meme leveling que les graines (pellets /
-      //  spread / pierce / bossTick lus dans arsenal.graines) mais sprites de
-      //  notes et trajectoire ONDULANTE (sinus, waveAmp px / waveFreq rad/s).
-      notes: { sprite: 'ammo_note', fire: 'ammo_note_fire', fallback: 'ammo_graine', fallbackFire: 'ammo_graine_fire',
-               waveAmp: 16, waveFreq: 14, scale: 1 },
-      // X : POWER CHORD. Onde de choc circulaire CENTREE sur Marcos (pas de
-      //  friendly fire). levels[puissance-1] : radius / damage / cost (soleil).
-      //  La charge de X (lobChargeTime) gonfle le rayon de chargeMin a 1.
-      //  Efface les tirs ennemis dans le rayon, repousse les monstres (knock px/s).
-      chord: {
-        chargeMin: 0.7, knock: 340, knockTime: 0.18,
-        levels: [
-          { radius: 105, damage: 1, cost: 28 },
-          { radius: 140, damage: 2, cost: 38 },
-          { radius: 178, damage: 3, cost: 46 },
-        ],
-      },
-      // C : L'ARMEE DES ETUDIANTS (Ade). Remplace le chat : memes charges /
-      //  recharge / degats / ouverture de garde que CONFIG.cat (aller-retour),
-      //  mais c'est une escouade de `count` PNJ (corps champ + tetes du pool,
-      //  le chef = leaderHead) qui charge en courant. spacing = ecart entre eux.
-      students: { count: 3, leaderHead: 'head_npc_h_27', fallbackHead: 'head_npc_h_17', spacing: 34, scale: 0.92, speedMul: 0.86 },
-      // pickup DURIAN ('g') : aura puante duration s, rayon radius ; tick de
-      //  degat toutes les tick s (damage aux monstres, bossDamage aux boss),
-      //  dissout les tirs ennemis dans l'aura.
-      durian: { duration: 7, radius: 112, tick: 0.45, damage: 1, bossDamage: 2 },
-      // Libelles HUD (font bitmap -> pas d'accents).
-      labels: { shoot: 'NOTES', lob: 'POWER CHORD', ally: 'ETUDIANTS' },
-    },
-  },
-
   // --- Ennemis (modeles) ----------------------------------------------
   //  move: 'static' | 'patrol' | 'chase' | 'shooter' | 'fly' | 'jump'
   enemies: {
@@ -459,18 +416,6 @@ window.CONFIG = {
     //  enemy_criquet plus bas) — 'hop' laissait le minion FIGE frame 0.
     bug:      { sprite: 'enemy_criquet',  hp: 1,        touchDamage: 1, move: 'chase',   speed: 130, range: 130, aggro: 700, anim: 'walk', scale: 0.6, score: 60, hit: { w: 0.54, h: 0.82 } },   // scale 0.6 = taille d'un vrai criquet (sans ce champ, scale defaut 1 -> minion du jury ~1.67x trop GROS). sprite criquet -> meme hit.w re-derive (cellule 302)
     chercheur:{ sprite: 'enemy_assureur', hp: 2,        touchDamage: 1, move: 'chase',   speed: 95,  range: 120, aggro: 600, score: 120, hit: { w: 0.88, h: 0.83 } },
-    // --- CAMPAGNE MARCOS (Java : rizieres, village, parcelle agrivoltaique) ---
-    //  RAT : rampe tres vite vers Marcos (immunise a la boue). DURIAN : piquant
-    //  immobile ; pose EN L'AIR (case du dessous vide) il PEND et TOMBE quand
-    //  Marcos passe dessous (move 'durian', cf. enemyBehavior). OISEAU : patrouille
-    //  en l'air puis PLONGE en pique sur Marcos (move 'dive'). SCOOTER : vehicule
-    //  rapide qui traverse les panneaux. PIAF : minion de Garuda, vole en
-    //  tete-chercheuse lente puis s'envole (move 'homing', duree de vie limitee).
-    rat:          { sprite: 'enemy_rat',     fallback: 'enemy_cafard',   hp: 2, touchDamage: 1, move: 'chase',  speed: 215, range: 80,  aggro: 560, anim: 'walk', score: 110, scale: 0.85, hit: { w: 0.80, h: 0.55 } },   // dessin petit dans sa cellule 176x192 (queue longue) ; boite un peu plus haute que le dessin -> les notes le touchent
-    durian:       { sprite: 'enemy_durian',  fallback: 'enemy_sac',      hp: 3, touchDamage: 1, move: 'durian', dropRange: 1.4, fallSpeed: 620, anim: 'walk', score: 130, scale: 0.6, hit: { w: 0.80, h: 0.80 } },
-    oiseau:       { sprite: 'enemy_oiseau',  fallback: 'enemy_corbeau',  hp: 1, touchDamage: 1, move: 'dive',   speed: 110, range: 170, amp: 22, diveSpeed: 430, riseSpeed: 170, diveEvery: 2.4, anim: 'walk', score: 140, scale: 0.42, hit: { w: 0.86, h: 0.80 } },
-    scooter:      { sprite: 'enemy_scooter', fallback: 'enemy_coursier', hp: 5, touchDamage: 2, move: 'patrol', speed: 210, range: 190, aggro: 520, anim: 'walk', score: 240, scale: 1.0, ignorePanel: true, hit: { w: 0.88, h: 0.80 } },
-    piaf:         { sprite: 'enemy_oiseau',  fallback: 'enemy_corbeau',  hp: 1, touchDamage: 1, move: 'homing', speed: 150, life: 6.5, anim: 'walk', score: 30, scale: 0.3, hit: { w: 0.86, h: 0.80 } },
     // PASSANT = figurant ambiant INOFFENSIF (touchDamage 0) : fait les cent
     //  pas, ne blesse JAMAIS Laura. Le TUER ne rapporte rien (score 0) et fait
     //  PERDRE un TIER (cf. registerKill dans game.js) -> on est cense les
@@ -497,45 +442,6 @@ window.CONFIG = {
   //  Champs de tuning IA (windTime, revTime, aimTime, ...) lus par bosses.js ;
   //  l'IA a des defauts, donc aucun champ n'est obligatoire pour eviter un crash.
   bosses: {
-    // --- CAMPAGNE MARCOS : 3 boss (cf. docs/superpowers/specs/2026-11-02-marcos-campaign-design.md) ---
-    //  fallback / fallbackAtk = feuilles de repli tant que l'art Imagen n'est pas
-    //  embarque (spawnBoss). Les 3 IA vivent dans bosses.js (tikus/scooter/garuda).
-    //
-    //  RAJA TIKUS (rizieres, IA 'tikus') : scurry (fonce sur Marcos, scurryTime)
-    //  -> burrow (s'enfouit : INTANGIBLE, bosse de boue qui file sous terre,
-    //  burrowTime) -> erupt (marqueur eruptWarn s puis JAILLIT sous Marcos +
-    //  mottes de boue en eventail) -> dazed (SONNE, guard 1 = PUNITION, dazedTime).
-    //  1 cycle / 2 : squeak = invoque ratN rats. P2 : double plongee + flaques de
-    //  boue temporaires (mudDur s) a chaque jaillissement.
-    tikus:        { sprite: 'boss_tikus_move', attackSprite: 'boss_tikus_atk', fallback: 'boss_agriculteur_move', fallbackAtk: 'boss_agriculteur_atk', behavior: 'tikus',
-                    //  1er boss de Marcos = FACILE (playtest : "simplifie le premier pas mal") :
-                    //  peu de PV, garde faible, contact a 1, il s'arrete a distance (keepGap
-                    //  tuiles) au lieu de coller, longue fenetre sonnee, rats 1 cycle / 3.
-                    hp: 36, maxHp: 36, guard: 0.65, touchDamage: 1, shotSpeed: 260, speed: 125, range: 470, score: 1200, name: 'RAJA TIKUS, LE ROI DES RATS', shot: 'shot_mud',
-                    scurryTime: 2.4, keepGap: 2.4, burrowTime: 1.6, eruptWarn: 1.1, dazedTime: 2.8, ratN: 1, clodN: 3, mudDur: 4, squeakEvery: 3,
-                    p2DazedTime: 2.2, p2RatN: 1, p2ClodN: 4 },
-    //  PAK DURIAN (village, IA 'scooter') : honk (klaxon + phare qui clignote =
-    //  TELEGRAPHE, honkTime) -> charge (traverse l'arene a chargeSpeed en semant
-    //  des durians-mines tous les mineEvery s) -> lob (s'arrete, jette lobN durians
-    //  en cloche qui eclatent en epines) -> panne (fumee, guard 1 = PUNITION,
-    //  breakTime). P2 : charge ALLER-RETOUR + pluie de durians (bombes).
-    pakdurian:    { sprite: 'boss_pakdurian_move', attackSprite: 'boss_pakdurian_atk', fallback: 'boss_proprietaire_move', fallbackAtk: 'boss_proprietaire_atk', behavior: 'scooter',
-                    //  2e boss = un cran en dessous de la version initiale (playtest) : klaxon
-                    //  plus long, charge moins rapide, moins de mines/durians, panne plus longue.
-                    hp: 70, maxHp: 70, guard: 0.45, touchDamage: 1, shotSpeed: 250, speed: 60, range: 500, score: 1600, name: 'PAK DURIAN, LE VENDEUR A SCOOTER', shot: 'shot_durian', spine: 'shot_spine', bomb: 'shot_durian',
-                    honkTime: 1.0, chargeSpeed: 420, mineEvery: 0.48, mineLife: 3.5, lobN: 2, p2LobN: 3, lobTime: 1.2, breakTime: 2.5, rainN: 3,
-                    p2BreakTime: 1.9 },
-    //  GARUDA (parcelle, IA 'garuda', boss FINAL de Marcos) : hover (plane, suit
-    //  Marcos en hauteur, hoverTime) -> une attaque par cycle : flock (lance
-    //  piafN piafs tete-chercheuse) / net (jette un FILET en cloche qui
-    //  IMMOBILISE Marcos netTime s, marteler SAUT pour se liberer) / dive (marque
-    //  la cible, PIQUE en coup de bec -> bec PLANTE dans le sol = PUNITION,
-    //  stuckTime). P2 : vole plus haut, filets doubles, eventail de plumes (shot_feather),
-    //  deux piques enchaines.
-    garuda:       { sprite: 'boss_garuda_move', attackSprite: 'boss_garuda_atk', fallback: 'boss_michael_move', fallbackAtk: 'boss_michael_atk', behavior: 'garuda',
-                    hp: 120, maxHp: 120, guard: 0.35, touchDamage: 2, shotSpeed: 330, speed: 150, range: 500, score: 3000, name: 'GARUDA, L HOMME-OISEAU', shot: 'shot_feather', net: 'shot_net',
-                    hoverTime: 1.6, hoverAlt: 3.2, piafN: 3, netTime: 1.6, diveWarn: 0.6, diveSpeed: 720, stuckTime: 1.9, featherN: 5,
-                    p2HoverAlt: 4.2, p2StuckTime: 1.4 },
     // === FINETUNING : pour chaque boss, TOUS les params de timing lus par
     //  js/bosses.js sont exposes ici (avant, beaucoup n'avaient qu'un defaut code
     //  en dur, et certaines valeurs ici etaient PERIMEES et ecrasaient l'IA).
@@ -637,9 +543,6 @@ window.CONFIG = {
     page:      { sprite: 'pickup_page',      score: 100 },            // page de manuscrit
     publi:     { sprite: 'pickup_publi',     score: 1000 },           // PUBLI cachee (100%)
     croquette: { sprite: 'pickup_croquette', score: 20 },             // recharge le chat
-    // DURIAN (Marcos, caractere 'g') : "il faut gouter les durians !" -> aura
-    //  puante temporaire (cf. CONFIG.kits.guitar.durian). Repli visuel = cafe.
-    durian:    { sprite: 'pickup_durian', fallback: 'pickup_cafe', score: 80, aura: true },
     rollers:   { sprite: 'pickup_rollers',   score: 40, equip: 'rollers' }, // equipement rollers
     velo:      { sprite: 'pickup_velo',      score: 60, equip: 'velo' },     // equipement velo
     // UPGRADES D'ARSENAL (cf. GAMEPLAY.md) : montent un axe COMMUN aux 2 armes,
@@ -691,41 +594,6 @@ window.CONFIG = {
   //  Seuls les sprites listes ici sont des feuilles multi-frames ;
   //  les autres restent des PNG simples (1 image).
   anims: {
-    // Marcos : silhouettes completes de profil, cellules de 224 x 224 px.
-    marcos_idle:  { sliceX: 2, anims: { idle: { from: 0, to: 1, loop: true, speed: 2 } } },
-    marcos_run:   { sliceX: 4, anims: { run: { from: 0, to: 3, loop: true, speed: 10 }, idle: { from: 0, to: 3, loop: true, speed: 5 } } },
-    marcos_jump:  { sliceX: 2, anims: { jump: { from: 0, to: 1, loop: false, speed: 3 } } },
-    marcos_hurt:  { sliceX: 1, anims: { hurt: { from: 0, to: 0 } } },
-    marcos_throw: { sliceX: 2, anims: { throw: { from: 0, to: 1, loop: false, speed: 12 } } },
-    marcos_duck:  { sliceX: 3, anims: { duck: { from: 0, to: 2, loop: false, speed: 12 } } },
-    marcos_dash:  { sliceX: 1, anims: { dash: { from: 0, to: 0 } } },
-    marcos_dead:  { sliceX: 2, anims: { dead: { from: 0, to: 1, loop: false, speed: 5 } } },
-    // Pose GUITARE (remplace hero_throw chez Marcos) : 0-1 gratte (notes), 2-3 power chord.
-    marcos_guitar: { sliceX: 4, anims: { throw: { from: 0, to: 1, loop: false, speed: 12 }, chord: { from: 2, to: 3, loop: false, speed: 8 } } },
-    // --- Campagne Marcos : ennemis (6 frames walk 0-2 / hurt 3 / attack 4-5) et boss ---
-    enemy_rat:          { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 14 }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 14 } } },
-    enemy_durian:       { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 5  }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 10 } } },
-    enemy_oiseau:       { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 12 }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 14 } } },
-    enemy_scooter:      { sliceX: 6, sliceY: 1, anims: { walk: { from: 0, to: 2, loop: true, speed: 10 }, hurt: { from: 3, to: 3 }, attack: { from: 4, to: 5, loop: true, speed: 12 } } },
-    boss_tikus_move:     { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 9 }, hurt: { from: 5, to: 5 } } },
-    // Feuilles d'attaque Marcos = une ACTION par case -> clips nommes joues par l'IA
-    //  (bossAnim bascule sur la feuille _atk des qu'elle a le clip demande).
-    //  tikus : 0 s'accroupit, 1 creuse, 2 bosse de terre (couronne), 3 jaillit, 4 coup de queue, 5 se redresse.
-    boss_tikus_atk:      { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 11 },
-                           burrow: { from: 0, to: 2, loop: false, speed: 6 }, under: { from: 2, to: 2 }, erupt: { from: 3, to: 3 },
-                           whip: { from: 4, to: 5, loop: true, speed: 5 } } },
-    boss_pakdurian_move: { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 8 }, hurt: { from: 5, to: 5 } } },
-    //  pakdurian : 0 brandit, 1 attrape un durian, 2 lance, 3 klaxonne, 4 roue arriere, 5 se pose.
-    boss_pakdurian_atk:  { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 10 },
-                           throw: { from: 0, to: 2, loop: false, speed: 7 }, honk: { from: 3, to: 3 }, charge: { from: 4, to: 4 }, settle: { from: 5, to: 5 } } },
-    boss_garuda_move:    { sliceX: 6, sliceY: 1, anims: { idle: { from: 0, to: 4, loop: true, speed: 8 }, hurt: { from: 5, to: 5 } } },
-    //  garuda : 0 bras leves (appel), 1 tient le filet, 2 le lance, 3 battement d'ailes, 4 coup de bec, 5 se pose.
-    boss_garuda_atk:     { sliceX: 6, sliceY: 1, anims: { attack: { from: 0, to: 5, loop: true, speed: 11 },
-                           summon: { from: 0, to: 0 }, net: { from: 1, to: 2, loop: false, speed: 5 }, flap: { from: 3, to: 3 },
-                           dive: { from: 4, to: 4 }, land: { from: 5, to: 5 } } },
-    ammo_note:           { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 14 } } },
-    ammo_note_fire:      { sliceX: 6, anims: { spin: { from: 0, to: 5, loop: true, speed: 16 } } },
-    pickup_durian:       { sliceX: 4, anims: { idle: { from: 0, to: 3, loop: true, speed: 6 } } },
     hero_idle:        { sliceX: 8, sliceY: 1, anims: { idle:  { from: 0, to: 7, loop: true,  speed: 8  } } },
     hero_run:         { sliceX: 8, sliceY: 1, anims: { run:   { from: 0, to: 7, loop: true,  speed: 14 } } },
     hero_jump:        { sliceX: 8, sliceY: 1, anims: { jump:  { from: 0, to: 7, loop: true,  speed: 10 } } },

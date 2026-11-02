@@ -1,146 +1,130 @@
-/* Trois slots PAR PERSONNAGE. v3 : resultats indexes par identifiant stable
- * de niveau. Les anciennes saves Laura sont migrees sans supprimer la source.
- * Aucun reseau ; repli memoire si le navigateur refuse localStorage. */
+/* =====================================================================
+ *  SAVE — Trois sauvegardes facon borne d'arcade.
+ *  100% cote client (localStorage). Si localStorage est indisponible
+ *  (ex. Chrome en file://), on retombe sur une memoire de session :
+ *  les slots marchent pendant la partie mais ne sont pas persistes.
+ *  Pour une vraie persistance : servir via http (python3 -m http.server)
+ *  ou deployer (itch.io / GitHub Pages).
+ * ===================================================================== */
 window.LQ_SAVE = (() => {
   'use strict';
+  const KEY = (i) => 'lauraquest_slot_' + i;
+  const N_LEVELS = 5;        // 5 chapitres (le jury n'est pas un "chapitre")
   const SLOTS = 3;
-  const CONTENT = window.LQ_CONTENT;
-  const LEGACY_LEVELS = ['niveau1', 'niveau2', 'niveau3', 'niveau4', 'niveau5', 'jury'];
-  const KEY = (i, id) => 'lauraquest_v3_' + id + '_' + i;
-  const LEGACY_KEY = (i) => 'lauraquest_slot_' + i;
-  const mem = Object.create(null);
-  let store, persistent = false;
+
+  // Detecte un localStorage utilisable, sinon shim memoire.
+  //  NB : la simple LECTURE de window.localStorage peut jeter (SecurityError,
+  //  cookies/storage bloques) -> tout acces reste DANS le try, y compris le
+  //  calcul de `persistent` (sinon crash au boot sur navigateur verrouille).
+  const mem = {};
+  let store;
+  let persistent = false;
   try {
+    const t = '__lq_test__';
+    window.localStorage.setItem(t, '1');
+    window.localStorage.removeItem(t);
     store = window.localStorage;
-    store.setItem('__lq_test__', '1'); store.removeItem('__lq_test__');
     persistent = true;
-  } catch (e) { store = null; }
-  // Les valeurs restent utilisables dans la session meme si une ecriture
-  // echoue (quota / reglages modifies pendant la partie).
-  function read(key) {
-    if (Object.hasOwn(mem, key)) return mem[key];
-    try { return store ? store.getItem(key) : null; } catch (e) { return null; }
+  } catch (e) {
+    store = {
+      getItem: (k) => (k in mem ? mem[k] : null),
+      setItem: (k, v) => { mem[k] = String(v); },
+      removeItem: (k) => { delete mem[k]; },
+    };
   }
-  function write(key, value) {
-    mem[key] = value;
-    try { if (store) store.setItem(key, value); } catch (e) { persistent = false; }
+
+  function fresh(name) {
+    return {
+      name: name || 'LAURA',
+      createdAt: Date.now(),
+      levelsDone: new Array(N_LEVELS).fill(false),
+      publis: new Array(N_LEVELS).fill(false),
+      dataPct: new Array(N_LEVELS).fill(0),
+      bestTime: new Array(N_LEVELS).fill(0),   // meilleur temps (s) par niveau ; 0 = pas encore fini
+      // v2 MEDAILLES (GAMEPLAY.md §5) : {t,d,s} = palier 0-3 (3=or) par niveau ;
+      //  l'entree [N_LEVELS] = le jury (TEMPS seulement). savedPct = meilleur %
+      //  de passants sauves ; feli = medaille cachee "sans degat".
+      medals: new Array(N_LEVELS + 1).fill(null),
+      savedPct: new Array(N_LEVELS).fill(0),
+      feli: new Array(N_LEVELS).fill(false),
+      juryDone: false,
+      bestScore: 0,
+      totalScore: 0,
+      unlockedMax: 0,   // index du plus haut niveau accessible sur la carte
+      cursor: 0,        // position du curseur sur la carte
+    };
   }
-  function remove(key) {
-    mem[key] = null;
-    try { if (store) store.removeItem(key); } catch (e) { persistent = false; }
-  }
-  const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const num = (v, max) => Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0;
-  const validSlot = (i) => Number.isInteger(i) && i >= 0 && i < SLOTS;
-  const record = () => ({ done: false, publi: false, dataPct: 0, bestTime: 0,
-    medals: { t: 0, d: 0, s: 0 }, savedPct: 0, feli: false });
-  function normalizeRecord(v) {
-    v = object(v) ? v : {};
-    const m = object(v.medals) ? v.medals : {};
-    return { done: v.done === true, publi: v.publi === true,
-      dataPct: num(v.dataPct, 100), bestTime: num(v.bestTime, Number.MAX_SAFE_INTEGER),
-      savedPct: num(v.savedPct, 100), feli: v.feli === true,
-      medals: { t: num(m.t, 3), d: num(m.d, 3), s: num(m.s, 3) } };
-  }
-  function fresh(characterId = 'laura', name) {
-    const a = CONTENT.campaignFor(characterId);
-    return { version: 3, characterId, campaignId: a.id,
-      name: name || window.LQ_CHARACTERS[characterId].name.toUpperCase(), createdAt: Date.now(),
-      progress: {}, unlocked: [a.levels[0]], cursorLevel: a.levels[0],
-      bestScore: 0, totalScore: 0 };
-  }
-  function progress(d, key) {
-    return d && Object.hasOwn(d.progress, key) ? d.progress[key] : record();
-  }
-  function isUnlocked(d, key) {
-    if (!d) return false;
-    const a = CONTENT.campaignFor(d.characterId);
-    const idx = a.levels.indexOf(key);
-    return idx >= 0 && (idx === 0 || d.unlocked.includes(key) || progress(d, key).done
-      || progress(d, a.levels[idx - 1]).done);
-  }
-  function finished(d) {
-    return !!d && CONTENT.campaignFor(d.characterId).levels.every((key) => progress(d, key).done);
-  }
-  function normalize(d, id) {
-    const out = fresh(id, typeof d.name === 'string' ? d.name : undefined);
-    if (d.version !== 3 || d.characterId !== id || d.campaignId !== out.campaignId) return null;
-    out.createdAt = num(d.createdAt, Number.MAX_SAFE_INTEGER) || out.createdAt;
-    out.bestScore = num(d.bestScore, Number.MAX_SAFE_INTEGER);
-    out.totalScore = num(d.totalScore, Number.MAX_SAFE_INTEGER);
-    if (object(d.progress)) Object.keys(d.progress).forEach((key) => {
-      // Conserver aussi les resultats d'un niveau temporairement retire.
-      if (!['__proto__', 'constructor', 'prototype'].includes(key)) out.progress[key] = normalizeRecord(d.progress[key]);
-    });
-    out.unlocked = Array.isArray(d.unlocked) ? [...new Set(d.unlocked.filter((key) => typeof key === 'string'))] : [];
-    const a = CONTENT.campaignFor(id);
-    a.levels.forEach((key) => { if (isUnlocked(out, key) && !out.unlocked.includes(key)) out.unlocked.push(key); });
-    out.cursorLevel = a.levels.includes(d.cursorLevel) && isUnlocked(out, d.cursorLevel) ? d.cursorLevel : a.levels[0];
-    return out;
-  }
-  function migrate(d) {
-    const out = fresh('laura', typeof d.name === 'string' ? d.name : undefined);
-    out.createdAt = num(d.createdAt, Number.MAX_SAFE_INTEGER) || out.createdAt;
-    out.bestScore = num(d.bestScore, Number.MAX_SAFE_INTEGER);
-    out.totalScore = num(d.totalScore, Number.MAX_SAFE_INTEGER);
-    LEGACY_LEVELS.forEach((key, i) => {
-      const at = (field) => Array.isArray(d[field]) ? d[field][i] : undefined;
-      out.progress[key] = normalizeRecord({ done: i === 5 ? d.juryDone : at('levelsDone'),
-        publi: at('publis'), dataPct: at('dataPct'), bestTime: at('bestTime'),
-        medals: at('medals'), savedPct: at('savedPct'), feli: at('feli') });
-    });
-    out.unlocked = LEGACY_LEVELS.slice(0, Math.floor(num(d.unlockedMax, 5)) + 1);
-    out.cursorLevel = LEGACY_LEVELS[Math.floor(num(d.cursor, 5))];
-    return normalize(out, 'laura');
-  }
-  function load(i, characterId = 'laura') {
-    if (!validSlot(i)) return null;
+
+  function load(i) {
     try {
-      const raw = read(KEY(i, characterId));
-      if (raw !== null) {
-        const d = JSON.parse(raw);
-        return object(d) ? normalize(d, characterId) : null;
-      }
-      if (characterId !== 'laura') return null;
-      const old = JSON.parse(read(LEGACY_KEY(i)) || 'null');
-      if (!object(old)) return null;
-      const d = migrate(old);
-      save(i, d);
+      const raw = store.getItem(KEY(i));
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      // garde-fous de forme (versions futures)
+      d.levelsDone = (d.levelsDone || []).slice(0, N_LEVELS);
+      while (d.levelsDone.length < N_LEVELS) d.levelsDone.push(false);
+      d.publis = (d.publis || []).slice(0, N_LEVELS);
+      while (d.publis.length < N_LEVELS) d.publis.push(false);
+      d.dataPct = (d.dataPct || []).slice(0, N_LEVELS);
+      while (d.dataPct.length < N_LEVELS) d.dataPct.push(0);
+      d.bestTime = (d.bestTime || []).slice(0, N_LEVELS);
+      while (d.bestTime.length < N_LEVELS) d.bestTime.push(0);
+      // migration v2 : medailles / sauves / sans-degat sur les vieux slots
+      d.medals = (d.medals || []).slice(0, N_LEVELS + 1);
+      while (d.medals.length < N_LEVELS + 1) d.medals.push(null);
+      d.savedPct = (d.savedPct || []).slice(0, N_LEVELS);
+      while (d.savedPct.length < N_LEVELS) d.savedPct.push(0);
+      d.feli = (d.feli || []).slice(0, N_LEVELS);
+      while (d.feli.length < N_LEVELS) d.feli.push(false);
+      if (typeof d.unlockedMax !== 'number') d.unlockedMax = 0;
+      if (typeof d.cursor !== 'number') d.cursor = 0;
       return d;
     } catch (e) { return null; }
   }
-  function save(i, d) {
-    if (!validSlot(i)) throw new Error('Slot invalide');
-    const out = normalize(d, d.characterId);
-    if (!out) throw new Error('Sauvegarde incompatible');
-    write(KEY(i, d.characterId), JSON.stringify(out));
-    return d;
+
+  function save(i, data) {
+    try { store.setItem(KEY(i), JSON.stringify(data)); } catch (e) {}
+    return data;
   }
-  function erase(i, id = 'laura') {
-    if (!validSlot(i)) return;
-    CONTENT.campaignFor(id);
-    // Sinon la sauvegarde legacy ressusciterait au prochain load.
-    if (id === 'laura') remove(LEGACY_KEY(i));
-    remove(KEY(i, id));
-  }
-  function list(id = 'laura') { return Array.from({ length: SLOTS }, (_, i) => load(i, id)); }
-  function completion(d) {
-    if (!d) return 0;
-    const a = CONTENT.campaignFor(d.characterId);
-    let got = 0, total = 0;
-    a.levels.forEach((key) => {
-      const p = progress(d, key);
-      total++; if (p.done) got++;
-      if (key !== a.finalLevel) { total += 2; if (p.publi) got++; got += num(p.dataPct, 100) / 100; }
-    });
-    return total ? Math.round(got / total * 100) : 0;
-  }
+
+  function erase(i) { try { store.removeItem(KEY(i)); } catch (e) {} }
+
+  // --- Prefs GLOBALES (independantes des slots) : mute son/musique... ---
+  //  Meme store que les slots (donc meme fallback memoire en file://).
   const PREFS_KEY = 'lauraquest_prefs';
   function loadPrefs() {
-    try { const p = JSON.parse(read(PREFS_KEY) || '{}'); return object(p) ? p : {}; }
-    catch (e) { return {}; }
+    try {
+      const o = JSON.parse(store.getItem(PREFS_KEY) || '{}');
+      // cle corrompue en JSON primitif ("true", "12"...) : setPref ferait
+      //  p[k]=v sur un non-objet -> TypeError en strict. On repart de zero.
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) { return {}; }
   }
-  function setPref(k, v) { const p = loadPrefs(); p[k] = v; write(PREFS_KEY, JSON.stringify(p)); return p; }
-  return { fresh, load, save, erase, list, progress, isUnlocked, finished, completion,
-    loadPrefs, setPref, get persistent() { return persistent; }, SLOTS };
+  function setPref(k, v) {
+    const p = loadPrefs(); p[k] = v;
+    try { store.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) {}
+    return p;
+  }
+
+  function list() {
+    const out = [];
+    for (let i = 0; i < SLOTS; i++) out.push(load(i));
+    return out;
+  }
+
+  // % de completion global d'un slot (chapitres + publis + data + jury)
+  function completion(d) {
+    if (!d) return 0;
+    let got = 0, total = 0;
+    for (let i = 0; i < N_LEVELS; i++) {
+      total += 3;                                  // chapitre + publi + data
+      if (d.levelsDone[i]) got += 1;
+      if (d.publis[i]) got += 1;
+      got += Math.max(0, Math.min(1, (d.dataPct[i] || 0) / 100));
+    }
+    total += 1; if (d.juryDone) got += 1;          // PhD final
+    return Math.round((got / total) * 100);
+  }
+
+  return { fresh, load, save, erase, list, completion, loadPrefs, setPref, persistent, N_LEVELS, SLOTS };
 })();

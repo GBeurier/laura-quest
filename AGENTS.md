@@ -6,18 +6,10 @@ This is a static browser game built on the vendored KAPLAY engine. `index.html` 
 
 ## Build, Test, and Development Commands
 
-Playable characters live in `js/characters.js` (`window.LQ_CHARACTERS`); adventures live in `js/campaigns.js` (`window.LQ_CAMPAIGNS`). Each character has three independent save slots. Keep character, campaign and level IDs stable after release: v3 saves store progress by level ID, and migrate legacy Laura slots on first load. Add maps in `levels/*.txt`, metadata in `js/level.js`, then include their IDs and map nodes in the campaign. Character art can reuse a body/head rig or map `hero_*` sprite names to dedicated sheets; per-NPC identity remains in `js/npc.js`. A character may also carry a `kit` (`CONFIG.kits`, e.g. Marcos's `guitar`: notes / power chord / student squad on SPACE / X / C) — kit code paths are gated so Laura never changes. Marcos campaign design: `docs/superpowers/specs/2026-11-02-marcos-campaign-design.md` (map chars `~` mud, `r` rat, `u` durian, `y` diving bird, `Z` scooter, `g` durian pickup).
-
-- `python3 gen_levels_data.py`: embeds all lowercase level map filenames automatically.
-- `node tools/check_campaigns.js`: checks save migrations, character isolation, level reordering and content references.
-- `python3 tools/check_levels.py`: validates map geometry and reachability (add new level metadata to `META`).
-- `node tools/smoke_campaigns.cjs`: optional browser checks with an external Playwright installation; uses isolated browser contexts and writes ignored screenshots to `_campaigngen/checks/`.
 - `python3 gen_assets_data.py`: rebuilds `js/assets_data.js` after asset changes.
 - Open `index.html`: runs the game locally without a server.
 - `python3 -m http.server 8000`: optional local static server, useful when browser `localStorage` behavior under `file://` gets in the way.
 - Open `index.html#gameauto`: runs the autopilot/dev smoke path.
-
-Use `#game/marcos`, `#gameauto/marcos`, `#map/marcos`, or `#winscreen/marcos` for Marcos previews. Dev previews use disposable saves and do not overwrite player slots. `#characters` opens character selection.
 
 There is no package manager manifest or formal build step beyond asset embedding. GitHub Pages runs `python3 gen_assets_data.py` before publishing.
 

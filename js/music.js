@@ -349,40 +349,9 @@ window.LQ_MUSIC = (() => {
     if (desired) { const n = desired; killSession(); play(n); }  // reprend du debut
   }
 
-  // PLUCK : petit bruitage de corde synthetise (guitare de Marcos, cf. game.js
-  //  guitarPluck / powerChord). Independant de la musique (mute M) : il passe
-  //  direct sur la sortie ; c'est game.js qui le gate sur les bruitages (S).
-  //  notes = numeros MIDI ; opts = { vol, dur, wave }.
-  function pluck(notes, opts) {
-    const o = opts || {};
-    if (!ensureCtx()) return;
-    tryResume();
-    const t = ctx.currentTime + 0.005, dur = o.dur || 0.25, vol = Math.max(0, Math.min(1, o.vol == null ? 0.3 : o.vol));
-    const out = ctx.createGain();
-    out.gain.value = vol * 0.35 / Math.max(1, Math.sqrt(notes.length));
-    const lp = ctx.createBiquadFilter();            // adoucit le haut du spectre -> corde plutot que buzzer
-    lp.type = 'lowpass'; lp.frequency.value = o.wave === 'sawtooth' ? 1400 : 2600;
-    lp.connect(out); out.connect(ctx.destination);
-    notes.forEach((n, i) => {
-      const f = 440 * Math.pow(2, (n - 69) / 12);
-      [[o.wave || 'triangle', 1, 0], ['square', 0.25, 6]].forEach(([type, gk, det]) => {
-        const osc = ctx.createOscillator();
-        osc.type = type; osc.frequency.value = f; osc.detune.value = det;
-        const g = ctx.createGain();
-        const st = t + i * 0.012;                     // leger strum : les cordes partent en cascade
-        g.gain.setValueAtTime(0, st);
-        g.gain.linearRampToValueAtTime(gk, st + 0.004);
-        g.gain.exponentialRampToValueAtTime(0.001, st + dur);
-        osc.connect(g); g.connect(lp);
-        osc.start(st); osc.stop(st + dur + 0.02);
-      });
-    });
-  }
-
   return {
     play: play,
     stop: stop,
-    pluck: pluck,
     setEnabled: setEnabled,
     get current() { return desired; },
     _debugTrack: getTrack,    // debug uniquement (inspection du parse en console)

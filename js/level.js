@@ -101,34 +101,6 @@ const PASSANT_ALL = (biomes) => {
 };
 const BIOMES_ALL = ['champ', 'pote', 'horti', 'labo', 'bureau'];
 
-// CAMPAGNE MARCOS : pool partage + les PNJ DEDIES a Marcos (Ade = h_27, Afif =
-//  h_28), absents des niveaux de Laura. Ils "appartiennent" a un niveau Marcos
-//  via npcLevel 'marcos' (<-> cle `level` du registre js/npc.js) : tous deux
-//  sortent EN PRIORITE dans chacun de ses niveaux, puis le pool de Laura complete.
-const MARCOS_HEADS = { h: PASSANT_HEADS.h.concat(['head_npc_h_27', 'head_npc_h_28']), f: PASSANT_HEADS.f };
-const PASSANT_MARCOS = (biome) => Object.assign(PASSANT(biome), {
-  heads: MARCOS_HEADS,
-  femaleRatio: MARCOS_HEADS.f.length / (MARCOS_HEADS.f.length + MARCOS_HEADS.h.length),
-});
-// Decor de Java : volcans dans la brume + rizieres a structures bambou/filets
-//  (ou village), sur le parallax standard. fallback = couche de Laura tant que
-//  le fond Imagen n'est pas embarque (cf. buildBackground).
-const JAVA_LAYERS = (front) => [
-  { sprite: 'bg_java_volcano', fallback: 'bg_mountains', band: true, parallax: 0.16, anchor: 'bot', y: 'ground', z: -26, opacity: 0.95 },
-  { sprite: 'bg_cloud', scatter: true, parallax: 0.30, count: 7, yMin: 30, yMax: 140, z: -25, scale: 0.7 },
-  { sprite: front, fallback: 'bg_hills', band: true, parallax: 0.42, anchor: 'bot', y: 'ground', z: -24 },
-  // (pas de bg_field : ses panneaux solaires bleus sont ceux de Laura, pas de Java)
-];
-const JAVA_THEME = (front, extra) => Object.assign({
-  sky: [138, 202, 238], tint: [240, 248, 226],
-  layers: JAVA_LAYERS(front),
-  tiles: { '-': ['tile_bamboo'], 'x': ['tile_bamboo'] },     // structures bambou + filet d'ombrage (repli : panneau)
-  panelLeg: 'bamboo_leg',
-  hazard: ['hazard_paddy'], mud: ['hazard_mud'],
-  pickups: { data: 'pickup_graine', page: 'pickup_plant' },
-  passant: PASSANT_MARCOS('champ'),
-}, extra || {});
-
 // Les GRILLES de niveaux vivent dans levels/*.txt -> embarquees par
 //  gen_levels_data.py dans js/levels_data.js (window.LEVEL_MAPS), charge
 //  AVANT ce fichier dans index.html. Ici on ne garde que boss/theme/par.
@@ -143,33 +115,6 @@ const LEVEL_MAPS = window.LEVEL_MAPS || {};
 //  5 s). Jury : pas de course, combat long (~2 min 30) -> valeurs fixes.
 
 window.LEVELS = {
-
-  // ======================= CAMPAGNE MARCOS (Java) =======================
-  //  Cf. docs/superpowers/specs/2026-11-02-marcos-campaign-design.md.
-  //  Nouveaux caracteres : '~' boue, 'r' rat, 'u' durian (suspendu si la case
-  //  du dessous est vide), 'y' oiseau qui pique, 'Z' scooter, 'g' pickup durian.
-  //  1. Le chantier des rizieres : boue, rats, structures en construction -> RAJA TIKUS.
-  marcos_rizieres: {
-    boss: 'tikus', music: 'niveau3', npcLevel: 'marcos',
-    par: { or: 100, argent: 150, bronze: 220 },
-    theme: JAVA_THEME('bg_java_paddy'),
-    map: LEVEL_MAPS.marcos_rizieres,
-  },
-  //  2. Le village et la route : scooters, marche aux durians -> PAK DURIAN.
-  marcos_village: {
-    boss: 'pakdurian', music: 'niveau4', npcLevel: 'marcos',
-    par: { or: 115, argent: 170, bronze: 250 },
-    theme: JAVA_THEME('bg_java_village', { sky: [150, 206, 236], tint: [252, 244, 228] }),
-    map: LEVEL_MAPS.marcos_village,
-  },
-  //  3. La parcelle agrivoltaique : rangees de structures, oiseaux -> GARUDA (final).
-  marcos_parcelle: {
-    boss: 'garuda', music: 'jury', npcLevel: 'marcos',
-    par: { or: 130, argent: 190, bronze: 270 },
-    theme: JAVA_THEME('bg_java_paddy', { sky: [128, 192, 232], tint: [236, 244, 230] }),
-    map: LEVEL_MAPS.marcos_parcelle,
-  },
-
 
   // --- INTRODUCTION : L'agriculteur fou — RIZIERES DE CAMARGUE, plein jour ----
   //  Installation de la manip + recolte de donnees. Le niveau INTRODUCTIF : le

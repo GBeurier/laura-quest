@@ -13,7 +13,7 @@ FACING par archetype (doit matcher la logique flipX de game.js, NON modifiee) :
   fly / shooter / jump / static -> RIGHT  (flipX = facing<0/dir<0 : source droite)
 """
 import os
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
+ROOT = '/home/delete/laura_quest'
 OUT = os.path.join(ROOT, '_monstgen', 'prompts')
 os.makedirs(OUT, exist_ok=True)
 
@@ -128,36 +128,11 @@ MONSTERS = {
    "swaying gently, papers rustling, glaring",
    "toppling over, papers flying off the top, sticky-notes scattering",
    "the whole pile lunging forward, shooting papers ahead"),
- # ---- CAMPAGNE MARCOS (Java) ----
- 'rat': ('LEFT',
-   "a cartoon JAVANESE RICE-FIELD RAT (tikus sawah), scruffy grey-brown fur caked with wet MUD on the legs and belly, long bare pink-grey tail (NOT magenta), big front teeth, beady red eyes, whiskers, low and fast, running on all fours. Gross-but-comedic crop pest.",
-   "scurrying low on all fours in place, legs blurring, tail whipping, whiskers twitching",
-   "flipped onto its back, four little legs kicking the air, dizzy eyes, mud splashing",
-   "lunging forward low and fast, mouth wide open showing big buck teeth to bite"),
- 'durian': ('LEFT',
-   "a big round spiky green DURIAN FRUIT monster seen from the FRONT (symmetric), thick olive-green husk covered in sharp conical thorns, a short brown stem on top, an ANGRY cartoon face in the middle of the husk (furrowed brows, gritted teeth), two tiny stubby arms. It does not walk. Comedic smelly-fruit monster.",
-   "sitting still and wobbling slightly left and right, spikes flexing in and out, a small stink puff",
-   "the husk cracking open a little, eyes squeezed shut, a few spikes flying off, impact stars",
-   "puffing up and bristling, all spikes flaring outward, mouth open shouting"),
- 'oiseau': ('LEFT',
-   "a small cartoon RICE BIRD / Javan munia-sparrow, chubby brown body with a white belly, a dark brown head, a thick conical silver-grey beak, small wings, angry little eyes. Comedic crop-raiding pest, shown FLYING (no ground under it).",
-   "flying in place with a WING-FLAP cycle: wings up, wings level, wings down, body bobbing",
-   "tumbling in the air, feathers flying off, wings crumpled, dizzy spirals",
-   "a DIVE-BOMB: body tilted steeply downward-forward beak-first, wings folded back like an arrow"),
- 'scooter': ('LEFT',
-   "an Indonesian MOPED / scooter rider: a guy in a half-face open HELMET with dark visor down (generic face), a sarong-patterned shirt and flip-flops, riding a small step-through red-and-white scooter, a sack of rice strapped on the back seat, exhaust puffing. Comedic reckless rider.",
-   "riding in place, wheels spinning, exhaust puffing, the rider honking / leaning forward",
-   "the scooter wobbling and skidding, the rice sack bouncing off, rider flailing",
-   "charging forward full throttle, front wheel lifted in a wheelie, smoke trail behind"),
 }
 
-import sys
-ONLY = set(sys.argv[1:])            # noms en argument = n'ecrit que ceux-la
 for name, (facing, char, idle, hurt, atk) in MONSTERS.items():
-    if ONLY and name not in ONLY:
-        continue
     body = COMMON.format(name=name, root=ROOT, facing=facing,
                          character=char, idle=idle, hurt=hurt, attack=atk)
-    open(os.path.join(OUT, name + '.txt'), 'w', encoding='utf-8').write(body)
+    open(os.path.join(OUT, name + '.txt'), 'w').write(body)
     print('wrote', name + '.txt', '(' + facing + ')')
 print('%d prompts -> %s' % (len(MONSTERS), OUT))

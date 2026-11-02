@@ -15,7 +15,7 @@ Usage : python3 _headgen/prep_dead.py <name>
 import sys, os
 from PIL import Image
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
+ROOT = '/home/delete/laura_quest'
 SPR = ROOT + '/assets/sprites'
 OUT = ROOT + '/_headgen/dead_src'
 CW = 112                       # largeur d'une cellule de la feuille vivante

@@ -192,7 +192,7 @@
     armFullscreen();
 
     // Boucle legere : visibilite selon la scene (gamepad complet en jeu, reduit en menu).
-    let wasInGame = null, hadCat = null;
+    let wasInGame = null;
     const tick = () => {
       const sc = (typeof getSceneName === 'function') ? getSceneName() : null;
       const inGame = (sc === 'game' || sc == null);
@@ -200,17 +200,6 @@
         wasInGame = inGame;
         root.classList.toggle('lq-menu', !inGame);
         if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
-      }
-      // allie (chat de Laura OU etudiants de Marcos) + glyphes du kit (guitare)
-      const ab = (window.LQ && window.LQ.abilities) || {};
-      const cat = !!(ab.cat || ab.ally);
-      const kit = (window.LQ && window.LQ.kit) || '';
-      const sig = cat + '|' + (ab.ally || '') + '|' + kit;
-      if (sig !== hadCat) {
-        hadCat = sig;
-        root.classList.toggle('lq-no-cat', !cat);
-        bCat.querySelector('.lq-g').textContent = ab.ally === 'students' ? '🎓' : '🐱';
-        bLob.querySelector('.lq-g').textContent = kit === 'guitar' ? '🎸' : '🎂';
       }
       requestAnimationFrame(tick);
     };
@@ -286,7 +275,6 @@ html.lq-mobile canvas{ width:100vw !important; height:100vh !important; height:1
 .lq-pause{ left:calc(var(--lq-sl) + var(--lq-pad)); top:calc(var(--lq-st) + var(--lq-pad)); }
 
 /* en menu (hors jeu) : on masque les boutons "combat", on garde deplacement + OK + pause */
-#lq-touch.lq-no-cat .lq-cat{ display:none; }
 #lq-touch.lq-menu .lq-shoot, #lq-touch.lq-menu .lq-cat, #lq-touch.lq-menu .lq-lob,
 #lq-touch.lq-menu .lq-dash, #lq-touch.lq-menu .lq-crouch{ display:none; }
 

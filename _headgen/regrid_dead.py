@@ -17,7 +17,7 @@ import numpy as np
 
 CW, CH, BASE = 112, 112, 108
 TARGETH, MAXW = 100, 104
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
+ROOT = '/home/delete/laura_quest'
 SPR = ROOT + '/assets/sprites'
 FINAL = ROOT + '/_headgen/final'
 

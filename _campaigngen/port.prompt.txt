@@ -1,5 +1,0 @@
-Outil : Imagegen integre (image_gen), sans CLI.
-Reference de style : assets/sprites/bg_title.jpg
-Asset livre : assets/sprites/bg_marcos_port.png
-
-Use case: stylized-concept. Asset type: game background, 16:9 landscape. Create a new pixel-art painted background matching the attached reference game's bright detailed retro pixel art: warm sunshine, saturated sky blue, lush greens, brown ink contours, cheerful adventure. Scene: a small coastal expedition harbour with turquoise water, distant green hills, a wooden research boat moored on the right, a few wooden crates and ropes on the pier at the bottom. Wide eye-level side view suitable behind a 2D platformer. Top half mostly open blue sky with sparse clouds. Keep the central two thirds visually calm so character cards and map nodes can be drawn over it by the game. Ground/pier across the bottom 15 percent. No people, no heads, no lettering, no logos, no frames, no UI, no watermark. Reference image is style only; do not copy the building or the logo. Deliver a landscape raster image.

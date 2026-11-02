@@ -11,20 +11,19 @@ theme -- reste du code dans level.js). A relancer apres avoir edite un .txt :
 Le jeu tourne en file:// (pas de fetch), d'ou l'embarquement JS facon
 gen_assets_data.py. Les .txt sont la SOURCE editable des niveaux.
 """
-import os, json, re
+import os, json
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LVL = os.path.join(ROOT, 'levels')
 OUT = os.path.join(ROOT, 'js', 'levels_data.js')
 
-# L'ordre du voyage appartient aux aventures, pas au pipeline d'embarquement.
-NAMES = sorted(os.path.splitext(n)[0] for n in os.listdir(LVL)
-               if re.fullmatch(r'[a-z][a-z0-9_]*\.txt', n))
+# Ordre = ordre d'apparition dans level.js / CONFIG.levels.
+NAMES = ['niveau1', 'niveau2', 'niveau3', 'niveau4', 'niveau5', 'jury']
 
 
 def read_rows(path):
     # newline='' -> on ne traduit pas les fins de ligne ; on garde les espaces.
-    txt = open(path, 'r', encoding='utf-8', newline='').read()
+    txt = open(path, 'r', newline='').read()
     txt = txt.replace('\r\n', '\n').replace('\r', '\n')
     rows = txt.split('\n')
     if rows and rows[-1] == '':       # enleve le '' artefact du newline final
@@ -44,7 +43,7 @@ def main():
     js = ('// AUTO-GENERE par gen_levels_data.py -- EDITE les niveaux dans '
           'levels/*.txt, PAS ici.\n'
           'window.LEVEL_MAPS = %s;\n' % body)
-    open(OUT, 'w', encoding='utf-8', newline='\n').write(js)
+    open(OUT, 'w', newline='\n').write(js)
     print('wrote %s (%d niveaux : %s)' % (OUT, len(maps), ', '.join(maps)))
 
 

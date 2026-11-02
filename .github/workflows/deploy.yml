@@ -31,9 +31,7 @@ jobs:
           python-version: '3.x'
 
       - name: Build — ré-embarquer les assets (js/assets_data.js)
-        run: |
-          python3 gen_levels_data.py
-          python3 gen_assets_data.py
+        run: python3 gen_assets_data.py
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
