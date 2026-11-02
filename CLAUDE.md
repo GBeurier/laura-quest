@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
+> **LEGACY, FROZEN REPO.** This is Laura Quest as it was before Marcos, kept online unchanged for former players (<https://gbeurier.github.io/laura-quest/>). All new work (Marcos, other characters, PhenoMEn branding) happens in **Pheno-Quest** (`GBeurier/Pheno-Quest`, local clone `D:\workspace\pheno-quest`). Do not add features here.
+
 "Laura l'exploratrice" — a 100% client-side run-and-gun platformer (KAPLAY engine), built as a birthday gift. Laura does a PhD on agrivoltaics: 5 levels each with a unique boss, then a multi-phase jury megaboss. There is **no build system, no backend, no package manager, no test suite** — it is plain `<script>` tags and static assets.
 
 > `AGENTS.md` (sibling, for Codex) covers the same ground more briefly; this file is the authoritative one. Keep them roughly in sync if you change project-wide conventions.
