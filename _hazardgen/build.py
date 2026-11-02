@@ -20,14 +20,14 @@ import sys
 import numpy as np
 from PIL import Image
 
-ROOT = "/home/delete/laura_quest"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # racine du repo (portable)
 HERE = os.path.join(ROOT, "_hazardgen")
 RAW = os.path.join(HERE, "raw")
 CUT = os.path.join(HERE, "cut")
 OUT = os.path.join(ROOT, "assets/sprites")
-RCK = "/home/delete/.codex/skills/.system/imagegen/scripts/remove_chroma_key.py"
+RCK = os.path.join(os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex")), "skills/.system/imagegen/scripts/remove_chroma_key.py")
 
-NAMES = ["hazard_paddy", "hazard_acid", "hazard"]
+NAMES = ["hazard_paddy", "hazard_acid", "hazard", "hazard_mud"]
 TARGET = 96                # cote du carre final (@CONFIG.art.scale=2 -> 48 affiche = 1 tuile)
 
 
@@ -86,6 +86,15 @@ def normalize(name):
     # aplati sur fond sombre (la tuile est OPAQUE, pleine cadre -> pas de trou au pavage)
     flat = Image.new("RGBA", im.size, (16, 14, 16, 255))
     flat.alpha_composite(im)
+    # rangees du HAUT majoritairement blanches (ciel/fond clair laisse par Codex
+    #  au-dessus de la ligne de sol, ex. hazard_mud) -> coupees
+    a = np.asarray(flat.convert("RGB")).astype(int)
+    white = ((a > 215).all(axis=2)).mean(axis=1)
+    top = 0
+    while top < a.shape[0] // 8 and white[top] > 0.02:
+        top += 1
+    if top:
+        flat = flat.crop((0, top + 2, flat.width, flat.height))
     win, cost = seam_window(flat)             # fenetre interieure tileable (vire les parois)
     out_im = win.resize((TARGET, TARGET), Image.LANCZOS).convert("RGBA")
     out = os.path.join(OUT, name + ".png")

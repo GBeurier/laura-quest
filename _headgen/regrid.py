@@ -17,7 +17,7 @@ import numpy as np
 
 CW, CH, BASE = 112, 112, 108          # cellule + baseline menton
 TARGETH, MAXW = 100, 104              # hauteur cible de la tete / largeur max
-ROOT = '/home/delete/laura_quest'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
 SPR = ROOT + '/assets/sprites'
 FINAL = ROOT + '/_headgen/final'
 

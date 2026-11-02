@@ -81,24 +81,39 @@ HAZARDS = {
         "6), thick dark outlines, cold metal with a bright highlight on the "
         "upper-left face and a dark shadow side. Stark, bold, lethal."
     ),
+    # Campagne Marcos ('~') : boue COLLANTE (ralentit, pas de degat) -> PAS de piques.
+    "hazard_mud": (
+        "STICKY RICE-PADDY MUD (outdoor, Java), SIDE VIEW. IMPORTANT: unlike a deadly "
+        "hazard, this one is NOT dangerous and has ABSOLUTELY NO spikes, NO stakes, NO "
+        "sharp things: it is a shallow trough of thick, WET, glossy BROWN MUD set into "
+        "the floor, that slows the player down. Show a lumpy dark-brown mud surface line "
+        "near the top with a FEW BIG glossy highlights, a couple of round muddy puddles "
+        "of murky brown water, one or two sunken FOOTPRINTS / boot prints and a few "
+        "slow round mud bubbles, a stray green rice sprout. Warm chocolate / umber "
+        "browns, chunky and bold, squishy-looking, a bit comedic."
+    ),
 }
 
 
 def main():
+    import sys
+    only = set(sys.argv[1:])           # noms en argument = n'ecrit que ceux-la
     os.makedirs(PROMPTS, exist_ok=True)
     os.makedirs(RAW, exist_ok=True)
     head = PREAMBLE.format(n=1)
     for name, subject in HAZARDS.items():
+        if only and name not in only:
+            continue
         body = (
             head + "\n\n=== SPRITE: " + name + " ===\n" + subject + "\n\n"
-            "Save the raw sheet as: " + os.path.join(RAW, name + ".png") + "\n"
+            "Save the raw sheet as: " + os.path.join(RAW, name + ".png").replace(os.sep, "/") + "\n"
             "Make it a PERFECT SQUARE (1:1), SIDE VIEW (NOT top-down), CHUNKY/COARSE "
             "with only a FEW big bold elements (thick outlines, big pixels), and "
             "SEAMLESSLY TILEABLE left-to-right (ground line + danger run straight off "
             "both side edges; no left/right wall).\n"
         )
         path = os.path.join(PROMPTS, name + ".txt")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(body)
         print("wrote", path)
     print("\nNext (Codex session, ONE image_gen call per prompt, SEQUENTIAL):")

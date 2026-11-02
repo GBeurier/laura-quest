@@ -11,7 +11,7 @@ Usage : python3 _headgen/make_prompts.py            # lit _headgen/manifest.tsv
         python3 _headgen/make_prompts.py <name> <sex>   # un seul (pilote)
 """
 import os, sys
-ROOT = '/home/delete/laura_quest'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
 OUT = os.path.join(ROOT, '_headgen', 'prompts')
 
 TPL = """Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator.
@@ -53,7 +53,7 @@ Generate the sheet (ONE image_gen call), then cp it. Do NOT run chroma-key remov
 def write_one(name):
     os.makedirs(OUT, exist_ok=True)
     p = os.path.join(OUT, name + '.txt')
-    open(p, 'w').write(TPL.format(root=ROOT, name=name))
+    open(p, 'w', encoding='utf-8').write(TPL.format(root=ROOT, name=name))
     print('wrote', p)
 
 

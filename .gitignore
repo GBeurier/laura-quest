@@ -20,3 +20,6 @@ _*gen/**/*.out
 # Junk
 *Zone.Identifier
 _hud_avant_apres.png
+
+# Captures / logs du navigateur de test (Playwright MCP)
+.playwright-mcp/

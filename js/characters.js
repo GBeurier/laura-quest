@@ -11,18 +11,22 @@ window.LQ_CHARACTERS = {
     abilities: { cat: true },
   },
   marcos: {
-    id: 'marcos', name: window.NPC.head_npc_h_25.prenom, campaign: 'marcos_port',
-    tagline: 'Une escale avant le grand depart', description: '1 niveau pour prendre le large',
-    accent: [43, 131, 154], preview: 'bg_marcos_port',
-    npcHead: 'head_npc_h_25', abilities: { cat: false },
+    id: 'marcos', name: window.NPC.head_npc_h_25.prenom, campaign: 'marcos_these',
+    tagline: 'Guitare, boue et durians a Java', description: '3 chapitres + la soutenance',
+    accent: [43, 131, 154], preview: 'bg_marcos_map', previewFallback: 'bg_marcos_port',
+    // KIT GUITARE (CONFIG.kits.guitar) : ESPACE = notes, X = power chord,
+    //  C = l'armee des etudiants (allie, remplace le chat de Laura).
+    npcHead: 'head_npc_h_25', abilities: { cat: false, ally: 'students' }, kit: 'guitar',
     player: { areaScale: [0.46, 0.88], corpseSink: 2 },
     sprites: {
       hero_idle: 'marcos_idle', hero_run: 'marcos_run', hero_jump: 'marcos_jump',
-      hero_hurt: 'marcos_hurt', hero_throw: 'marcos_throw', hero_duck: 'marcos_duck',
+      hero_hurt: 'marcos_hurt', hero_throw: 'marcos_guitar', hero_duck: 'marcos_duck',
       hero_dash: 'marcos_dash', hero_dead: 'marcos_dead',
       hero_bike: 'marcos_run', hero_roll: 'marcos_run', hero_cat_out: null,
       hero_run_throw: null, hero_bike_throw: null, hero_roll_throw: null, hero_duck_throw: null,
     },
+    // repli tant que la pose guitare (Imagen) n'est pas embarquee
+    spriteFallback: { hero_throw: 'marcos_throw' },
   },
 };
 

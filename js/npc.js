@@ -139,5 +139,11 @@ window.NPC = {
     phrases: ["Font ch** ces ravageurs"] },
   "head_npc_h_26":  { sexe: "h", src: "male_florian_dubois.png",   taille: "M",  level: "",  prenom: "Florian", nom: "Dubois",
     phrases: [] },
+  // --- PNJ DEDIES a la campagne MARCOS (niveaux 'm1'..'m3', cf. LEVELS[x].npcLevel) ---
+  //  Ade = chef de "l'armee des etudiants" (allie C de Marcos) ; Afif = le durian.
+  "head_npc_h_27":  { sexe: "h", src: "ade.jpg",                   taille: "M",  level: "m1", prenom: "Ade", nom: "",
+    phrases: ["The army of students is ready to help you!"] },
+  "head_npc_h_28":  { sexe: "h", src: "afif.jpeg",                 taille: "M",  level: "m2", prenom: "Afif", nom: "",
+    phrases: ["Marcos, il faut goûter les Durian !"] },
 
 };

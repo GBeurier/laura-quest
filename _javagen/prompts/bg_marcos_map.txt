@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. Generate exactly ONE image (ONE image_gen call).
+
+STYLE: retro 16-bit pixel art, cozy and CUTE storybook warmth (LucasArts / SNES adventure vibe), crisp visible square pixels, bold dark outlines, limited warm vibrant palette, flat cel shading, soft chunky readable shapes. NO smooth gradients, NO 3D render, NO painterly/airbrushed look, NO photographic realism.
+
+FORMAT: ONE wide LANDSCAPE illustration, full-bleed, filling the ENTIRE frame edge to edge (a full-screen GAME BACKGROUND: no padding, no border, NO magenta anywhere). The very top ~8% and bottom ~8% may be cropped.
+
+SETTING: an agrivoltaic EXPERIMENTAL RICE FIELD in JAVA, Indonesia (see the attached reference photos for the real place): bright green rice paddies, rows of BAMBOO shade structures (bamboo poles and frames holding stretched BLACK or dark-green SHADE NETS above the rice), muddy paths, coconut palms and bamboo groves, a big blue VOLCANO in the distance, cloudy tropical sky.
+
+SCENE: a cute TOP-DOWN WORLD MAP (bird's-eye view, like a classic 16-bit overworld map) of the Javanese experimental field. A winding sandy-brown DIRT PATH goes from the LOWER-LEFT, through the CENTER, to the UPPER-RIGHT. Along it, three clear empty round flat CLEARINGS (where level markers will be drawn, keep them plain and uncluttered): one at about 20% from the left / 72% from the top in the green RICE PADDIES with muddy patches; one at about 49% from the left / 57% from the top next to a small VILLAGE with orange terracotta roofs and a road with tiny scooters; one at about 79% from the left / 44% from the top in the AGRIVOLTAIC PLOT (neat rows of rectangular BLACK shade nets on bamboo frames, seen from above). In the TOP-RIGHT corner a big blue VOLCANO with a smoke wisp. Palm trees, bamboo groves, irrigation canals, terraced paddies everywhere else. NO text, NO labels, NO signs, NO numbers.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  D:/workspace/laura-quest/_javagen/raw/bg_marcos_map.png
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images. Use only the generated_images subdirectory for YOUR OWN Codex session id, or otherwise verify the file was produced by your own image_gen call. If you cannot identify it unambiguously, print FAIL_UNSAFE_COPY instead.
+Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  RAW: D:/workspace/laura-quest/_javagen/raw/bg_marcos_map.png (<W>x<H>)

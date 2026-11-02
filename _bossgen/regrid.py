@@ -11,12 +11,12 @@ RGBA. Preserves the AI's drawn frames; only normalizes spacing/scale/baseline.
 Usage: python3 _bossgen/regrid.py <in_strip.png> <boss> [--frames 6] [--move|--atk]
        writes assets/sprites/boss_<boss>_<move|atk>.png + a QA preview.
 """
-import sys, argparse
+import sys, os, argparse
 from PIL import Image
 import numpy as np
 
 CW, CH, BASE = 248, 280, 264          # cell w/h and feet baseline within cell
-ROOT = '/home/delete/laura_quest'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
 SPR = ROOT + '/assets/sprites'
 FINAL = ROOT + '/_bossgen/final'
 
@@ -29,6 +29,11 @@ PARAMS = {
     'rstudio':      dict(targeth=244, maxw=230),
     'cendrine':     dict(targeth=252, maxw=216),
     'jury':         dict(targeth=262, maxw=246),
+    # fit=True : echelle commune plafonnee pour que la frame la plus LARGE tienne
+    #  dans maxw (evite le clamp par-frame qui casse l'echelle entre frames).
+    'tikus':        dict(targeth=240, maxw=236, fit=True),
+    'pakdurian':    dict(targeth=250, maxw=238, fit=True),
+    'garuda':       dict(targeth=254, maxw=240, fit=True),
 }
 
 def key_magenta(im, tol=72):
@@ -141,6 +146,8 @@ def run(inp, boss, kind, N):
     maxh = max(c.height for c in cells)
     # scale: median -> targeth, but never let the tallest frame exceed the cell
     s = min(p['targeth']/med, (CH-4)/maxh)
+    if p.get('fit'):
+        s = min(s, p['maxw'] / max(c.width for c in cells))
     sheet = Image.new('RGBA', (CW*N, CH), (0, 0, 0, 0))
     for i, c in enumerate(cells):
         nw, nh = max(1, round(c.width*s)), max(1, round(c.height*s))

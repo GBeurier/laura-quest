@@ -6,7 +6,7 @@
 #  HEADGEN_JOBS permet de paralleliser, mais 1 est le defaut sur pour eviter
 #  qu'une session copie le PNG genere par une autre depuis ~/.codex/generated_images.
 set -u
-cd /home/delete/laura_quest
+cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
 CODEX="$(command -v codex || echo "$HOME/.local/bin/codex")"
 
@@ -22,21 +22,21 @@ gen_one() {
   if [ ! -f "_headgen/raw/${name}_sheet.png" ]; then
     echo "FAIL $name (no raw)"; return
   fi
-  python3 _headgen/regrid.py "_headgen/raw/${name}_sheet.png" "$name" >> "$log" 2>&1
+  python _headgen/regrid.py "_headgen/raw/${name}_sheet.png" "$name" >> "$log" 2>&1
 
   # --- 2. TETE ZOMBIE (cadavre) : meme workflow, on ajoute juste la tete morte --
   #  reference -i = la tete VIVANTE qu'on vient de generer (redraw fidele).
   #  Idempotent : si le _dead.png existe deja (ex. les 38 tetes d'origine), on saute.
   if [ -f "assets/sprites/${name}.png" ] && [ ! -f "assets/sprites/${name}_dead.png" ]; then
-    [ -f "_headgen/prompts/${name}_dead.txt" ] || python3 _headgen/make_dead_prompts.py "$name" >> "$log" 2>&1
-    python3 _headgen/prep_dead.py "$name" >> "$log" 2>&1
+    [ -f "_headgen/prompts/${name}_dead.txt" ] || python _headgen/make_dead_prompts.py "$name" >> "$log" 2>&1
+    python _headgen/prep_dead.py "$name" >> "$log" 2>&1
     if [ ! -f "_headgen/raw/${name}_dead_sheet.png" ]; then
       "$CODEX" exec --dangerously-bypass-approvals-and-sandbox \
          -i "_headgen/dead_src/${name}.png" < "_headgen/prompts/${name}_dead.txt" \
          >> "$log" 2>&1
     fi
     if [ -f "_headgen/raw/${name}_dead_sheet.png" ]; then
-      python3 _headgen/regrid_dead.py "_headgen/raw/${name}_dead_sheet.png" "$name" >> "$log" 2>&1
+      python _headgen/regrid_dead.py "_headgen/raw/${name}_dead_sheet.png" "$name" >> "$log" 2>&1
     fi
   fi
   echo "DONE $name (live=$([ -f assets/sprites/${name}.png ] && echo ok || echo NO) dead=$([ -f assets/sprites/${name}_dead.png ] && echo ok || echo NO))"

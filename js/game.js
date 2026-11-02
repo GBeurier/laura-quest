@@ -31,10 +31,24 @@
   }
   selectCharacter('laura');
   const chapterKeys = () => CONTENT.chapters(CAMPAIGN);
-  const characterSprite = (name, character = CHARACTER) =>
-    character.sprites && Object.hasOwn(character.sprites, name) ? character.sprites[name] : name;
+  // Un mapping hero_* -> feuille dediee peut pointer vers un PNG pas encore
+  //  embarque (art Imagen en cours) : character.spriteFallback[name] donne alors
+  //  la feuille de repli (ex. marcos_guitar -> marcos_throw).
+  const characterSprite = (name, character = CHARACTER) => {
+    if (!(character.sprites && Object.hasOwn(character.sprites, name))) return name;
+    const m = character.sprites[name];
+    const fb = character.spriteFallback && character.spriteFallback[name];
+    return (m && fb && !LOADED.has(m)) ? fb : m;   // LOADED : defini plus bas, appele seulement a l'execution
+  };
   const hasCat = () => !!(CHARACTER.abilities && CHARACTER.abilities.cat);
-  const medalKeys = () => hasCat() ? ['t', 'd', 's'] : ['t', 'd'];
+  // ALLIE deployable (touche C) : le chat de Laura OU l'armee d'etudiants de
+  //  Marcos. Les charges / recharge / medaille SAUVES suivent l'allie, quel qu'il soit.
+  const allyKind = () => (CHARACTER.abilities && CHARACTER.abilities.ally) || (hasCat() ? 'cat' : null);
+  const hasAlly = () => !!allyKind();
+  // KIT de personnage (CONFIG.kits[CHARACTER.kit]) : remplace ESPACE / X / C.
+  const KIT = () => (CHARACTER.kit && C.kits && C.kits[CHARACTER.kit]) || null;
+  const isGuitar = () => CHARACTER.kit === 'guitar';
+  const medalKeys = () => hasAlly() ? ['t', 'd', 's'] : ['t', 'd'];
   const LEVELS = window.LEVELS;
   const SAVEAPI = window.LQ_SAVE;
   // Tactile (web mobile) : js/mobile.js est charge AVANT game.js et a pose ce
@@ -451,7 +465,10 @@
       // channel/bossDmg : canal de tick + degat dedie vs BOSS (v2, cf. hitBoss).
       { dmg: dmg, vx: 0, vy: 0, traj, aoe,
         channel: opts.channel || (aoe ? 'aoe' : 'seed'),
-        bossDmg: (opts.bossDmg != null) ? opts.bossDmg : null },
+        bossDmg: (opts.bossDmg != null) ? opts.bossDmg : null,
+        // ONDULATION (notes de guitare de Marcos) : decalage sinusoidal
+        //  perpendiculaire a la course, amplitude waveAmp px, pulsation waveFreq.
+        waveAmp: opts.waveAmp || 0, waveFreq: opts.waveFreq || 0, wavePh: opts.wavePhase || 0, waveT: 0 },
     ]);
     if (opts.flame) { try { b.use(color(255, 138, 40)); } catch (_) {} }   // graine/gateau ENFLAMME : teinte chaude
     playIfAnim(b, sname);
@@ -465,6 +482,10 @@
     b.onUpdate(() => {
       if (b.traj === 'arc') b.vy += C.shot.arcGravity * dt();
       b.pos.x += b.vx * dt(); b.pos.y += b.vy * dt();
+      if (b.waveAmp) {                          // derivee du sinus -> oscille autour de la trajectoire droite
+        b.waveT += dt();
+        b.pos.y += b.waveAmp * b.waveFreq * Math.cos(b.waveT * b.waveFreq + b.wavePh) * dt();
+      }
       if (b.pos.y > LEVEL.height + 100) destroy(b);
     });
     if (aoe) {                                  // PATISSERIE : eclate en AoE a l'impact
@@ -510,6 +531,7 @@
     //  sa derniere frame quand on maintient le tir (au sol comme en l'air).
     p.throwT = (C.shot && C.shot.throwHold) || 0.32;
     p.throwReplay = true;
+    if (opts.silent) return;                     // salve de notes : un seul son par salve (cf. fireBase)
     sfx('shoot');
   }
 
@@ -523,6 +545,21 @@
     const n = Math.max(1, L.pellets || 1);
     // degat de TICK vs boss par niveau de puissance (la volee compte pour 1, cf. hitBoss)
     const bossTick = (A.bossTick && A.bossTick[lv - 1] != null) ? A.bossTick[lv - 1] : (L.damage || 1);
+    const K = isGuitar() && KIT() && KIT().notes;
+    if (K) {                                    // MARCOS : notes de guitare ondulantes (meme leveling)
+      const want = L.flame ? K.fire : K.sprite, wantFb = L.flame ? K.fallbackFire : K.fallback;
+      const spr = hasSprite(want) ? want : wantFb;
+      for (let i = 0; i < n; i++) {
+        const off = (n === 1) ? 0 : (i - (n - 1) / 2) * (L.spread || 0);
+        playerShoot('graine', 1, {
+          angleOffset: off, damage: L.damage || 1, speed: A.speed, sprite: spr,
+          pierce: L.pierce || 0, projScale: K.scale || 1, channel: 'seed', bossDmg: bossTick,
+          waveAmp: K.waveAmp, waveFreq: K.waveFreq, wavePhase: i * 1.3, silent: true,
+        });
+      }
+      guitarPluck(n);
+      return;
+    }
     for (let i = 0; i < n; i++) {
       const off = (n === 1) ? 0 : (i - (n - 1) / 2) * (L.spread || 0);   // eventail centre
       playerShoot('graine', 1, {
@@ -551,6 +588,7 @@
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if ((p.lobCd || 0) > 0) return;
+    if (isGuitar()) { powerChord(auto ? 1 : power); return; }   // MARCOS : onde de choc centree
     const A = (C.arsenal && C.arsenal.patisseries) || {};
     const lv = Math.max(1, Math.min((A.levels && A.levels.length) || 1, p.power || 1));
     const L = (A.levels && A.levels[lv - 1]) || { sprite: 'ammo_gateau', scale: 1, radius: 94, damage: 3, cost: 30, secondary: 0 };
@@ -573,6 +611,120 @@
     const r = Math.max(1, Math.min(cad.length, p.rate || 1));
     p.lobCd = cad[r - 1] || 0.6;
     p.throwT = 0.32;
+  }
+
+  // =====================================================================
+  //  KIT GUITARE (Marcos) — notes / power chord / aura durian. Laura n'y passe
+  //  jamais (isGuitar() faux). Reglages : CONFIG.kits.guitar.
+  // =====================================================================
+  // Petit "pluck" de guitare synthetise (js/music.js) sur une gamme pentatonique
+  //  mineure : chaque salve sonne differemment -> le tir devient un riff.
+  const PENTA = [0, 3, 5, 7, 10, 12, 15, 17];
+  let RIFF_I = 0;
+  function guitarPluck(n) {
+    const M = window.LQ_MUSIC;
+    if (!M || !M.pluck || !C.audio || !C.audio.enabled) return;
+    // marche dans la gamme (montee/descente) plutot que du pur hasard : ca "joue"
+    RIFF_I = (RIFF_I + (rand(0, 1) < 0.7 ? 1 : -2) + PENTA.length) % PENTA.length;
+    const base = 57 + PENTA[RIFF_I];              // A3 + degre
+    const notes = [base + 12];
+    if (n >= 3) notes.push(base + 19);            // + quinte
+    if (n >= 5) notes.push(base + 24);            // + octave
+    try { M.pluck(notes, { vol: (C.audio.volume || 0.5) * 0.55, dur: 0.24 }); } catch (e) {}
+  }
+
+  // X = POWER CHORD : onde de choc CENTREE sur Marcos. Rayon = niveau de
+  //  PUISSANCE x charge (chargeMin..1). Degats AoE (canal 'aoe' vs boss), efface
+  //  les tirs ennemis, repousse les monstres. Les PNJ ne sont PAS touches (la
+  //  musique ne tue pas les badauds). Coute du soleil, cooldown = cadence des
+  //  patisseries (axe CADENCE commun).
+  function powerChord(pw) {
+    const p = PLAYER;
+    if (!p || !p.exists()) return;
+    const K = (KIT() && KIT().chord) || {};
+    const levels = K.levels || [{ radius: 110, damage: 1, cost: 30 }];
+    const lv = Math.max(1, Math.min(levels.length, p.power || 1));
+    const L = levels[lv - 1];
+    if (C.sun.enabled && p.sun < (L.cost || 0)) { flashMsg('PAS ASSEZ D ENERGIE'); return; }
+    if (C.sun.enabled) p.sun = Math.max(0, p.sun - (L.cost || 0));
+    const cmin = K.chargeMin != null ? K.chargeMin : 0.7;
+    const R = L.radius * (cmin + (1 - cmin) * Math.max(0, Math.min(1, pw == null ? 1 : pw)));
+    const cx = p.pos.x, cy = p.pos.y - TS * 0.7, c = vec2(cx, cy);
+    // FX : 3 anneaux qui s'ouvrent jusqu'au rayon + eclats de notes
+    for (let i = 0; i < 3; i++) {
+      wait(i * 0.07, () => {
+        const ring = add([circle(8, { fill: false }), pos(cx, cy), anchor('center'), opacity(0.9),
+          outline(6 - i * 1.5, rgb(255, 220 - i * 40, 110)), z(46), 'fx', { t: 0 }]);
+        ring.onUpdate(() => {
+          ring.t += dt();
+          ring.radius = 8 + (R - 8) * Math.min(1, ring.t / 0.22);
+          ring.opacity = Math.max(0, 0.9 - ring.t * 2.6);
+          if (ring.t > 0.4) destroy(ring);
+        });
+      });
+    }
+    const noteSpr = (KIT() && KIT().notes && hasSprite(KIT().notes.sprite)) ? KIT().notes.sprite : null;
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const dirv = vec2(Math.cos(a), Math.sin(a) * 0.8);
+      add([...(noteSpr ? [sprite(noteSpr), artScale(0.7)] : [circle(4), color(255, 220, 110)]),
+        pos(cx, cy), anchor('center'), opacity(1), move(dirv, R * 2.4), lifespan(0.35, { fade: 0.2 }), z(47), 'fx']);
+    }
+    safeShake(6);
+    sfx('spell');
+    const M = window.LQ_MUSIC;                    // l'accord lui-meme : fondamentale + quinte + octave, grave
+    if (M && M.pluck && C.audio && C.audio.enabled) { try { M.pluck([45, 52, 57, 64], { vol: (C.audio.volume || 0.5) * 0.7, dur: 0.6, wave: 'sawtooth' }); } catch (e) {} }
+    // degats + repousse
+    get('enemy').forEach((e) => {
+      if (!e.exists() || !blastReaches(e, c, R)) return;
+      hitEnemy(e, { dmg: L.damage || 1 });
+      if (e.exists() && !e.dead && e.def && e.def.move !== 'static' && e.def.move !== 'durian') {
+        e.knockX = (Math.sign(e.pos.x - cx) || 1) * (K.knock || 340); e.knockT = K.knockTime || 0.18;
+      }
+    });
+    get('boss').forEach((bo) => { if (bo.exists() && blastReaches(bo, c, R)) hitBoss(bo, { dmg: L.damage || 1, channel: 'aoe', pos: c }); });
+    EHOTS.forEach((h) => { if (h.exists() && h.pos.dist(c) < R) { addPoof(h.pos.x, h.pos.y); destroy(h); } });
+    // pose power chord (frames 2-3 de marcos_guitar) + cooldown
+    p.throwT = 0.42; p.throwReplay = true; p.chordPose = 0.42;
+    const A = (C.arsenal && C.arsenal.patisseries) || {};
+    const cad = A.cadence || [0.8];
+    p.lobCd = cad[Math.max(1, Math.min(cad.length, p.rate || 1)) - 1] || 0.8;
+  }
+
+  // pickup DURIAN : aura puante (degats periodiques + tirs dissous). Rafraichit
+  //  la duree si deja active. Visuel : halo vert pulse + volutes qui montent.
+  function startDurianAura(p) {
+    const D = (KIT() && KIT().durian) || (C.kits && C.kits.guitar && C.kits.guitar.durian);
+    if (!D || !p || !p.exists()) return;
+    p.stinkT = D.duration;
+    flashMsg('DURIAN !  CA SENT TRES FORT...');
+    if (p._stink) return;                         // updater deja pose : on a juste rafraichi la duree
+    const halo = add([circle(D.radius), pos(p.pos.x, p.pos.y - TS * 0.7), anchor('center'),
+      color(150, 200, 70), opacity(0), z(-0.3), 'fx']);
+    let tick = 0, puff = 0;
+    p._stink = halo;
+    halo.onUpdate(() => {
+      if (!PLAYER || !PLAYER.exists()) { destroy(halo); return; }
+      const q = PLAYER;
+      const c = vec2(q.pos.x, q.pos.y - TS * 0.7);
+      halo.pos = c;
+      if (!(q.stinkT > 0)) { halo.opacity = 0; return; }
+      q.stinkT -= dt(); tick -= dt(); puff -= dt();
+      halo.opacity = 0.10 + Math.sin(time() * 9) * 0.04 + (q.stinkT < 1.5 ? Math.sin(time() * 30) * 0.05 : 0);
+      if (puff <= 0) {
+        puff = 0.07;
+        const a = rand(0, Math.PI * 2), r = rand(10, D.radius * 0.8);
+        add([circle(rand(5, 10)), pos(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r * 0.6), anchor('center'),
+          color(rand(120, 170), rand(180, 215), 60), opacity(0.55), move(vec2(rand(-0.3, 0.3), -1), rand(30, 60)),
+          lifespan(0.6, { fade: 0.5 }), z(46), 'fx']);
+      }
+      EHOTS.forEach((h) => { if (h.exists() && h.pos.dist(c) < D.radius) destroy(h); });
+      if (tick <= 0) {
+        tick = D.tick || 0.45;
+        get('enemy').forEach((e) => { if (e.exists() && !e.dead && blastReaches(e, c, D.radius)) hitEnemy(e, { dmg: D.damage || 1 }); });
+        get('boss').forEach((bo) => { if (bo.exists() && blastReaches(bo, c, D.radius)) hitBoss(bo, { dmg: D.bossDamage || 2, channel: 'stink', pos: c }); });
+      }
+    });
   }
 
   // Portee d'un souffle sur une cible : distance du CENTRE d'explosion au point
@@ -730,7 +882,7 @@
         score: 0, kills: 0, saved: 0,          // kills = passants abattus ; saved = passants sauves par le chat
         levelTime: 0,                          // chrono du niveau (time-attack : meilleur temps sur la carte)
         data: 0, pages: 0, gotPubli: false,
-        catCharges: hasCat() ? C.cat.startCharges : 0,
+        catCharges: hasAlly() ? C.cat.startCharges : 0,
         catLock: false,
         _sunCharging: false, _sunShaded: false, sunFlash: 0,   // etat de recharge solaire (HUD glow)
         killFlash: 0,                                          // pulse du compteur tete-de-mort a chaque meurtre
@@ -1001,6 +1153,43 @@
   }
   function spawnHazard(cx, groundY) { return spawnHazardSpan(cx, groundY, 1); }   // piege 1 tuile (boss)
 
+  // BOUE ('~', campagne Marcos) : meme encastrement que le sol piege, mais SANS
+  //  degat -> tag 'mud' (collant : vitesse/saut reduits, cf. CONFIG.mud et la
+  //  boucle du joueur). Skin LEVEL.theme.mud (defaut CONFIG.mud.sprite), repli
+  //  dessine. dur > 0 = flaque TEMPORAIRE (jaillissements de Raja Tikus).
+  function spawnMudSpan(centerX, groundY, tiles, dur) {
+    const n = Math.max(1, tiles | 0);
+    const th = (LEVEL && LEVEL.theme) || {};
+    const sname = pickSkin(th.mud, (C.mud && C.mud.sprite) || 'hazard_mud');
+    const wpx = n * TS, leftX = centerX - wpx / 2, top = groundY + HAZ_DROP;
+    const deco = [];
+    const off = () => offscreen({ hide: true, distance: TS * 2 });
+    if (sname && hasSprite(sname)) {
+      for (let i = 0; i < n; i++) {
+        const o = add([sprite(sname), artScale(HAZ_TILE_SCALE), pos(leftX + TS * (i + 0.5), top), anchor('top'),
+          opacity(1), z(-0.5), off(), 'hazarddeco']);   // opacity : requis par le lifespan des flaques temporaires
+        playIfAnim(o, sname);
+        deco.push(o);
+      }
+    } else {                                       // bouche-trou : boue brune + flaques luisantes
+      deco.push(add([rect(wpx, HAZ_H), pos(leftX, top), anchor('topleft'), color(84, 58, 36), opacity(0.98), z(-0.5), off(), 'hazarddeco']));
+      for (let i = 0; i < n * 2; i++) {
+        deco.push(add([rect(rand(10, 22), 4, { radius: 2 }), pos(leftX + rand(6, wpx - 24), top + rand(6, HAZ_H - 8)), anchor('topleft'),
+          color(150, 128, 96), opacity(0.6), z(-0.49), off(), 'hazarddeco']));
+      }
+    }
+    // levre de boue qui deborde un peu au-dessus du sol -> on la VOIT venir
+    deco.push(add([rect(wpx + 6, 7, { radius: 3 }), pos(centerX, groundY + 2), anchor('bot'),
+      color(70, 48, 30), opacity(0.95), z(-0.45), off(), 'hazarddeco']));
+    const hit = add([rect(wpx - 6, TS * 0.42), pos(centerX, groundY), anchor('bot'),
+      area(), opacity(0), z(-0.4), 'mud', { deco, temp: !!dur }]);
+    hit.onDestroy(() => deco.forEach((d) => { if (d.exists()) destroy(d); }));
+    if (dur > 0) {
+      wait(dur, () => { if (hit.exists()) { deco.forEach((d) => { if (d.exists()) d.use(lifespan(0.4, { fade: 0.4 })); }); wait(0.42, () => { if (hit.exists()) destroy(hit); }); } });
+    }
+    return hit;
+  }
+
   // --- PANNEAUX SOLAIRES (plateformes) en perspective + pieds au sol -------
   //  La COLLISION reste une tuile invisible 48x48 (surface marchable = haut de
   //  tuile). Le VISUEL est decoratif : un "cap" en perspective (penche vers le
@@ -1028,7 +1217,8 @@
     const decoMargin = TS * 2 + Math.max(0, (LEVEL ? LEVEL.height : 0) - C.height);
     // PIED de la plateforme : panneau solaire par defaut, ou support d'etagere
     //  pour les niveaux interieurs (LEVEL.theme.panelLeg, ex. 'shelf_leg').
-    const leg = (LEVEL && LEVEL.theme && LEVEL.theme.panelLeg) || 'panel_leg';
+    const leg0 = (LEVEL && LEVEL.theme && LEVEL.theme.panelLeg) || 'panel_leg';
+    const leg = hasSprite(leg0) ? leg0 : 'panel_leg';          // pied dedie pas encore embarque (bamboo_leg) -> pied de panneau
     if (legH > 4 && hasSprite(leg)) {                         // pieds etires jusqu'au sol
       const comps = [sprite(leg), pos(cx, y + CAP_LIP), anchor('top'),
         scale(vec2(1 / ART, (legH / LEG_NAT_H) / ART)), z(-1.2),
@@ -1097,8 +1287,9 @@
   // ---------------------------------------------------------------------
   //  ENNEMIS
   // ---------------------------------------------------------------------
-  function spawnEnemy(kind, x, y) {
+  function spawnEnemy(kind, x, y, opts) {
     const def = C.enemies[kind];
+    opts = opts || {};
     // Tout ce qui marche au sol a un corps (gravite) -> jamais en l'air :
     //  patrol (camion), chase, jump. fly/shooter/static restent sans corps.
     const needsBody = (def.move === 'patrol' || def.move === 'chase' || def.move === 'jump');
@@ -1112,9 +1303,10 @@
       : null;
     const phead = isPersona ? pickHead(pcfg.heads && pcfg.heads[psex], psex) : null;
     const psize = isPersona ? passantSize(phead, pcfg) : { key: 'moyen', scale: 1 };
-    const sname = isPersona
+    let sname = isPersona
       ? pickSkin(pcfg.bodies && pcfg.bodies[psex], def.sprite + '_' + psex)
       : pickSkin(LEVEL && LEVEL.theme && LEVEL.theme.enemies[kind], def.sprite);
+    if (!hasSprite(sname) && def.fallback) sname = def.fallback;   // art Imagen pas encore embarque -> feuille de repli
     const visualScale = (def.scale || 1) * psize.scale;
     // PIEDS (cf. FEET_PAD) : la boite remonte de la marge sous les pieds -> le
     //  body pose le dessin sur le sol. Sans body (static/fly/shooter), c'est le
@@ -1180,9 +1372,18 @@
     ];
     if (needsBody) comps.splice(4, 0, body());
     const e = add(comps);
-    if (def.anim) { try { e.play(def.anim); } catch (er) {} }
+    // clip demande absent de la feuille (repli : enemy_corbeau n'a que 'fly') -> anim par defaut
+    if (def.anim && animHasClip(sname, def.anim)) { try { e.play(def.anim); } catch (er) {} }
     else playIfAnim(e, sname);
     if (isPersona) attachHead(e, pcfg, psex, phead);   // tete South Park (enfant) au-dessus du corps
+    // DURIAN suspendu (case du dessous vide) : pend a une liane, tombe quand on passe dessous
+    if (def.move === 'durian' && opts.hanging) {
+      e.hanging = true;
+      e.vine = add([rect(3, TS * 0.55), pos(x, ySpawn - (e.height || 80) * visualScale / ART + 4), anchor('bot'),
+        color(70, 110, 40), z(-0.6), offscreen({ hide: true, distance: TS * 3 })]);
+      e.onDestroy(() => { if (e.vine && e.vine.exists()) destroy(e.vine); });
+    }
+    if (def.move === 'homing') e.life = def.life || 6;
     return e;
   }
 
@@ -1430,7 +1631,11 @@
     return !!(a && a.anims && a.anims[clip]);
   }
   function enemyAnim(e, want) {
-    const loop = e.def.anim || 'walk';
+    let loop = e.def.anim || 'walk';
+    if (!animHasClip(e._spr, loop)) {                 // feuille de repli sans ce clip (ex. corbeau : 'fly')
+      const a = C.anims && C.anims[baseName(e._spr)];
+      loop = (a && a.anims && Object.keys(a.anims)[0]) || loop;
+    }
     const name = (want === 'walk' || !animHasClip(e._spr, want)) ? loop : want;
     setAnim(e, e._spr, name);
   }
@@ -1500,6 +1705,65 @@
           e.move(e.hopDir * e.def.speed, 0);
         }
         e.flipX = e.facing < 0;
+        break;
+      }
+      case 'durian': {              // DURIAN : immobile ; suspendu -> tombe quand le joueur passe dessous
+        e.flipX = e.facing < 0;
+        if (e.hanging) {
+          const under = Math.abs(toP) < TS * (e.def.dropRange || 1.4) && p.pos.y > e.pos.y;
+          if (under && !e.falling) { e.falling = true; e.vy = 0; e.atkT = 0.4; if (e.vine && e.vine.exists()) destroy(e.vine); }
+          if (e.falling) {
+            e.vy = Math.min(e.def.fallSpeed || 620, (e.vy || 0) + C.gravity * dt());
+            e.pos.y += e.vy * dt();
+            const gy = surfaceUnderFeet(e.pos.x, e.pos.y - TS * 0.3);
+            if (gy != null && e.pos.y >= gy) {      // atterrit : redevient un piquant au sol
+              e.pos.y = gy + FEET_PAD.enemy * (e.def.scale || 1) / ART;
+              e.hanging = false; e.falling = false; addPoof(e.pos.x, gy - 6); safeShake(3);
+            } else if (e.pos.y > LEVEL.height + TS) destroy(e);
+          }
+        }
+        break;
+      }
+      case 'dive': {                // OISEAU : patrouille en l'air puis PIQUE sur le joueur, remonte
+        e.t += dt();
+        const faceR = (e.def.faceRight != null) ? e.def.faceRight : /corbeau/.test(e._spr || '');
+        if (!e.ds) { e.ds = 'patrol'; e.dcd = rand(0.5, e.def.diveEvery || 2.4); }
+        if (e.ds === 'patrol') {
+          e.move(e.dir * e.def.speed, 0);
+          if (Math.abs(e.pos.x - e.homeX) > e.def.range) e.dir = Math.sign(e.homeX - e.pos.x) || -e.dir;
+          e.pos.y = e.homeY + Math.sin(e.t * 3) * (e.def.amp || 22);
+          e.dcd -= dt();
+          if (e.dcd <= 0 && Math.abs(toP) < TS * 3 && p.pos.y > e.pos.y + TS * 0.8) {
+            e.ds = 'dive'; e.dvT = 0;
+            e.dv = vec2(p.pos.x - e.pos.x, (p.pos.y - TS * 0.5) - e.pos.y).unit();
+            addPoof(e.pos.x, e.pos.y);               // petit "cri" avant le pique
+          }
+          e.flipX = faceR ? e.dir < 0 : e.dir > 0;
+        } else if (e.ds === 'dive') {
+          e.dvT += dt(); e.atkT = 0.2;
+          e.pos = e.pos.add(e.dv.scale((e.def.diveSpeed || 430) * dt()));
+          const gy = surfaceUnderFeet(e.pos.x, e.pos.y - 4);
+          if (e.dvT > 1.1 || (gy != null && e.pos.y >= gy - 6)) e.ds = 'rise';
+          e.flipX = faceR ? e.dv.x < 0 : e.dv.x > 0;
+        } else {                                   // remonte a son altitude de croisiere
+          e.pos.y -= (e.def.riseSpeed || 170) * dt();
+          if (e.pos.y <= e.homeY) { e.pos.y = e.homeY; e.ds = 'patrol'; e.dcd = e.def.diveEvery || 2.4; e.homeX = e.pos.x; e.t = 0; }
+        }
+        break;
+      }
+      case 'homing': {              // PIAF (minion de Garuda) : tete chercheuse molle, puis s'envole
+        e.life -= dt();
+        const faceR = (e.def.faceRight != null) ? e.def.faceRight : /corbeau/.test(e._spr || '');
+        if (!e.vv) e.vv = vec2(e.dir * 60, -40);
+        if (e.life > 0) {
+          const want = vec2(p.pos.x - e.pos.x, (p.pos.y - TS * 0.8) - e.pos.y).unit().scale(e.def.speed || 150);
+          e.vv = e.vv.lerp(want, Math.min(1, 1.6 * dt()));
+        } else {
+          e.vv = e.vv.lerp(vec2(e.vv.x, -260), Math.min(1, 3 * dt()));
+          if (e.pos.y < -TS * 2 || e.life < -3) { destroy(e); break; }
+        }
+        e.pos = e.pos.add(e.vv.scale(dt()));
+        e.flipX = faceR ? e.vv.x < 0 : e.vv.x > 0;
         break;
       }
       default: e.flipX = e.facing < 0; break;   // static : regarde le joueur
@@ -1875,9 +2139,79 @@
     LEVEL.gates = null;
   }
 
+  // PROJECTILE EN CLOCHE de boss (campagne Marcos : durians, mottes de boue,
+  //  filets). Gravite propre (g px/s2), tag 'ehot' (degat au contact, couvert des
+  //  panneaux, nettoye par chat/etudiants/power chord). o.onLand(pos) a l'impact
+  //  sur un solide (sol/panneau) ; o.net = FILET (immobilise au lieu de blesser,
+  //  cf. netPlayer) ; o.spin = rotation visuelle (deg/s).
+  function bossArc(x, y, vx, vy, spr, o) {
+    o = o || {};
+    const comps = (spr && hasSprite(spr))
+      ? [sprite(spr), artScale(o.scale || 1), rotate(0)]
+      : [circle(o.r || 10), color(...(o.col || [120, 160, 60])), outline(3, rgb(42, 29, 24)), rotate(0)];
+    const b = add([...comps, pos(x, y), anchor('center'), area({ scale: 0.55 }),
+      offscreen({ distance: 300, destroy: true }), 'ehot',
+      { dmg: o.dmg != null ? o.dmg : 1, net: !!o.net, netTime: o.netTime || 1.5, vx, vy, g: o.g != null ? o.g : 1100 }]);
+    playIfAnim(b, spr);
+    EHOTS.add(b);
+    b.onDestroy(() => EHOTS.delete(b));
+    let landed = false;
+    const land = () => {
+      if (landed || !b.exists()) return;
+      landed = true;
+      const at = b.pos.clone();
+      destroy(b);
+      if (o.onLand) o.onLand(at);
+    };
+    b.onCollide('solid', () => land());
+    b.onUpdate(() => {
+      b.vy += b.g * dt();
+      b.pos.x += b.vx * dt(); b.pos.y += b.vy * dt();
+      b.angle += (o.spin != null ? o.spin : 260) * dt();
+      if (b.pos.y > LEVEL.height + 60) destroy(b);
+    });
+    return b;
+  }
+
+  // FILET (Garuda) : immobilise le joueur `dur` s (marteler SAUT raccourcit,
+  //  cf. handler de saut). Visuel : le sprite shot_net (repli : maillage dessine)
+  //  colle sur lui. Pas de degat : c'est le coup de bec qui suit qui fait mal.
+  function netPlayer(dur) {
+    const p = PLAYER;
+    if (!p || !p.exists() || p._god) return;
+    if ((p.invuln || 0) > 0 && !(p.netT > 0)) return;     // dash / i-frames : le filet passe a travers
+    p.netT = Math.max(p.netT || 0, dur || 1.5);
+    if (p.vel) p.vel = vec2(0, Math.max(0, p.vel.y));
+    flashOnce(p, 'netHint', 'PRIS DANS LE FILET !  MARTELE SAUT');
+    sfx('hit');
+    if (p._netFx && p._netFx.exists()) return;
+    const fx = add(hasSprite('shot_net')
+      ? [sprite('shot_net'), artScale(1.5), pos(p.pos), anchor('center'), opacity(0.95), z(48), rotate(0)]
+      : [rect(TS * 1.2, TS * 1.6), color(230, 220, 190), opacity(0.25), outline(3, rgb(240, 232, 200)), pos(p.pos), anchor('center'), z(48), rotate(0)]);
+    p._netFx = fx;
+    fx.onUpdate(() => {
+      const q = PLAYER;
+      if (!q || !q.exists() || !(q.netT > 0)) { addPoof(fx.pos.x, fx.pos.y); destroy(fx); return; }
+      fx.pos = vec2(q.pos.x, q.pos.y - TS * 0.8);
+      fx.angle = Math.sin(time() * 20) * (q._netShake > 0 ? 8 : 2);
+      if (q._netShake > 0) q._netShake -= dt();
+    });
+  }
+
   const BOSS_API = {
     TS: TS,
     bullet: enemyBullet,
+    // --- campagne Marcos (bosses.js : tikus / scooter / garuda) ---
+    arc: bossArc,                               // projectile en cloche (x, y, vx, vy, spr, opts)
+    mud: (atX, atY, dur, tiles) => {            // flaque de boue TEMPORAIRE posee sur le sol sous (atX, atY)
+      const gy = surfaceUnderFeet(atX, atY);
+      if (gy == null) return null;
+      const cx = (Math.floor(atX / TS) + 0.5) * TS;
+      return spawnMudSpan(cx, gy, tiles || 2, dur || 5);
+    },
+    groundAt: (atX, atY) => surfaceUnderFeet(atX, atY),   // Y du 1er sol sous un point (null si vide)
+    net: netPlayer,                             // immobilise le joueur (filet)
+    sfx: sfx,
     add: (kind, x, y) => spawnEnemy(kind, x, y),
     quake: spawnQuake,                        // v2 : seisme localise au sol
     addGuestBoss: addGuestBoss,               // v2 : boss-rush du jury
@@ -1928,10 +2262,13 @@
 
   function spawnBoss(key, x, y) {
     const def = C.bosses[key];
-    const sname = variant(def.sprite);          // feuille DEPLACEMENT (idle/hurt)
+    // def.fallback / def.fallbackAtk : feuilles de repli tant que l'art du boss
+    //  n'est pas embarque (boss de la campagne Marcos, cf. CONFIG.bosses).
+    const sname = (!hasSprite(def.sprite) && def.fallback) ? def.fallback : variant(def.sprite);   // feuille DEPLACEMENT (idle/hurt)
     // feuille ATTAQUE separee (def.attackSprite) ; null si le PNG manque -> on
     //  reste sur la feuille de deplacement (pas de crash).
-    const aname = (def.attackSprite && hasSprite(def.attackSprite)) ? variant(def.attackSprite) : null;
+    const aname = (def.attackSprite && hasSprite(def.attackSprite)) ? variant(def.attackSprite)
+      : ((!hasSprite(def.sprite) && def.fallbackAtk && hasSprite(def.fallbackAtk)) ? def.fallbackAtk : null);
     const b = add([
       sprite(sname),
       artScale(def.scale || 1),    // jury (def.scale) rend plus gros (megaboss a 3 membres) ; autres = 1x
@@ -2093,8 +2430,12 @@
   //  FIGEE sur sa frame courante.
   const BOSS_ATK_CLIPS = { attack: 1, windup: 1, dash: 1, throw: 1 };
   function bossAnim(b, want) {
-    const useAtk = BOSS_ATK_CLIPS[want] && b.sprAtk;
-    if (useAtk && want !== 'attack' && !animHasClip(b.sprAtk, want)) want = 'attack';
+    // clip NOMME present dans la feuille _atk (boss Marcos : burrow/erupt/honk/net/dive...) -> feuille _atk
+    const atkHas = !!(b.sprAtk && animHasClip(b.sprAtk, want));
+    const useAtk = (BOSS_ATK_CLIPS[want] || atkHas) && b.sprAtk;
+    if (useAtk && want !== 'attack' && !atkHas) want = 'attack';
+    // clip d'action inconnu de la feuille de deplacement (feuilles de repli) -> idle (pas de frame figee)
+    if (!useAtk && !BOSS_ATK_CLIPS[want] && want !== 'hurt' && !animHasClip(b.spr, want)) want = 'idle';
     setAnim(b, useAtk ? b.sprAtk : b.spr, want);
   }
 
@@ -2194,8 +2535,52 @@
   // ---------------------------------------------------------------------
   //  CHAT ANGORA (allie deploye)
   // ---------------------------------------------------------------------
+  // ESCOUADE D'ETUDIANTS (allie de Marcos) : `count` PNJ visuels (corps du
+  //  biome + tete "South Park") qui suivent la boite logique `cat` en file
+  //  indienne, en courant (bob). Le chef porte la tete d'Ade (leaderHead) si elle
+  //  est embarquee. Purement visuel : toute la logique reste sur `cat`.
+  function spawnStudentSquad(cat) {
+    const S = (KIT() && KIT().students) || { count: 3, spacing: 34, scale: 0.92 };
+    const pcfg = Object.assign({}, C.theme.passant, (LEVEL && LEVEL.theme && LEVEL.theme.passant) || {});
+    const used = new Set();
+    for (let i = 0; i < (S.count || 3); i++) {
+      let sex, head = null;
+      if (i === 0) {
+        head = [S.leaderHead, S.fallbackHead].find((h) => h && hasSprite(h)) || null;
+        sex = head && /_f_/.test(head) ? 'f' : 'h';
+      } else {
+        sex = rand(0, 1) < 0.45 ? 'f' : 'h';
+        const pool = ((pcfg.heads && pcfg.heads[sex]) || []).filter((h) => hasSprite(h) && !used.has(h));
+        head = pool.length ? pool[Math.floor(rand(0, pool.length))] : null;
+      }
+      if (head) used.add(head);
+      const body = pickSkin(pcfg.bodies && pcfg.bodies[sex], 'body_champ_' + sex);
+      if (!hasSprite(body)) continue;
+      const sc = S.scale || 0.92;
+      const st = add([sprite(body), artScale(sc), pos(cat.pos.x, cat.pos.y), anchor('bot'), z(41 - i * 0.1),
+        'fx', { passantScale: 1, phase: i * 1.7, idx: i }]);
+      try { st.play('walk'); st.animSpeed = 2.2; } catch (e) {}
+      if (head) attachHead(st, pcfg, sex, head);
+      cat.squad.push(st);
+    }
+    const sp = (S.spacing || 34);
+    cat.onUpdate(() => {
+      cat.squad.forEach((st) => {
+        if (!st.exists()) return;
+        st.pos.x = cat.pos.x - cat.dir * (st.idx - 1) * sp;      // le chef devant, les autres en file
+        st.pos.y = cat.pos.y - Math.abs(Math.sin(time() * 16 + st.phase)) * 4;
+        st.flipX = cat.dir > 0;                                   // feuilles PNJ dessinees vers la GAUCHE
+      });
+    });
+    cat.onDestroy(() => cat.squad.forEach((st) => { if (st.exists()) { addPoof(st.pos.x, st.pos.y - 20); destroy(st); } }));
+    // cri de ralliement (bulle BD sur le chef) : la phrase d'Ade
+    const lead = cat.squad[0];
+    const phr = lead && lead.head && window.NPC && window.NPC[lead.head.sprite] && window.NPC[lead.head.sprite].phrases;
+    if (lead && phr && phr.length && typeof npcBubble === 'function') { try { npcBubble(lead, phr[0], 1.6); } catch (e) {} }
+  }
+
   function deployCat() {
-    if (!hasCat()) return;
+    if (!hasAlly()) return;
     const p = PLAYER;
     if (!p || !p.exists()) return;
     if (catOut()) return;                     // un seul chat a la fois
@@ -2205,19 +2590,29 @@
     p.catTossT = C.cat.tossTime || 0.4;       // brieve pose "lance le chat" puis Laura reprend ses anims
     const dir = p.facing >= 0 ? 1 : -1;
     const startX = p.pos.x + dir * (C.cat.spawnAhead || 42);  // pose au sol, juste devant Laura
-    const cat = add([
-      sprite('cat_run'),
-      artScale(C.cat.scale || 1),               // plus petit que Laura
-      pos(startX, p.pos.y),
-      anchor('bot'),
-      area({ scale: vec2(0.9, 0.7) }),
-      z(40),
-      'cat',
-      { dir, startX, baseY: p.pos.y, hitOnPass: new Set(), phase: 'run' },
-    ]);
+    const students = allyKind() === 'students';
+    // MARCOS : "l'armee des etudiants" (Ade). Meme entite logique que le chat
+    //  (aller-retour, degats, ouverture de garde, nettoyage des tirs, PNJ sauves)
+    //  mais c'est une boite invisible qui porte une ESCOUADE de PNJ qui courent.
+    const cat = students
+      ? add([rect(TS * 1.6, TS * 1.5), opacity(0), pos(startX, p.pos.y), anchor('bot'),
+          area(), z(40), 'cat', { dir, startX, baseY: p.pos.y, hitOnPass: new Set(), phase: 'run', squad: [] }])
+      : add([
+          sprite('cat_run'),
+          artScale(C.cat.scale || 1),               // plus petit que Laura
+          pos(startX, p.pos.y),
+          anchor('bot'),
+          area({ scale: vec2(0.9, 0.7) }),
+          z(40),
+          'cat',
+          { dir, startX, baseY: p.pos.y, hitOnPass: new Set(), phase: 'run' },
+        ]);
     CAT_REF = cat;
-    cat.flipX = dir < 0;
-    try { cat.play('run'); } catch (e) {}
+    // Marcos n'a pas de pose "lance le chat" (hero_cat_out -> null) : il lance
+    //  l'appel aux etudiants avec la pose POWER CHORD de la guitare.
+    if (students) { p.catTossT = 0; p.throwT = 0.4; p.throwReplay = true; p.chordPose = 0.4; }
+    if (students) spawnStudentSquad(cat);
+    else { cat.flipX = dir < 0; try { cat.play('run'); } catch (e) {} }
     // ALLER-RETOUR : le chat blesse a CHAQUE passage. A l'ALLER (phase 'run') il
     //  ne fait que outMul x les degats (l'ennemi survit, affaibli) ; au RETOUR
     //  (phase 'back'), degats PLEINS (il l'acheve). 1 coup par entite et par
@@ -2247,7 +2642,7 @@
     });
     cat.onCollide('passant', (e) => savePassant(e));   // le chat SAUVE les figurants qu'il croise
     cat.onUpdate(() => {
-      const sp = C.cat.speed;
+      const sp = C.cat.speed * (students ? ((KIT() && KIT().students && KIT().students.speedMul) || 1) : 1);
       EHOTS.forEach((h) => { if (h.exists() && h.pos.dist(cat.pos) < C.cat.cleanRadius) destroy(h); });  // nettoie les tirs (Set direct, pas de scan get())
       if (cat.phase === 'run') {                 // ALLER : court vers l'avant
         cat.move(cat.dir * sp, 0);
@@ -2276,7 +2671,8 @@
     // SKIN PAR NIVEAU : LEVEL.theme.pickups[kind] remplace le sprite du pickup
     //  (ex. 'data' -> 'pickup_graine' au niveau 1). Asset absent -> retour au defaut.
     const themed = LEVEL && LEVEL.theme && LEVEL.theme.pickups && LEVEL.theme.pickups[kind];
-    const spr = (themed && hasSprite(themed)) ? themed : def.sprite;
+    let spr = (themed && hasSprite(themed)) ? themed : def.sprite;
+    if (!hasSprite(spr) && def.fallback) spr = def.fallback;   // art pas encore embarque (pickup_durian -> cafe)
     if (!hasSprite(spr)) return null;                  // asset absent -> on ignore (pas de crash)
     const it = add([
       sprite(variant(spr)), artScale(), pos(x, y), anchor('center'), area(),
@@ -2345,6 +2741,7 @@
       case 'page':   p.pages++; break;
       case 'publi':  p.gotPubli = true; flashMsg(C.story.publi); break;
       case 'croquette': p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); break;
+      case 'durian': startDurianAura(p); break;     // Marcos : aura puante temporaire (cf. CONFIG.kits.guitar.durian)
       default: break;
     }
     if (it.def.upgrade) {                          // UPGRADE D'ARSENAL : +1 PUISSANCE ou +1 CADENCE (commun aux 2 armes)
@@ -2420,7 +2817,11 @@
   function buildBackground() {
     const th = (LEVEL && LEVEL.theme) || {};
     if (th.sky) add([rect(C.width, C.height), pos(0, 0), fixed(), z(-40), color(th.sky[0], th.sky[1], th.sky[2]), 'bg']);
-    (th.layers || []).forEach((spec) => {
+    (th.layers || []).forEach((spec0) => {
+      // spec.fallback : couche de repli tant que l'art dedie n'est pas embarque
+      //  (fonds Imagen de la campagne Marcos). Une couche sans sprite ni repli est ignoree.
+      const spec = (!hasSprite(spec0.sprite) && spec0.fallback && hasSprite(spec0.fallback))
+        ? Object.assign({}, spec0, { sprite: spec0.fallback }, spec0.fallbackOpts || {}) : spec0;
       if (spec.fullscreen && hasSprite(spec.sprite)) {
         add([sprite(spec.sprite, { width: C.width, height: C.height }), pos(0, 0), fixed(),
           z(spec.z == null ? -30 : spec.z), 'bg'].concat(layerTint(spec, th)));
@@ -2582,7 +2983,8 @@
       tiles:   Object.assign({}, dT.tiles, lT.tiles),
       enemies: Object.assign({}, dT.enemies, lT.enemies),
       pickups: Object.assign({}, dT.pickups, lT.pickups),
-      hazard:  lT.hazard || dT.hazard,                       // skin du sol piege ('%') : riziere / acide (sinon fallback 'hazard')
+      hazard:  lT.hazard || dT.hazard,
+      mud:     lT.mud || dT.mud,                             // skin de la boue ('~', campagne Marcos)                       // skin du sol piege ('%') : riziere / acide (sinon fallback 'hazard')
       panelLeg: lT.panelLeg || dT.panelLeg,                  // pied des plateformes (panneau / etagere)
       indoor: lT.indoor || dT.indoor,                        // interieur : bords invisibles (pas de caillou)
       // passant : fusion PEU PROFONDE (un niveau qui fournit `passant` remplace
@@ -2652,6 +3054,13 @@
             spawnHazardSpan((c + (cEnd - c + 1) / 2) * TS, groundY, cEnd - c + 1);
             break;
           }
+          case '~': {                                  // BOUE : '~' CONTIGUS -> UNE plaque collante (sans degat)
+            if (c > 0 && row[c - 1] === '~') break;
+            let cEnd = c;
+            while (cEnd + 1 < row.length && row[cEnd + 1] === '~') cEnd++;
+            spawnMudSpan((c + (cEnd - c + 1) / 2) * TS, groundY, cEnd - c + 1);
+            break;
+          }
           case '|': if (c < skyMinC) skyMinC = c; if (c > skyMaxC) skyMaxC = c; break;   // ZONE-CIEL : la cam suit en hauteur (rien d'autre pose ; cf. skyZone)
           case '[': arenaLcol = (arenaLcol == null) ? c : Math.min(arenaLcol, c); break;   // BORD GAUCHE d'arene (rien d'autre pose)
           case ']': arenaRcol = (arenaRcol == null) ? c : Math.max(arenaRcol, c); break;   // BORD DROIT d'arene (rien d'autre pose)
@@ -2673,6 +3082,16 @@
           case 'S': spawnEnemy('sac', cx, groundY); break;                    // IMMOBILE
           case 'F': spawnEnemy('fontaine', cx, groundY); break;               // IMMOBILE
           case 'D': spawnEnemy('dossiers', cx, groundY); break;               // IMMOBILE
+          // --- campagne Marcos (Java) ---
+          case 'r': spawnEnemy('rat', cx, groundY); break;                    // SOL : rat tres rapide
+          case 'u': {                                                          // DURIAN : au sol, ou SUSPENDU si la case du dessous est vide
+            const below = (rows[r + 1] || '')[c] || ' ';
+            spawnEnemy('durian', cx, groundY, { hanging: '=-x^%~'.indexOf(below) === -1 });
+            break;
+          }
+          case 'y': spawnEnemy('oiseau', cx, groundY - TS * 1.6); break;      // VOLANT : pique sur Marcos
+          case 'Z': spawnEnemy('scooter', cx, groundY); break;                // VEHICULE rapide
+          case 'g': spawnPickup('durian', cx, y + TS / 2); break;             // pickup DURIAN : aura puante
           case 'N':   // figurant (corps biome + tete au hasard) + compte pour la medaille SAUVES
             LEVEL.passantTotal = (LEVEL.passantTotal || 0) + 1;
             spawnEnemy('passant', cx, groundY);
@@ -2827,6 +3246,16 @@
     skull: 56, pickup_puissance: 64, pickup_cadence: 64,
   };
 
+  // Largeur de frame (px source) d'un sprite absent de HUD_FRAME_W (nouveaux
+  //  assets : notes, guitare, tetes...) -> lue sur la texture, mise en cache.
+  function hudFrameW(name) {
+    if (HUD_FRAME_W[name]) return HUD_FRAME_W[name];
+    let w = 64;
+    try { const sd = getSprite(name) && getSprite(name).data; if (sd && sd.tex && sd.frames && sd.frames[0]) w = Math.max(8, Math.round(sd.tex.width * sd.frames[0].w)); } catch (e) {}
+    HUD_FRAME_W[name] = w;
+    return w;
+  }
+
   function buildHUD() {
     const W = C.width, H = C.height;
     const COL = {
@@ -2881,7 +3310,7 @@
     function icon(name, x, y, tpx, opt) {
       opt = opt || {};
       if (!hasSprite(name)) return;
-      const fw = HUD_FRAME_W[name] || 64;
+      const fw = HUD_FRAME_W[name] || hudFrameW(name);
       drawSprite({ sprite: name, frame: opt.frame || 0, pos: vec2(x, y), anchor: 'center', scale: vec2(tpx / fw), opacity: (opt.opacity == null) ? 1 : opt.opacity });
     }
 
@@ -3046,15 +3475,17 @@
       // =====================================================================
       // PANNEAU BAS CENTRE : armes · munitions (ancre en bas de l'ecran)
       // =====================================================================
-      const WEP_H = 56, WEP_W = hasCat() ? 650 : (TOUCH_ON ? 370 : 430);
+      const WEP_H = 56, WEP_W = hasAlly() ? 650 : (TOUCH_ON ? 370 : 430);
       const WEP_X = (W - WEP_W) / 2;
       const WEP_Y = H - WEP_H - 6;
       const WEP_ROW = WEP_Y + WEP_H / 2;
       panel(WEP_X, WEP_Y, WEP_W, WEP_H);
 
       let wx = WEP_X + 18;
-      // Graine + ESPACE
-      icon('ammo_graine', wx + 13, WEP_ROW, 28);
+      // Graine + ESPACE (Marcos : note de guitare)
+      const NK = isGuitar() && KIT() && KIT().notes;
+      const shotIcon = (NK && hasSprite(NK.sprite)) ? NK.sprite : 'ammo_graine';
+      icon(shotIcon, wx + 13, WEP_ROW, 28);
       wx += 28;
       keycap('ESPACE', wx + 30, WEP_ROW);
       wx += TOUCH_ON ? 16 : 64;
@@ -3063,7 +3494,11 @@
       // Patisserie + cout + X
       const PA = (C.arsenal && C.arsenal.patisseries) || {};
       const plv = Math.max(1, Math.min((PA.levels && PA.levels.length) || 1, p.power || 1));
-      const PL = (PA.levels && PA.levels[plv - 1]) || { sprite: 'ammo_gateau', cost: 0 };
+      let PL = (PA.levels && PA.levels[plv - 1]) || { sprite: 'ammo_gateau', cost: 0 };
+      if (isGuitar() && KIT() && KIT().chord) {      // Marcos : POWER CHORD (cout par niveau de puissance)
+        const CL = KIT().chord.levels; const cl = CL[Math.max(1, Math.min(CL.length, p.power || 1)) - 1];
+        PL = { sprite: hasSprite('marcos_guitar') ? 'marcos_guitar' : shotIcon, cost: cl.cost };
+      }
       const poor = C.sun.enabled && p.sun < (PL.cost || 0);
       icon(hasSprite(PL.sprite) ? PL.sprite : 'ammo_gateau', wx + 16, WEP_ROW, 30, { opacity: poor ? 0.55 : 1 });
       wx += 34;
@@ -3088,13 +3523,16 @@
       for (let i = 0; i < rmax; i++) chev(wx + i * 15, WEP_ROW, i < (p.rate || 1), rgb(96, 196, 244), (p.rateFlash || 0) > 0);
       wx += rmax * 15 + 12;
       // Specialite de Laura : chat, charges et sauvetages.
-      if (hasCat()) {
+      if (hasAlly()) {
         drawLine({ p1: vec2(wx, WEP_Y + 9), p2: vec2(wx, WEP_Y + WEP_H - 9), width: 1, color: rgb(210, 155, 72) });
         wx += 16;
-        icon('cat_run', wx + 20, WEP_ROW, 32);
+        // Marcos : la tete d'Ade (chef de l'armee des etudiants) a la place du chat
+        const SK = allyKind() === 'students' && KIT() && KIT().students;
+        const allyIcon = SK ? ([SK.leaderHead, SK.fallbackHead].find((h) => h && hasSprite(h)) || 'cat_run') : 'cat_run';
+        icon(allyIcon, wx + 20, WEP_ROW, 32);
         wx += 48;
         for (let i = 0; i < C.cat.maxCharges; i++) pip(wx + i * 16, WEP_ROW, i < p.catCharges);
-        if (hasCat() && (C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+        if ((C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
           const frac = Math.min(1, (p.catRegenT || 0) / C.cat.regenTime);
           drawCircle({ pos: vec2(wx + p.catCharges * 16, WEP_ROW), radius: 1 + 5 * frac, color: COL.leaf, opacity: 0.9 });
         }
@@ -3272,8 +3710,9 @@
     p.sun = Math.min(p.sunMax, Math.max(p.sun, 50));
     p.sunRegenLockT = 0;
     p.pos.x = ck.x; p.pos.y = ck.y;
-    p.invuln = 1.2; p.knockT = 0; p.dashT = 0; p._dropT = 0;
+    p.invuln = 1.2; p.knockT = 0; p.dashT = 0; p._dropT = 0; p.netT = 0; p.mudT = 0;   // filet / boue de Marcos aussi
     if (p.vel) p.vel = vec2(0, 0);
+    get('mud').forEach((m) => { if (m.temp) destroy(m); });          // flaques temporaires de Raja Tikus
     p.medNoHit = false;                          // la medaille "sans degat" est perdue de toute facon
     get('boss').forEach((b) => {
       if (b.guest) { destroy(b); return; }       // les invites du jury disparaissent
@@ -3319,6 +3758,12 @@
   }
 
   let _msg = null;
+  // Message d'aide affiche UNE fois par niveau (cle libre, ex. la 1re boue).
+  function flashOnce(_o, key, txt) {
+    if (!LEVEL || LEVEL['_once_' + key]) return;
+    LEVEL['_once_' + key] = true;
+    flashMsg(txt);
+  }
   function flashMsg(txt, size) {
     if (!txt) return;
     if (_msg && _msg.exists()) destroy(_msg);
@@ -3398,8 +3843,9 @@
         const sunY = top;                                            // foyer du soleil (derriere le ruban)
 
         // 1) FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile chaud
-        if (hasSprite(CAMPAIGN.screens.popup || 'ui_popup_bg')) {
-          drawSprite({ sprite: CAMPAIGN.screens.popup || 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+        const popBg = [CAMPAIGN.screens.popup, CAMPAIGN.screens.fallback, 'ui_popup_bg'].find((n) => n && hasSprite(n));
+        if (popBg) {
+          drawSprite({ sprite: popBg, pos: vec2(0, 0), width: W, height: H, opacity: ap });
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.26 * ap });
         } else {
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 15, 9), opacity: 0.54 * ap });
@@ -3551,8 +3997,9 @@
         const bw = 560, bh = 250, top = cy - bh / 2, L = cx - bw / 2;
 
         // FOND : illustration plein ecran (ui_popup_bg) si embarquee, sinon voile.
-        if (hasSprite(CAMPAIGN.screens.popup || 'ui_popup_bg')) {
-          drawSprite({ sprite: CAMPAIGN.screens.popup || 'ui_popup_bg', pos: vec2(0, 0), width: W, height: H, opacity: ap });
+        const popBg = [CAMPAIGN.screens.popup, CAMPAIGN.screens.fallback, 'ui_popup_bg'].find((n) => n && hasSprite(n));
+        if (popBg) {
+          drawSprite({ sprite: popBg, pos: vec2(0, 0), width: W, height: H, opacity: ap });
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.28 * ap });
         } else {
           drawRect({ pos: vec2(0, 0), width: W, height: H, color: rgb(24, 9, 7), opacity: 0.6 * ap });
@@ -3602,8 +4049,10 @@
     const onKeysRelease = (arr, cb) => arr.forEach((k) => onKeyRelease(k, cb));
     onPlayKey(C.controls.jump, () => {
       const p = PLAYER;
+      if (p.netT > 0) { p.netT -= 0.24; p._netShake = 0.12; return; }   // FILET : marteler SAUT pour se liberer
       const eq = p.equipped && C.equipment && C.equipment[p.equipped];
-      const jf = C.player.jumpForce * ((eq && eq.jumpMul) || 1);   // rollers/velo : saute plus haut
+      const inMud = (p.mudT || 0) > 0 && p.isGrounded();
+      const jf = C.player.jumpForce * ((eq && eq.jumpMul) || 1) * (inMud ? ((C.mud && C.mud.jumpMul) || 0.62) : 1);   // rollers/velo : saute plus haut ; BOUE : saut englue
       // v2 DROP-THROUGH : BAS+SAUT debout sur un PANNEAU ('-'/'x') -> on DESCEND
       //  a travers (le one-way d'addPanel ignore Laura tant que _dropT > 0). Ne
       //  consomme AUCUN saut. Tactile : double-tap ▼ synthetise ce combo (mobile.js).
@@ -3645,7 +4094,7 @@
     onPlayKey(C.controls.dash, () => {
       const p = PLAYER; if (!p || !p.exists()) return;
       const d = C.player.dash; if (!d) return;
-      if (p.dashT > 0 || (p.dashCd || 0) > 0 || p.knockT > 0) return;
+      if (p.dashT > 0 || (p.dashCd || 0) > 0 || p.knockT > 0 || p.netT > 0) return;
       p.dashT = d.duration || 0.16;
       p.dashVx = (p.facing || 1) * (d.speed || 540);
       p.dashCd = d.cooldown || 0.5;
@@ -3692,7 +4141,7 @@
         PLAYER.power = (C.arsenal && C.arsenal.power.max) || 3;   // ARSENAL au max
         PLAYER.rate = (C.arsenal && C.arsenal.rate.max) || 3;
         PLAYER.powerFlash = 0.8; PLAYER.rateFlash = 0.8;
-        PLAYER.catCharges = hasCat() ? C.cat.maxCharges : 0; flashMsg('PLEIN !');
+        PLAYER.catCharges = hasAlly() ? C.cat.maxCharges : 0; flashMsg('PLEIN !');
       });
     }
 
@@ -3715,15 +4164,31 @@
     //  (min 1) ET coup NON-lourd -> le bouclier-soleil l'encaisse a nouveau. Le
     //  jury lui-meme (pas guest) garde son contact plein.
     PLAYER.onCollideUpdate('boss', (b) => {
-      if (b.intangible) return;
+      if (b.intangible || b.harmless) return;     // harmless : boss sonne / en panne (boss Marcos) -> on peut aller au contact
       const base = b.def ? b.def.touchDamage : 2;
       const dmg = b.guest ? Math.max(1, Math.floor(base / 2)) : base;     // invite : moitie moins, min 1
       const heavy = b.guest ? false : (C.sun.bossTouchPierces !== false); // invite : non-lourd -> le bouclier encaisse
       damagePlayer(dmg, b.pos.x, heavy);
     });
-    PLAYER.onCollide('ehot', (h) => { damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h); });
+    PLAYER.onCollide('ehot', (h) => {
+      if (h.net) { netPlayer(h.netTime); if (h.exists()) destroy(h); return; }   // FILET de Garuda : immobilise, ne blesse pas
+      damagePlayer(h.dmg || 1, h.pos.x); if (h.exists()) destroy(h);
+    });
     PLAYER.onCollide('hazard', (h) => damagePlayer((C.hazards && C.hazards.touchDamage) || 1, h.pos.x));   // sol piege : degat au contact (gate par invuln ; dash = i-frames)
     PLAYER.onCollide('pickup', (it) => collectPickup(it));
+    // BOUE : tant que Laura/Marcos la touche, mudT reste arme (cf. vitesse/saut).
+    //  Eclaboussures quand on patauge.
+    PLAYER.onCollideUpdate('mud', () => {
+      const p = PLAYER;
+      if (!(p.mudT > 0)) { flashOnce(p, 'mudHint', 'LA BOUE COLLE !  SAUTE OU DASHE'); }
+      p.mudT = 0.1;
+      p._mudFx = (p._mudFx || 0) - dt();
+      if (p._mudFx <= 0 && p.isGrounded()) {
+        p._mudFx = 0.12;
+        add([circle(rand(2.5, 4.5)), color(92, 64, 38), opacity(1), pos(p.pos.x + rand(-10, 10), p.pos.y - 2), anchor('center'),
+          move(vec2(rand(-0.6, 0.6), -1), rand(60, 120)), lifespan(0.3, { fade: 0.2 }), z(46), 'fx']);
+      }
+    });
     PLAYER.onCollide('sun', () => tryReachSun());
 
     onUpdate('enemy', enemyBehavior);
@@ -3825,7 +4290,9 @@
       p.levelTime = (p.levelTime || 0) + dt();   // chrono du niveau (fige quand le jeu est en pause)
       let moving = false;
       const eqv = p.equipped && C.equipment && C.equipment[p.equipped];
-      const spd = C.player.speed * ((eqv && eqv.speedMul) || 1);   // rollers = plus rapide
+      if (p.mudT > 0) p.mudT -= dt();
+      const mudded = p.mudT > 0 && p.isGrounded();
+      const spd = C.player.speed * ((eqv && eqv.speedMul) || 1) * (mudded ? ((C.mud && C.mud.speedMul) || 0.4) : 1);   // rollers = plus rapide ; BOUE = englue
       const crouching = p.isGrounded() && keysDown(C.controls.crouch);   // accroupi (au sol ; BAS = SEUL usage)
       // CHAT : il part en aller-retour tout seul ; Laura n'est PLUS figee, elle
       //  continue de bouger / tirer / sauter pendant ce temps (cf. calque d'action).
@@ -3856,6 +4323,7 @@
         if (p.dashT <= 0 && p.vel) p.vel = vec2(0, p.vel.y);
       }
       else if (p.knockT > 0) { p.knockT -= dt(); p.move(p.knockX, 0); }  // recul : pas de controle
+      else if (p.netT > 0) { p.netT -= dt(); }                            // FILET : immobilise (marteler SAUT)
       else if (!crouching) {
         if (keysDown(C.controls.left)) { p.move(-spd, 0); p.facing = -1; moving = true; }
         if (keysDown(C.controls.right)) { p.move(spd, 0); p.facing = 1; moving = true; }
@@ -3874,13 +4342,13 @@
       }
 
       // CHAT INSTANTANE : deploiement a la PRESSION de C (verrou anti-repetition).
-      const canCat = hasCat() && p.catCharges > 0 && !catOut();
+      const canCat = hasAlly() && p.catCharges > 0 && !catOut();
       if (canCat && keysDown(C.controls.cat) && !p.catLock) { deployCat(); p.catLock = true; }
       if (!keysDown(C.controls.cat)) p.catLock = false;
 
       // RECHARGE AUTO DU CHAT : une charge revient seule toutes les cat.regenTime s
       //  (jamais bloquee a 0). Les croquettes ('k') donnent EN PLUS un +1 instantane.
-      if (hasCat() && (C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
+      if (hasAlly() && (C.cat.regenTime || 0) > 0 && p.catCharges < C.cat.maxCharges) {
         p.catRegenT = (p.catRegenT || 0) + dt();
         if (p.catRegenT >= C.cat.regenTime) { p.catRegenT -= C.cat.regenTime; p.catCharges = Math.min(C.cat.maxCharges, p.catCharges + 1); sfx('pickup'); }
       } else p.catRegenT = 0;
@@ -3914,9 +4382,12 @@
         actAmmoSpr = (ts && hasSprite(ts)) ? ts : 'hero_throw';
       }
       let actBody = null, actOvSpr = null;          // sprite plein-corps | calque bras superpose
-      const actClip = actWord === 'cat' ? 'cat' : 'throw';
+      // POWER CHORD (Marcos) : frames 'chord' de la feuille guitare si elle les a.
+      if (p.chordPose > 0) p.chordPose -= dt();
+      const actClip = actWord === 'cat' ? 'cat'
+        : ((p.chordPose > 0 && animHasClip(characterSprite('hero_throw'), 'chord')) ? 'chord' : 'throw');
       if (actWord === 'cat') {
-        actBody = 'hero_cat_out';                   // pose plein-corps "lance le chat"
+        actBody = characterSprite('hero_cat_out') ? 'hero_cat_out' : null;   // perso sans pose chat (Marcos) -> rien                   // pose plein-corps "lance le chat"
       } else if (actWord === 'throw') {
         // BRAS DE LANCER PAR LOCOMOTION : run/bike/roll/duck ont un calque bras dedie
         //  (hero_<loco>_throw, ~3 frames transparentes) pose PAR-DESSUS la locomotion qui
@@ -4050,7 +4521,10 @@
     NIGHT: [40, 30, 54],    // bleu nuit (cartouche)
   };
   // fond peint plein ecran (ou aplat de secours si le PNG manque)
-  function uiBg(name, fb) {
+  function uiBg(name0, fb) {
+    // name0 peut etre une LISTE (1er sprite embarque gagne) : ecrans dedies d'une
+    //  aventure + repli tant que l'art n'est pas embarque (campagne Marcos).
+    const name = Array.isArray(name0) ? (name0.find((n) => n && hasSprite(n)) || name0[0]) : name0;
     return hasSprite(name)
       ? add([sprite(name, { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)])
       : add([rect(C.width, C.height), pos(0, 0), anchor('topleft'), color(fb[0], fb[1], fb[2]), z(-10)]);
@@ -4289,7 +4763,7 @@
   scene('introduction', () => {
     playMusic(C.music.chapter);
     setCam(C.width / 2, C.height / 2); setCamAngle(0);
-    uiBg(CHARACTER.preview, [91, 183, 231]);
+    uiBg([CHARACTER.preview, CHARACTER.previewFallback], [91, 183, 231]);
     uiScrim(0, C.height, UI.NIGHT, 0.3);
     uiText(CHARACTER.name.toUpperCase(), 480, 68, 40, UI.GOLD, { shadow: true });
     uiText(CAMPAIGN.title, 480, 114, 23, UI.CREAM);
@@ -4469,7 +4943,8 @@
     };
 
     // --- fond de carte (vue de dessus) ---------------------------------
-    if (hasSprite(C.world.background)) add([sprite(C.world.background, { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
+    const worldBg = [C.world.background, C.world.fallbackBackground].find((n) => n && hasSprite(n));   // carte dediee, sinon repli
+    if (worldBg) add([sprite(worldBg, { width: C.width, height: C.height }), pos(0, 0), anchor('topleft'), z(-10)]);
     else add([rect(C.width, C.height), pos(0, 0), color(143, 208, 240), z(-10)]);
     // cadre facon vieille carte (dessine en outline-only, au-dessus de tout)
     add([pos(0, 0), z(7), {
@@ -4611,7 +5086,7 @@
     const gotPubli = SAVEAPI.progress(SAVE, C.levels[idx]).publi;
     const done = SAVE ? chapterKeys().filter((key) => SAVEAPI.progress(SAVE, key).done).length : (idx + 1);
 
-    uiBg(CAMPAIGN.screens.chapter, [34, 28, 46]);
+    uiBg([CAMPAIGN.screens.chapter, CAMPAIGN.screens.fallback], [34, 28, 46]);
     uiScrim(0, 150, [20, 14, 30], 0.34);                 // voile haut -> titre lisible
     uiConfetti([UI.GOLD, UI.CREAM, [255, 226, 120]], 0.2, // fine poussiere doree qui monte
       { dir: 270, y: C.height + 10, vmin: 22, vmax: 52, min: 3, max: 6, life: 4.2 });
@@ -4636,7 +5111,7 @@
         { v: meds.d, name: (C.story.medals || [])[1] || 'DATA',   info: (data.pct != null ? data.pct : 0) + '%  (or 100%)' },
         { v: meds.s, name: (C.story.medals || [])[2] || 'SAUVES', info: (data.savedPct != null ? data.savedPct : 0) + '%  (or 100%)' },
       ];
-      if (!hasCat()) rows.pop();
+      if (!hasAlly()) rows.pop();
       rows.forEach((m, i) => {
         const mx = C.width / 2 + (i - (rows.length - 1) / 2) * 196, my = 174;
         const sprName = m.v >= 3 ? 'medal_or' : (m.v === 2 ? 'medal_argent' : (m.v === 1 ? 'medal_bronze' : 'medal_lock'));
@@ -4671,7 +5146,7 @@
     const comp = SAVE ? SAVEAPI.completion(SAVE) : 0;
     const best = SAVE ? SAVE.bestScore : (data ? data.score : 0);
 
-    uiBg(CAMPAIGN.screens.win, [255, 206, 110]);
+    uiBg([CAMPAIGN.screens.win, CAMPAIGN.screens.fallback], [255, 206, 110]);
     if (CHARACTER.id !== 'laura') menuHero(CHARACTER, 480, 310, 1.4, 4);
     uiConfetti([UI.GOLD, UI.RED, UI.CREAM, [120, 200, 255], UI.GREEN], 0.05, {});  // pluie de confettis
 
@@ -4683,7 +5158,11 @@
     //  vers la gauche, MAX 10 a l'ecran. Au premier plan (z 2/3) MAIS sous
     //  les pastilles/texte (z>=4) -> score et consigne restent lisibles.
     const PARADE_MAX = 10, PARADE_DELAY = 3, PARADE_GAP = 1.0;
-    const pc = (C.theme && C.theme.passant) || {};
+    // pool de PNJ de la campagne (dernier niveau) : chez Marcos, Ade et Afif
+    //  (PNJ dedies) rejoignent le cortege ; Laura garde le pool par defaut.
+    const lastLv = LEVELS[C.levels[C.levels.length - 1]];
+    const pc = Object.assign({}, (C.theme && C.theme.passant) || {},
+      (lastLv && lastLv.theme && lastLv.theme.passant && lastLv.theme.passant.heads) ? { heads: lastLv.theme.passant.heads } : {});
     const CLAP_TINTS = [
       [255, 138, 120], [120, 190, 255], [150, 220, 150], [255, 214, 120],
       [210, 150, 235], [255, 180, 210], [140, 222, 232], [240, 232, 170],
@@ -4802,6 +5281,7 @@
     get player() { return PLAYER; }, get level() { return LEVEL; }, get save() { return SAVE; },
     get character() { return CHARACTER.id; }, get campaign() { return CAMPAIGN.id; },
     get abilities() { return CHARACTER.abilities || {}; },
+    get kit() { return CHARACTER.kit || null; },
     // debug : abat le i-eme passant a l'ecran (teste le cadavre) ; sans arg, tous
     kill: (i) => { const l = get('passant'); (i == null ? l : [l[i]]).forEach((e) => e && e.exists() && hitEnemy(e, { dmg: 99 })); },
     // debug : bulle BD immediate sur le i-eme passant (0 par defaut) ; phrase du

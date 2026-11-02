@@ -5,12 +5,14 @@ Applique l'orientation EXIF (photos de tel), recadre en carre avec un leger
 biais vers le HAUT (le visage est en general dans le tiers superieur d'un
 portrait), upscale a 768x768. Sortie : _headgen/src/<name>.png
 
-Usage : python3 _headgen/prep.py "<src_photo>" <out_name>
+Usage : python3 _headgen/prep.py "<src_photo>" <out_name> [x0,y0,x1,y1]
+        (box optionnelle = recadrage manuel en px de la photo, si le visage
+         est petit/excentre et que le crop auto rate)
 """
 import sys, os
 from PIL import Image, ImageOps
 
-ROOT = '/home/delete/laura_quest'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
 SRC = ROOT + '/_headgen/src'
 
 
@@ -26,10 +28,10 @@ def crop_square(im, top_bias=0.12):
     return im.crop((x, y, x + s, y + s))
 
 
-def run(src, name):
+def run(src, name, box=None):
     im = Image.open(src)
     im = ImageOps.exif_transpose(im).convert('RGB')
-    im = crop_square(im)
+    im = im.crop(box) if box else crop_square(im)
     im = im.resize((768, 768), Image.LANCZOS)
     os.makedirs(SRC, exist_ok=True)
     out = '%s/%s.png' % (SRC, name)
@@ -39,4 +41,5 @@ def run(src, name):
 
 
 if __name__ == '__main__':
-    run(sys.argv[1], sys.argv[2])
+    box = tuple(int(v) for v in sys.argv[3].split(',')) if len(sys.argv) > 3 else None
+    run(sys.argv[1], sys.argv[2], box)

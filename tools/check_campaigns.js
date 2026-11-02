@@ -49,25 +49,29 @@ for (let i = 0; i < 3; i++) {
   assert.equal(api.load(i, 'marcos').bestScore, i + 200);
 }
 let marcos = api.load(0, 'marcos');
-marcos.progress.marcos_bateau = { done: true, publi: true, dataPct: 100, bestTime: 45,
-  medals: { t: 3, d: 3, s: 3 }, savedPct: 100, feli: true };
+const MARCOS_LEVELS = ['marcos_rizieres', 'marcos_village', 'marcos_parcelle'];
+assert.equal(w.LQ_CAMPAIGNS.marcos_these.levels.join(','), MARCOS_LEVELS.join(',')); // tableaux d'un autre realm (vm) : comparaison par valeur
+for (const key of MARCOS_LEVELS) {
+  marcos.progress[key] = { done: true, publi: true, dataPct: 100, bestTime: 45,
+    medals: { t: 3, d: 3, s: 3 }, savedPct: 100, feli: true };
+}
 api.save(0, marcos);
 assert.equal(api.completion(marcos), 100);
 assert.equal(api.finished(marcos), true);
 // Insertion / reordonnancement / retrait temporaire : jamais de decalage des records.
-const a = w.LQ_CAMPAIGNS.marcos_port;
+const a = w.LQ_CAMPAIGNS.marcos_these;
 a.levels.push('marcos_suite');
 marcos = api.load(0, 'marcos');
 assert.equal(api.isUnlocked(marcos, 'marcos_suite'), true);
 assert.equal(api.finished(marcos), false);
-assert.equal(api.completion(marcos), 50);
+assert.equal(api.completion(marcos), 75);
 api.save(0, marcos);
 a.levels.reverse();
-assert.equal(api.load(0, 'marcos').progress.marcos_bateau.bestTime, 45);
+assert.equal(api.load(0, 'marcos').progress.marcos_rizieres.bestTime, 45);
 a.levels = ['marcos_suite'];
 api.save(0, api.load(0, 'marcos'));
-a.levels.push('marcos_bateau');
-assert.equal(api.load(0, 'marcos').progress.marcos_bateau.medals.s, 3);
+a.levels.push('marcos_rizieres');
+assert.equal(api.load(0, 'marcos').progress.marcos_rizieres.medals.s, 3);
 api.erase(0, 'marcos');
 assert.equal(api.load(0, 'marcos'), null);
 assert.equal(api.load(0, 'laura').bestScore, 100);
@@ -96,8 +100,12 @@ for (const ch of Object.values(w.LQ_CHARACTERS)) {
   if (ch.rig) for (const name of [ch.rig.body, ch.rig.head, ch.rig.deadBody, ch.rig.deadHead]) {
     assert.ok(fs.existsSync(path.join(root, 'assets/sprites', name + '.png')), name);
   }
-  for (const name of Object.values(ch.sprites || {}).filter(Boolean)) {
-    assert.ok(fs.existsSync(path.join(root, 'assets/sprites', name + '.png')), name);
+  for (const [hero, name0] of Object.entries(ch.sprites || {}).filter(([, n]) => n)) {
+    // feuille dediee pas encore produite -> son repli (spriteFallback) doit exister
+    const fb = ch.spriteFallback && ch.spriteFallback[hero];
+    const has = (n) => fs.existsSync(path.join(root, 'assets/sprites', n + '.png'));
+    const name = (!has(name0) && fb) ? fb : name0;
+    assert.ok(has(name), name);
     assert.ok(w.CONFIG.anims[name], name + ': animation manquante');
   }
 }

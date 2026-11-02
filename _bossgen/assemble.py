@@ -16,7 +16,7 @@ from PIL import Image, ImageEnhance
 SHEET_W, SHEET_H, N = 992, 280, 4
 FW = SHEET_W // N            # 248
 BASELINE = 262               # feet y within a cell (anchor 'bot')
-ROOT = '/home/delete/laura_quest'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace(os.sep, '/')  # racine du repo (portable)
 SPR = os.path.join(ROOT, 'assets', 'sprites')
 CUT = os.path.join(ROOT, '_bossgen', 'cut')
 FINAL = os.path.join(ROOT, '_bossgen', 'final')

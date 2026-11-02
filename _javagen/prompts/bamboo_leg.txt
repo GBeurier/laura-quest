@@ -1,0 +1,15 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. Generate exactly ONE image (ONE image_gen call).
+
+STYLE: retro 16-bit SNES pixel art matching a cute cartoon run-and-gun platformer. Crisp visible square pixels, bold dark outlines, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photo-realism.
+
+BACKGROUND: fill the ENTIRE image around the object with ONE perfectly FLAT solid #ff00ff magenta. NO shadow, NO contact shadow, NO floor line, NO gradient, NO text, NO labels, NO watermark. NEVER use magenta or pink on the object.
+
+The ATTACHED image is the bamboo shade-net frame this pole supports: use EXACTLY the same bamboo colors (warm orange-tan / golden-yellow bamboo, brown node rings, dark outline) and the same pixel-art style.
+
+SUBJECT: ONE single straight VERTICAL BAMBOO POLE (a structural leg of that shade structure), standing perfectly vertical and centered, spanning almost the FULL HEIGHT of the image (top and bottom cut flat). Warm golden-tan bamboo matching the attached frame (NOT lime green), a bright highlight stripe on the left side and a darker shadow stripe on the right side, thick dark outline, only 2 or 3 subtle node rings far apart. The pole is about 1/8 of the image width. Plain and clean, no leaves, no rope, no ground.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  D:/workspace/laura-quest/_javagen/raw/bamboo_leg.png
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images. Use only the generated_images subdirectory for YOUR OWN Codex session id, or otherwise verify the file was produced by your own image_gen call. If you cannot identify it unambiguously, print FAIL_UNSAFE_COPY instead.
+Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  RAW: D:/workspace/laura-quest/_javagen/raw/bamboo_leg.png (<W>x<H>)

@@ -876,5 +876,387 @@ window.BOSS_AI = (() => {
     clampHome(b);
   };
 
+  /* =====================================================================
+   *  CAMPAGNE MARCOS (Java) — 3 boss. Helpers communs : arcTo (projectile en
+   *  cloche qui ATTERRIT sur une cible en T s), api.arc / api.mud / api.net
+   *  (cf. game.js BOSS_API). Toutes les APIs Marcos sont gardees (api.arc && ...)
+   *  pour ne jamais crasher sur un game.js plus ancien.
+   * ===================================================================== */
+  function arcTo(api, x, y, tx, ty, T, spr, o) {
+    if (!api.arc) return null;
+    const g = (o && o.g != null) ? o.g : 1100;
+    const vx = (tx - x) / T;
+    const vy = (ty - y - 0.5 * g * T * T) / T;
+    return api.arc(x, y, vx, vy, spr, Object.assign({ g: g }, o || {}));
+  }
+  // eventail d'epines depuis un point d'impact (durian qui eclate) : demi-cercle vers le HAUT
+  function spineBurst(b, api, at, n) {
+    const spr = b.def.spine || b.def.shot;
+    const k = Math.max(2, n || 4);
+    for (let i = 0; i < k; i++) {
+      const a = Math.PI + (i / (k - 1)) * Math.PI;
+      api.bullet(at.x, at.y - 8, { pos: vec2(at.x + Math.cos(a) * 100, at.y - 8 + Math.sin(a) * 100) }, (b.def.shotSpeed || 280) * 0.8, 'boss', spr);
+    }
+  }
+  // JUICE des boss Marcos (appele en FIN d'IA) : squash/stretch (b._sq : >0 etire,
+  //  <0 ecrase, amorti tout seul), inclinaison lissee vers b.tilt (degres, remis a 0
+  //  chaque frame -> l'IA le repose tant qu'elle le veut). rotate() ajoute a la volee.
+  function juice(b) {
+    if (!b._bs) b._bs = b.scale ? vec2(b.scale.x, b.scale.y) : vec2(1, 1);
+    if (!b._rotOk) { try { b.use(rotate(0)); } catch (e) {} b._rotOk = true; }
+    b._sq = (b._sq || 0) * Math.pow(0.0004, dt());
+    b.scale = vec2(b._bs.x * (1 - b._sq * 0.55), b._bs.y * (1 + b._sq));
+    b._ang = (b._ang || 0) + ((b.tilt || 0) - (b._ang || 0)) * Math.min(1, 12 * dt());
+    b.angle = b._ang;
+    b.tilt = 0;
+  }
+  // OMBRE au sol d'un boss volant (Garuda) : ellipse qui retrecit avec l'altitude.
+  function flyShadow(b, gY) {
+    if (!b._shadow) {
+      b._shadow = add([circle(34), pos(b.pos.x, gY), anchor('center'), color(20, 30, 20), opacity(0.28), scale(1, 0.26), z(-0.45)]);
+      b.onDestroy(() => { if (b._shadow && b._shadow.exists()) destroy(b._shadow); });
+    }
+    const alt = Math.max(0, gY - b.pos.y), k = Math.max(0.35, 1 - alt / (TS * 6));
+    b._shadow.pos = vec2(b.pos.x, gY - 2);
+    b._shadow.scale = vec2(k, 0.26 * k);
+    b._shadow.opacity = 0.12 + 0.2 * k;
+  }
+
+  // borne un X dans l'arene du boss (marge pad px aux bords)
+  function arenaX(b, x, pad) {
+    const r = (b.range || 360) - (pad == null ? TS * 1.2 : pad);
+    return Math.max(b.homeX - r, Math.min(b.homeX + r, x));
+  }
+
+  /* ---------------------------------------------------------------------
+   *  RAJA TIKUS, le roi des rats (marcos_rizieres) — IA 'tikus'.
+   *  scurry -> burrow -> under -> warn -> erupt -> dazed (PUNITION) [-> squeak 1/2].
+   *  Sous terre il est INTANGIBLE et INVISIBLE : seule une bosse de boue qui
+   *  file vers Marcos le trahit. Il JAILLIT apres un marqueur (eruptWarn) en
+   *  crachant des mottes de boue, puis reste SONNE. P2 : deux plongees
+   *  enchainees et chaque jaillissement laisse des flaques de boue temporaires.
+   * --------------------------------------------------------------------- */
+  AI.tikus = function (b, p, api) {
+    if (b.ks === undefined) { b.ks = 'scurry'; b.kt = 0; b.cyc = 0; b.dives = 0; b.fx = 0; b.shot = false; }
+    if (b.p2Just) p2Tell(b, api);
+    b.kt += dt();
+    const D = b.def;
+    const groundY = b._restY != null ? b._restY : b.pos.y;
+    const setHidden = (h) => { b.intangible = h; b.hidden = h; };
+
+    if (b.ks === 'scurry') {
+      faceOnly(b, p);
+      setHidden(false);
+      // s'approche mais garde une distance (keepGap) : il menace, il ne colle pas.
+      //  kt < 0 = recuperation apres la phase sonnee (il se secoue sur place).
+      if (b.kt >= 0 && Math.abs(p.pos.x - b.pos.x) > TS * (D.keepGap || 0)) moveClamp(b, p, D.speed || 190);
+      // coup de queue de proximite : pose d'attaque (le contact fait mal)
+      b.animWant = (Math.abs(p.pos.x - b.pos.x) < TS * ((D.keepGap || 1.5) + 0.4)) ? 'whip' : 'idle';
+      if (b.kt > (D.scurryTime || 2.2)) { b.ks = 'burrow'; b.kt = 0; b.dives = b.p2 ? 2 : 1; }
+    } else if (b.ks === 'burrow') {
+      // TELEGRAPHE : creuse (pose attaque + gerbes de boue) puis disparait
+      b.animWant = 'attack';
+      faceOnly(b, p);
+      b.fx += dt();
+      if (b.fx > 0.08) { b.fx = 0; api.poof(b.pos.x + rand(-20, 20), groundY - 4); }
+      b.animWant = 'burrow';
+      if (b.kt > 0.5) { b.intangible = true; b.ks = 'under'; b.kt = 0; }
+    } else if (b.ks === 'under') {
+      // INTANGIBLE : il file SOUS la boue, on ne voit que sa bosse de terre et sa couronne
+      b.animWant = 'under';
+      b.tilt = Math.sin(b.kt * 18) * 4;
+      moveDirClamp(b, Math.sign(p.pos.x - b.pos.x) || 1, (D.speed || 190) * 1.25);
+      b.fx += dt();
+      if (b.fx > 0.07) { b.fx = 0; api.poof(b.pos.x + rand(-8, 8), groundY - 2); }
+      if (b.kt > (D.burrowTime || 1.5) || Math.abs(p.pos.x - b.pos.x) < TS * 0.5) {
+        b.ex = arenaX(b, b.pos.x, TS * 0.6);      // jaillit LA OU EST LA BOSSE (lisible : on s'en ecarte)
+        if (api.marker) api.marker(b.ex, groundY, D.eruptWarn || 0.75);
+        b.ks = 'warn'; b.kt = 0;
+      }
+    } else if (b.ks === 'warn') {
+      // le marqueur au sol = la ou il va JAILLIR : il faut s'en ecarter (la bosse tremble)
+      b.animWant = 'under';
+      b.pos.x = b.ex + Math.sin(b.kt * 70) * 3;
+      b.fx += dt();
+      if (b.fx > 0.1) { b.fx = 0; api.poof(b.ex + rand(-14, 14), groundY - 2); }
+      if (b.kt > (D.eruptWarn || 0.75)) {
+        b.pos.x = b.ex; setHidden(false);
+        b.animWant = 'erupt'; b._sq = 0.38;
+        if (b.jump) { try { b.jump(520); } catch (e) {} }
+        for (let i = 0; i < 6; i++) api.poof(b.ex + rand(-30, 30), groundY - rand(0, 30));
+        // mottes de boue en eventail ; P2 : chaque motte laisse une flaque temporaire
+        const n = (b.p2 && D.p2ClodN) ? D.p2ClodN : (D.clodN || 5);
+        for (let i = 0; i < n; i++) {
+          const tx = b.ex + (i - (n - 1) / 2) * TS * 1.5;
+          arcTo(api, b.ex, groundY - TS, tx, groundY - 4, 0.75, D.shot, {
+            col: [96, 66, 40], r: 9,
+            onLand: (b.p2 && api.mud) ? ((at) => api.mud(at.x, at.y - 6, D.mudDur || 5, 1)) : null,
+          });
+        }
+        if (api.mud && b.p2) api.mud(b.ex, groundY - 6, D.mudDur || 5, 2);
+        b.ks = 'erupt'; b.kt = 0; b.dives--;
+      }
+    } else if (b.ks === 'erupt') {
+      b.animWant = 'erupt';
+      if (b.kt > 0.45) {
+        if (b.dives > 0) { b.ks = 'burrow'; b.kt = 0.2; }     // P2 : replonge aussitot
+        else { b.ks = 'dazed'; b.kt = 0; }
+      }
+    } else if (b.ks === 'dazed') {
+      // SONNE (etoiles au-dessus de la tete) : FENETRE DE PUNITION
+      b.animWant = 'hurt';
+      b.tilt = Math.sin(b.kt * 5) * 7;
+      b.guard = 1;
+      b.fx += dt();
+      if (b.fx > 0.3) { b.fx = 0; api.poof(b.pos.x + rand(-16, 16), b.pos.y - TS * 2.2); }
+      if (b.kt > (b.p2 ? (D.p2DazedTime || 1.4) : (D.dazedTime || 1.9))) {
+        b.cyc++;
+        b.ks = (b.cyc % (D.squeakEvery || 2) === 0) ? 'squeak' : 'scurry'; b.kt = (b.ks === 'scurry') ? -0.6 : 0; b.shot = false;
+      }
+    } else {
+      // SQUEAK : appelle ses rats (ils debarquent des bords de l'arene)
+      faceOnly(b, p);
+      b.animWant = 'erupt';
+      if (b.kt < 0.05) b._sq = 0.2;
+      if (!b.shot && b.kt > 0.35) {
+        b.shot = true;
+        const n = b.p2 ? (D.p2RatN || 3) : (D.ratN || 2);
+        for (let i = 0; i < n; i++) {
+          const side = (i % 2 === 0) ? -1 : 1;
+          const x = arenaX(b, b.homeX + side * (b.range || 400), TS * 1.5);
+          api.poof(x, groundY - TS * 0.4);
+          api.add('rat', x, groundY);
+        }
+      }
+      if (b.kt > 0.8) { b.ks = 'scurry'; b.kt = 0; }
+    }
+    if (!b.intangible) p2Pose(b);
+    b.harmless = (b.ks === 'dazed');                 // sonne : on peut venir taper au contact sans se blesser
+    if (b.ks === 'scurry' && b.animWant === 'idle') b.tilt = Math.sin(b.kt * 16) * 3;   // trottine
+    clampHome(b);
+    juice(b);
+  };
+
+  /* ---------------------------------------------------------------------
+   *  PAK DURIAN, le vendeur a scooter (marcos_village) — IA 'scooter'.
+   *  honk (klaxon, telegraphe) -> charge (traverse l'arene, seme des durians-
+   *  mines) [P2 : rewind + charge retour] -> lob (durians en cloche qui
+   *  eclatent en epines) -> panne (fumee : PUNITION). P2 : pluie de durians
+   *  pendant le klaxon.
+   * --------------------------------------------------------------------- */
+  AI.scooter = function (b, p, api) {
+    if (b.ss === undefined) { b.ss = 'honk'; b.st = 0; b.dir = -1; b.mineT = 0; b.returned = false; b.shot = false; b.fx = 0; b.mines = []; }
+    if (b.p2Just) p2Tell(b, api);
+    b.st += dt();
+    const D = b.def;
+    const groundY = b._restY != null ? b._restY : b.pos.y;
+    b.mines = b.mines.filter((m) => m && m.exists && m.exists());
+
+    if (b.ss === 'honk') {
+      faceOnly(b, p);
+      b.animWant = 'honk';
+      b._sq = Math.sin(b.st * 40) * 0.035;
+      if (!b.shot) {
+        b.shot = true;
+        const towardP = Math.sign(p.pos.x - b.pos.x) || -1;
+        const towardHome = Math.sign(b.homeX - b.pos.x) || -1;
+        b.dir = (Math.abs(b.pos.x - b.homeX) > b.range * 0.6) ? towardHome : towardP;
+        if (api.sfx) api.sfx('boss');
+        // P2 : pluie de durians (bombes ombrees) autour de Marcos
+        if (b.p2 && inArena(b, p, api) && api.dropBomb) {
+          const n = D.rainN || 4;
+          for (let i = 0; i < n; i++) api.dropBomb(arenaX(b, p.pos.x + (i - (n - 1) / 2) * TS * 2.2, TS), p.pos.y, 0.9 + i * 0.18, D.bomb || D.shot);
+        }
+      }
+      // phare qui clignote devant le scooter = "il va charger"
+      b.fx += dt();
+      if (b.fx > 0.12) { b.fx = 0; api.poof(b.pos.x + b.dir * TS * 1.1, b.pos.y - TS * 0.7); }
+      if (b.st > (D.honkTime || 0.8)) { b.ss = 'charge'; b.st = 0; b.mineT = 0; b.returned = false; }
+    } else if (b.ss === 'charge') {
+      b.flipX = b.dir > 0; b.facing = b.dir;
+      b.animWant = 'charge';
+      b.tilt = -b.dir * (7 + Math.sin(b.st * 22) * 2);          // roue arriere qui sautille
+      const edge = moveDirClamp(b, b.dir, D.chargeSpeed || 520);
+      b.mineT += dt();
+      if (b.mineT >= (D.mineEvery || 0.32) && b.mines.length < 7) {
+        b.mineT = 0;
+        const m = api.add('durian', b.pos.x - b.dir * TS * 0.6, groundY);   // durian-mine semee derriere lui
+        if (m) {
+          b.mines.push(m);
+          wait(D.mineLife || 4.5, () => { if (m.exists()) { api.poof(m.pos.x, m.pos.y - 10); destroy(m); } });
+        }
+      }
+      b.fx += dt();
+      if (b.fx > 0.08) { b.fx = 0; api.poof(b.pos.x - b.dir * TS, b.pos.y - 6); }
+      if (edge) {
+        if (b.p2 && !b.returned) { b.ss = 'rewind'; b.st = 0; }
+        else { b.ss = 'lob'; b.st = 0; b.shot = false; }
+      }
+    } else if (b.ss === 'rewind') {
+      b.animWant = 'settle';
+      b.tilt = b.dir * 6;                                       // derapage avant le demi-tour
+      if (b.st < 0.05) api.poof(b.pos.x, b.pos.y - TS);
+      if (b.st > 0.4) { b.dir = -b.dir; b.returned = true; b.ss = 'charge'; b.st = 0; }
+    } else if (b.ss === 'lob') {
+      faceOnly(b, p);
+      b.animWant = 'throw';
+      if (!b.shot && b.st > 0.3) {
+        b.shot = true; b._sq = 0.14;
+        const n = (b.p2 && D.p2LobN) ? D.p2LobN : (D.lobN || 3);
+        for (let i = 0; i < n; i++) {
+          const tx = arenaX(b, p.pos.x + (i - (n - 1) / 2) * TS * 1.8, TS * 0.5);
+          arcTo(api, b.pos.x, b.pos.y - TS * 1.4, tx, groundY - 6, 0.85 + i * 0.12, D.shot, {
+            col: [120, 160, 50], r: 12, spin: 200,
+            onLand: (at) => spineBurst(b, api, at, b.p2 ? 5 : 4),
+          });
+        }
+      }
+      if (b.st > (D.lobTime || 1.2)) { b.ss = 'panne'; b.st = 0; }
+    } else {
+      // PANNE : le scooter cale et fume -> FENETRE DE PUNITION
+      b.animWant = 'hurt';
+      b.tilt = Math.sin(b.st * 26) * 2.5;
+      b.guard = 1;
+      b.fx += dt();
+      if (b.fx > 0.22) { b.fx = 0; api.poof(b.pos.x - (b.facing || 1) * TS * 0.8, b.pos.y - TS * 0.8); }
+      if (b.st > (b.p2 ? (D.p2BreakTime || 1.5) : (D.breakTime || 2.0))) { b.ss = 'honk'; b.st = 0; b.shot = false; b._sq = 0.12; }
+    }
+    b.harmless = (b.ss === 'panne');                 // scooter en panne : contact sans danger
+    p2Pose(b);
+    clampHome(b);
+    juice(b);
+  };
+
+  /* ---------------------------------------------------------------------
+   *  GARUDA, l'homme-oiseau (marcos_parcelle, boss FINAL de Marcos) — IA 'garuda'.
+   *  Il VOLE (gravite coupee) : hover -> UNE attaque par cycle, en rotation :
+   *   flock : lache des piafs tete-chercheuse ;
+   *   net   : jette un FILET en cloche qui immobilise (marteler SAUT) ;
+   *   dive  : marque la cible au sol, PIQUE en coup de bec -> bec PLANTE dans
+   *           le sol = PUNITION (stuck), onde de choc des 2 cotes a l'impact.
+   *  P2 : plus haut, filet -> pique ENCHAINES, eventail de plumes, 2 piques.
+   * --------------------------------------------------------------------- */
+  const GARUDA_P1 = ['flock', 'net', 'dive'];
+  const GARUDA_P2 = ['feathers', 'net', 'flock', 'dive'];
+  AI.garuda = function (b, p, api) {
+    if (b.gs === undefined) {
+      b.gs = 'takeoff'; b.gt = 0; b.cyc = 0; b.shot = false; b.fx = 0; b.side = 1; b.divesLeft = 0;
+      b.gY = b._restY != null ? b._restY : b.pos.y;
+    }
+    if (b.p2Just) p2Tell(b, api);
+    b.gt += dt();
+    const D = b.def;
+    const gY = b.gY;
+    const alt = (b.p2 ? (D.p2HoverAlt || 3.0) : (D.hoverAlt || 2.4)) * TS;
+    const fly = () => { try { b.gravityScale = 0; } catch (e) {} if (b.vel) b.vel = vec2(0, 0); };
+    const glideTo = (tx, ty, k) => {
+      const r = (b.range || 400) - TS;
+      const cx = Math.max(b.homeX - r, Math.min(b.homeX + r, tx));
+      b.pos.x += (cx - b.pos.x) * Math.min(1, k * dt());
+      b.pos.y += (ty - b.pos.y) * Math.min(1, k * dt());
+    };
+    fly();
+
+    if (b.gs === 'takeoff') {
+      faceOnly(b, p); b.animWant = 'flap';
+      if (b.gt < 0.05) b._sq = -0.2;
+      glideTo(b.pos.x, gY - alt, 3);
+      if (b.gt < 0.05) { api.poof(b.pos.x - 20, gY - 4); api.poof(b.pos.x + 20, gY - 4); }
+      if (b.gt > 0.8) { b.gs = 'hover'; b.gt = 0; }
+    } else if (b.gs === 'hover') {
+      faceOnly(b, p); b.animWant = 'idle';
+      b.tilt = Math.sin(b.gt * 2.4) * 4;
+      // plane a cote de Marcos (cote alterne a chaque cycle), en ondulant
+      glideTo(p.pos.x + b.side * TS * 3, gY - alt + Math.sin(b.gt * 2.4) * 10, 2.2);
+      if (b.gt > (D.hoverTime || 1.6)) {
+        const rot = b.p2 ? GARUDA_P2 : GARUDA_P1;
+        b.gs = rot[b.cyc % rot.length]; b.cyc++; b.gt = 0; b.shot = false; b.side = -b.side;
+        if (b.gs === 'dive') b.divesLeft = b.p2 ? 2 : 1;
+      }
+    } else if (b.gs === 'flock') {
+      faceOnly(b, p); b.animWant = 'summon';
+      glideTo(b.pos.x, gY - alt, 2);
+      if (!b.shot && b.gt > 0.3) {
+        b.shot = true;
+        const n = D.piafN || 3;
+        for (let i = 0; i < n; i++) {
+          const x = b.pos.x + (i - (n - 1) / 2) * 30, y = b.pos.y - TS * 1.6 - i * 10;
+          api.poof(x, y);
+          api.add('piaf', x, y);
+        }
+      }
+      if (b.gt > 0.9) { b.gs = 'hover'; b.gt = 0; }
+    } else if (b.gs === 'net') {
+      faceOnly(b, p); b.animWant = 'net';
+      glideTo(b.pos.x, gY - alt, 2);
+      if (!b.shot && b.gt > 0.35) {
+        b.shot = true;
+        const ox = b.pos.x, oy = b.pos.y - TS * 1.2;
+        const nets = [p.pos.x];
+        if (b.p2) nets.push(p.pos.x + (p.facing || 1) * TS * 2.5);   // P2 : un 2e filet qui anticipe la fuite
+        nets.forEach((tx, i) => arcTo(api, ox, oy, tx, p.pos.y - TS * 0.6, 0.75 + i * 0.15, D.net, {
+          net: true, netTime: D.netTime || 1.6, dmg: 0, g: 900, spin: 70, col: [235, 225, 195], r: 14,
+        }));
+      }
+      if (b.gt > 0.8) {
+        // P2 : filet -> PIQUE enchaine (le vrai danger : se liberer a temps)
+        if (b.p2) { b.gs = 'dive'; b.divesLeft = 1; } else b.gs = 'hover';
+        b.gt = 0; b.shot = false;
+      }
+    } else if (b.gs === 'feathers') {
+      faceOnly(b, p); b.animWant = 'flap';
+      if (!b.shot && b.gt > 0.3) {
+        b.shot = true; b._sq = 0.18;
+        const n = D.featherN || 5;
+        for (let i = 0; i < n; i++) shoot(b, p, api, D.shotSpeed || 330, (i - (n - 1) / 2) * 0.17);
+      }
+      if (b.gt > 0.75) { b.gs = 'hover'; b.gt = 0; }
+    } else if (b.gs === 'dive') {
+      // TELEGRAPHE : s'eleve un peu, marque la cible au sol, se ramasse avant de piquer
+      faceOnly(b, p); b.animWant = 'flap';
+      b.tilt = -(b.facing || 1) * 10;
+      if (!b.shot) {
+        b.shot = true;
+        b.tx = Math.max(b.homeX - b.range + TS, Math.min(b.homeX + b.range - TS, p.pos.x));
+        if (api.marker) api.marker(b.tx, gY, D.diveWarn || 0.6);
+      }
+      glideTo(b.tx + (b.tx > b.pos.x ? -TS * 2 : TS * 2), gY - alt - TS * 0.6, 3);
+      if (b.gt > (D.diveWarn || 0.6)) { b.gs = 'diving'; b.gt = 0; }
+    } else if (b.gs === 'diving') {
+      b.animWant = 'dive';
+      b.tilt = (b.tx > b.pos.x ? 1 : -1) * 24;                 // pique bec en avant
+      const to = vec2(b.tx - b.pos.x, gY - b.pos.y);
+      const step = (D.diveSpeed || 720) * dt();
+      b.flipX = to.x > 0;
+      if (to.len() <= step || b.pos.y >= gY - 2 || b.gt > 1.2) {
+        b.pos.x = b.tx; b.pos.y = gY;
+        // BEC PLANTE : onde de choc des 2 cotes (sauter !) + poussiere
+        for (let i = 0; i < 5; i++) api.poof(b.pos.x + rand(-30, 30), gY - rand(0, 16));
+        if (api.quake) { api.quake(b.pos.x, 1, 200); api.quake(b.pos.x, -1, 200); }
+        b._sq = -0.3;
+        b.divesLeft--;
+        b.gs = 'stuck'; b.gt = 0;
+      } else b.pos = b.pos.add(to.unit().scale(step));
+    } else if (b.gs === 'stuck') {
+      // BEC COINCE dans le sol : FENETRE DE PUNITION. P2 : 2e pique s'il en reste
+      b.pos.y = gY;
+      b.animWant = 'hurt';
+      b.tilt = Math.sin(b.gt * 30) * 3;                         // se debat, bec coince
+      b.guard = 1;
+      const stuckT = b.p2 ? (D.p2StuckTime || 1.4) : (D.stuckTime || 1.9);
+      if (b.divesLeft > 0 && b.gt > stuckT * 0.45) { b.gs = 'dive'; b.gt = 0; b.shot = false; }
+      else if (b.gt > stuckT) { b.gs = 'recover'; b.gt = 0; }
+    } else {
+      // REDECOLLE vers son altitude
+      faceOnly(b, p); b.animWant = 'flap';
+      glideTo(b.pos.x, gY - alt, 3);
+      if (b.gt > 0.6) { b.gs = 'hover'; b.gt = 0; }
+    }
+    p2Pose(b);
+    clampHome(b);
+    flyShadow(b, gY);
+    juice(b);
+  };
+
   return AI;
 })();

@@ -1,0 +1,18 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster artwork. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/canvas/SVG). The artwork MUST come from your AI image generator. You will generate TWO sprite sheets for one boss character.
+
+PIXEL-ART STYLE (both sheets): retro 16-bit SNES / arcade run-and-gun look. Crisp visible square pixels, bold dark outline, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO airbrushed/painterly look, NO 3D.
+
+LAYOUT for EACH sheet (critical): EXACTLY 6 frames in a SINGLE horizontal row, left to right, on a uniform grid of 6 equal cells. Same cell size for all; the character at the SAME scale, standing on the SAME ground baseline near the bottom of each cell; centered in its cell. Leave a WIDE empty magenta gap between consecutive frames (each frame a clearly separated island; frames MUST NOT touch or overlap; nothing crosses from one frame into a neighbour). Character identity, outfit and colors IDENTICAL across all 6 frames; only the POSE changes (one looping animation). The character FACES LEFT.
+
+BACKGROUND (both sheets): fill the ENTIRE image (including the gaps) with ONE perfectly FLAT solid #ff00ff magenta. NO shadows, NO floor line, NO gradient, NO grid lines, NO frame numbers, NO text, NO watermark. Never use magenta/pink on the character.
+
+CHARACTER (identical in every frame of BOTH sheets):
+RAJA TIKUS, the RAT KING of the Javanese rice paddies: a GIANT fat rice-field rat standing semi-upright on its hind legs, scruffy grey-brown fur heavily caked with wet brown MUD on legs and belly, a small dented GOLD CROWN tilted on its head, a tattered red royal cape, huge yellow buck teeth, glowing red eyes, long thick bare grey tail, sharp claws, a few rice stalks stuck in its fur. Comedic but menacing crop-pest monarch.
+
+SHEET 1 = MOVE/IDLE. 6 frames, facing LEFT: frames 1-5 a subtle looping IDLE/MENACE cycle (hunched on its hind legs, crown wobbling, tail swishing, sniffing and gnashing its teeth toward the left, claws flexing); frame 6 a HURT pose (recoiling backward, crown flying up off its head, mud splattering, eyes squeezed shut, impact stars). cp the result to D:/workspace/laura-quest/_bossgen/raw/tikus_move_sheet.png
+
+SHEET 2 = ATTACK. 6 frames, facing LEFT: an attack cycle -> frame1 crouches low, frame2 DIGS / burrows head-first into a mound of brown mud (half buried, mud spraying), frame3 only a mud mound with the crown and ears poking out, frame4 ERUPTS upward out of the mud, claws raised, mud clods flying, frame5 spins and WHIPS its long tail toward the LEFT, frame6 recover on hind legs. cp the result to D:/workspace/laura-quest/_bossgen/raw/tikus_atk_sheet.png
+
+Generate SHEET 1 first (one image_gen call), cp it; then SHEET 2 (one image_gen call), cp it. Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  MOVE: D:/workspace/laura-quest/_bossgen/raw/tikus_move_sheet.png (<W>x<H>)
+  ATK:  D:/workspace/laura-quest/_bossgen/raw/tikus_atk_sheet.png (<W>x<H>)

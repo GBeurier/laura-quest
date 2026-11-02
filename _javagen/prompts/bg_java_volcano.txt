@@ -1,0 +1,13 @@
+Use your built-in image_gen tool (the "imagegen" skill) to GENERATE raster pixel art. Do NOT use the CLI fallback (no OPENAI_API_KEY). Do NOT draw procedurally (no PIL/SVG/canvas). The artwork MUST come from your AI image generator. Generate exactly ONE image (ONE image_gen call).
+
+STYLE: retro 16-bit SNES pixel art matching a cute cartoon run-and-gun platformer. Crisp visible square pixels, bold dark outlines, limited vibrant palette, flat cel shading, chunky readable shapes. NO smooth gradients, NO anti-aliasing, NO 3D render, NO painterly/airbrushed look, NO photo-realism.
+
+FORMAT (CRITICAL): a WIDE horizontal PANORAMA STRIP for a side-scrolling PARALLAX background layer, seen straight from the SIDE (side elevation, like a stage backdrop). The scenery sits in the LOWER part of the image and runs across the FULL WIDTH, continuing straight off BOTH the left and the right edges (it will be tiled horizontally, so: no frame, no vignette, nothing that ends at the sides, keep the left and right edges similar in height and color). Everything ABOVE the scenery (the sky) must be ONE perfectly FLAT solid #ff00ff magenta (chroma-key). NO clouds, NO sun, NO birds in the sky: just flat magenta. NEVER use magenta or pink in the scenery itself. NO text, NO people, NO watermark.
+
+SCENERY: the FAR distance layer: a range of JAVANESE VOLCANOES in soft blue atmospheric HAZE, one big classic cone-shaped volcano with a small wisp of white smoke at its summit and a couple of smaller volcanic peaks and long ridges beside it, painted in hazy desaturated blues and blue-greens (lighter toward the top, aerial perspective), a band of distant hazy green forest and palm silhouettes along the bottom. The mountains occupy the lower ~65% of the image, and the bottom ~25% is a SOLID band of hazy blue-green lowland that reaches the bottom edge.
+
+After image_gen returns, copy ONLY the PNG created by THIS Codex session to:
+  D:/workspace/laura-quest/_javagen/raw/bg_java_volcano.png
+CRITICAL: do NOT select "the newest PNG" globally from ~/.codex/generated_images. Use only the generated_images subdirectory for YOUR OWN Codex session id, or otherwise verify the file was produced by your own image_gen call. If you cannot identify it unambiguously, print FAIL_UNSAFE_COPY instead.
+Do NOT run chroma-key removal, do NOT delete files. Finally print exactly:
+  RAW: D:/workspace/laura-quest/_javagen/raw/bg_java_volcano.png (<W>x<H>)

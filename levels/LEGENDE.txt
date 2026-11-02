@@ -72,6 +72,16 @@ MONSTRES — immobiles
   F         recharge fontaine
   D         tas de dossiers
 
+CAMPAGNE MARCOS (Java) — cf. docs/superpowers/specs/2026-11-02-marcos-campaign-design.md
+  ~         BOUE : sol collant (comme '%', SANS degat) -> vitesse x0.4, saut x0.62.
+            Posee sur '='. Le DASH en sort. Interdite dans l'arene du boss.
+  r         rat (SOL : fonce vers Marcos, immunise a la boue)
+  u         durian piquant : au SOL, ou SUSPENDU si la case du dessous est vide
+            (il pend sous un panneau et TOMBE quand on passe dessous)
+  y         oiseau (VOLANT : patrouille puis PIQUE sur Marcos)
+  Z         scooter (VEHICULE rapide, traverse les panneaux)
+  g         pickup DURIAN : aura puante 7 s (degats autour + dissout les tirs)
+
 FIGURANT
   N         passant (corps "biome" + tete South Park au hasard ; fait les
             cent pas. Habits/tetes via theme.passant, cf. js/level.js.)

@@ -201,8 +201,17 @@
         root.classList.toggle('lq-menu', !inGame);
         if (jumpLabel) jumpLabel.textContent = inGame ? 'SAUT' : 'OK';
       }
-      const cat = !!(window.LQ && window.LQ.abilities.cat);
-      if (cat !== hadCat) { hadCat = cat; root.classList.toggle('lq-no-cat', !cat); }
+      // allie (chat de Laura OU etudiants de Marcos) + glyphes du kit (guitare)
+      const ab = (window.LQ && window.LQ.abilities) || {};
+      const cat = !!(ab.cat || ab.ally);
+      const kit = (window.LQ && window.LQ.kit) || '';
+      const sig = cat + '|' + (ab.ally || '') + '|' + kit;
+      if (sig !== hadCat) {
+        hadCat = sig;
+        root.classList.toggle('lq-no-cat', !cat);
+        bCat.querySelector('.lq-g').textContent = ab.ally === 'students' ? '🎓' : '🐱';
+        bLob.querySelector('.lq-g').textContent = kit === 'guitar' ? '🎸' : '🎂';
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

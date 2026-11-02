@@ -80,7 +80,7 @@ fs.mkdirSync(shots, { recursive: true });
     await press('c'); assert.ok(await page.evaluate(() => get('cat').length > 0));
     await press('0'); await scene('chapter'); await press('Enter'); await scene('overworld');
     assert.equal(await page.evaluate(() => LQ_SAVE.load(0, 'laura').progress.niveau1.done), true);
-    assert.equal(await page.evaluate(() => LQ_SAVE.load(1, 'marcos').progress.marcos_bateau), undefined);
+    assert.equal(await page.evaluate(() => LQ_SAVE.load(1, 'marcos').progress.marcos_rizieres), undefined);
     await page.reload(); await scene('title'); await press('Enter'); await scene('characters');
     await press('ArrowRight'); await press('Enter'); await scene('slots'); await press('Enter');
     await scene('overworld'); // reprendre saute bien l'introduction
@@ -101,10 +101,10 @@ fs.mkdirSync(shots, { recursive: true });
     await page.waitForFunction(() => LQ.level.bossesAlive === 0);
     await page.keyboard.up('Space'); await shot('combat');
     await page.evaluate(() => { const door = get('sun')[0]; LQ.player.pos = door.pos.clone(); });
-    await scene('chapter'); await shot('chapter'); await press('Enter'); await scene('win');
-    await page.waitForTimeout(800); await shot('win');
-    assert.equal(await page.evaluate(() => LQ_SAVE.load(1, 'marcos').progress.marcos_bateau.done), true);
-    await press('Enter'); await scene('overworld'); await press('Escape'); await scene('slots');
+    // 1er chapitre de Marcos (3 au total) -> retour carte, pas encore la soutenance
+    await scene('chapter'); await shot('chapter'); await press('Enter'); await scene('overworld');
+    assert.equal(await page.evaluate(() => LQ_SAVE.load(1, 'marcos').progress.marcos_rizieres.done), true);
+    await press('Escape'); await scene('slots');
     // Effacement confirme de Marcos B ; Laura A et les autres slots restent intacts.
     await press('e'); await press('e');
     assert.equal(await page.evaluate(() => LQ_SAVE.load(1, 'marcos')), null);
